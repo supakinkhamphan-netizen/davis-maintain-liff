@@ -53,6 +53,15 @@ eq('at most 3 photos', errs(f => { f.photos = [1, 2, 3, 4]; }).photos, C.L.err.p
 eq('the venue must be chosen when the person has several', errs(f => { f.venue = ''; }).venue, C.L.err.venueRequired);
 eq('first error is the topmost field', V(Object.assign(good(), { buyer: '', reason: '' })).first, 'buyer');
 
+// ---- an error already shown is re-checked as the person types (R-A1) --------
+const shown = V(Object.assign(good(), { reason: '' })).errors;
+const typed = Object.assign(good(), { reason: 'ของเดิมจะหมดภายในสัปดาห์นี้' });
+eq('typing past 5 characters clears the reason error', 'reason' in C.recheckField(Object.assign({}, shown), typed, 'reason', { categories: CATS, needVenue: true }), false);
+eq('a 4-character reason keeps it', C.recheckField(Object.assign({}, shown), Object.assign(good(), { reason: 'หมดแ' }), 'reason', { categories: CATS, needVenue: true }).reason, C.L.err.reason);
+eq('a field with no error shown is not newly flagged while typing', 'reason' in C.recheckField({}, Object.assign(good(), { reason: 'ห' }), 'reason', { categories: CATS }), false);
+const itemErr = { 'item0.name': C.L.err.itemName(1) };
+eq('an item field clears too', 'item0.name' in C.recheckField(itemErr, good(), 'item0.name', { categories: CATS }), false);
+
 // ---- status → Thai label and colour (never colour alone) -------------------
 const chip = (status, fulfilment, extra) => C.statusChip(Object.assign({ status, fulfilment, items: [{ status: 'approved' }, { status: 'approved' }, { status: 'rejected' }] }, extra || {}));
 eq('pending', chip('pending', ''), { label: 'รออนุมัติ', cls: 'wait' });

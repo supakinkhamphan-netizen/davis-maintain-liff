@@ -326,6 +326,18 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     var keys = Object.keys(e);
     return { ok: keys.length === 0, errors: e, first: keys[0] || '' };
   }
+  /**
+   * An error already on screen is re-checked as the person types and goes
+   * away the moment the field is right (R-A1: the reason error stayed after a
+   * 27-character reason was typed, because only Send re-checked). A field
+   * with no error shown is never newly flagged mid-typing.
+   */
+  function recheckField(errors, form, key, opts) {
+    if (!errors || !(key in errors)) return errors || {};
+    var now = validateForm(form, opts).errors[key];
+    if (now) errors[key] = now; else delete errors[key];
+    return errors;
+  }
   function approvedCount(row) {
     var items = row.items || [];
     return items.filter(function (i) { return i.status === 'approved'; }).length + '/' + items.length;
@@ -1154,7 +1166,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
         h += '<div class="from">' + icon('shop') + '<input type="text" data-item="' + i + '" data-f="from" value="' + esc(it.from) + '" placeholder="ซื้อจาก: ลิงก์ หรือชื่อร้าน" aria-label="ซื้อจาก ชิ้นที่ ' + (i + 1) + '">' +
           (i > 0 ? '<button type="button" data-act="sameFrom" data-k="' + i + '">เหมือนชิ้นบน</button>' : '') + '</div>';
       }
-      ['name', 'qty', 'price', 'from'].forEach(function (fld) { if (e[k + '.' + fld]) h += '<div class="err">' + esc(e[k + '.' + fld]) + '</div>'; });
+      ['name', 'qty', 'price', 'from'].forEach(function (fld) { if (e[k + '.' + fld]) h += '<div class="err" id="err-' + k + '.' + fld + '">' + esc(e[k + '.' + fld]) + '</div>'; });
       h += '</div>';
     });
     h += '<button type="button" class="add" data-act="addItem">+ เพิ่มชิ้นที่ ' + (f.items.length + 1) + '</button>' + (e.items ? '<div class="err">' + esc(e.items) + '</div>' : '') + '</section>';
@@ -1191,6 +1203,18 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       el.textContent = lt === null ? L.unknownPrice : '= ' + fmtBaht(lt);
       el.className = 'eq' + (lt === null ? ' unknown' : '');
     });
+  }
+  /** recheckField, applied to the screen without a re-render (the cursor stays put). */
+  function showRecheck(key, input) {
+    var f = S.form;
+    if (!f.errors || !(key in f.errors)) return;
+    recheckField(f.errors, f, key, { categories: S.me.categories, needVenue: true });
+    var line = document.getElementById('err-' + key);
+    if (key in f.errors) { if (line) line.textContent = f.errors[key]; return; }
+    if (line) line.remove();
+    if (input && input.classList) input.classList.remove('bad');
+    var box = input && input.closest && input.closest('.item');
+    if (box && !box.querySelector('.err')) box.classList.remove('bad');
   }
   function submitForm() {
     var f = S.form;
@@ -1321,8 +1345,10 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     if (S.form && el.hasAttribute('data-item')) {
       S.form.items[Number(el.getAttribute('data-item'))][el.getAttribute('data-f')] = el.value;
       refreshFormSums();
+      showRecheck('item' + el.getAttribute('data-item') + '.' + el.getAttribute('data-f'), el);
     } else if (S.form && el.getAttribute('data-f') === 'reason') {
       S.form.reason = el.value;
+      showRecheck('reason', el);
     } else if (el.getAttribute('data-field')) {
       var fl = S.fields[el.getAttribute('data-k')] || (S.fields[el.getAttribute('data-k')] = {});
       fl[el.getAttribute('data-field')] = el.value;
