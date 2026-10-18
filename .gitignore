@@ -1,0 +1,4 @@
+.DS_Store
+.gstack/
+*.png
+node_modules/

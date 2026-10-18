@@ -753,7 +753,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
   var app = document.getElementById('app');
   var S = {
     me: null, notice: null, tab: '', venue: '', month: '', board: null, shops: null,
-    view: 'list', detail: null, detailId: '', form: null, sheet: null,
+    view: 'list', detail: null, detailId: '', form: null, sheet: null, counts: {},
     checks: {}, fields: {}, busy: false, lastLoad: 0,
   };
 
@@ -810,7 +810,8 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 
   // ---- tabs per role ----------------------------------------------------------
   function tabsFor(me) {
-    var c = (S.board && S.board.counts) || {};
+    // Kept across tabs, so the by-shop tab still shows how many wait elsewhere.
+    var c = S.counts || {};
     var n = function (k) { return c[k] !== undefined ? ' · ' + c[k] : ''; };
     if (me.role === 'venue_manager') {
       var split = S.board && S.board.mineRows ? splitManagerTabs(S.board.mineRows) : null;
@@ -835,6 +836,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       p = api('prBoard', { scope: scopeOfTab(S.tab), venue: S.venue }).then(function (res) {
         if (S.tab === 'active' || S.tab === 'done') res.mineRows = res.rows;
         S.board = res;
+        S.counts = res.counts || S.counts;
         var cache = store(true) || {};
         cache.me = S.me; cache.boards = cache.boards || {}; cache.boards[S.tab + '|' + S.venue] = res;
         if (!DEMO) store(false, cache);
@@ -960,7 +962,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     if (plan.rejected.length && !plan.wholeReject) h += '<div class="hintno">' + plan.rejected.length + ' รายการไม่ได้ติ๊ก = ไม่อนุมัติ ต้องใส่เหตุผลตอนกดยืนยัน</div>';
     h += '<div class="total"><span>เลือก ' + plan.approved.length + ' จาก ' + r.items.length + ' รายการ</span><span>รวม <b>' + fmtBaht(plan.checkedTotal) + ' บาท</b></span></div>';
     h += '<div class="acts">' +
-      (plan.wholeReject ? '' : '<button type="button" class="btn pri sm" data-act="approve" data-k="' + esc(r.id) + '">' + icon('check') + (plan.rejected.length ? 'อนุมัติที่เลือก (' + plan.approved.length + ')' : (plan.high ? 'อนุมัติ (ยืนยันอีกครั้ง)' : 'อนุมัติ')) + '</button>') +
+      (plan.wholeReject ? '' : '<button type="button" class="btn pri sm" data-act="approve" data-k="' + esc(r.id) + '">' + icon('check') + (plan.rejected.length ? 'อนุมัติที่เลือก (' + plan.approved.length + ')' : 'อนุมัติ') + '</button>') +
       '<button type="button" class="btn no sm" data-act="rejectAll" data-k="' + esc(r.id) + '">' + (r.items.length > 1 ? 'ไม่อนุมัติทั้งใบ' : 'ไม่อนุมัติ') + '</button></div>';
     return h + '</div>';
   }
@@ -1077,7 +1079,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       h += '<div class="chips" role="group" aria-label="เหตุผลที่ใช้บ่อย">' + (S.me.quickReasons || L.quickReasons).map(function (q) {
         return '<button type="button" class="q" data-act="quick" data-k="' + esc(q) + '">' + esc(q) + '</button>';
       }).join('') + '</div>';
-      h += '<div class="acts"><button type="button" class="btn sec" data-act="closeSheet">กลับ</button><button type="button" class="btn danger" data-act="confirmReject">' +
+      h += '<div class="acts"><button type="button" class="btn sec" style="flex:0 0 96px" data-act="closeSheet">กลับ</button><button type="button" class="btn danger" data-act="confirmReject">' +
         (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button></div>';
     } else if (sh.kind === 'high') {
       var p2 = decisionPlan(r, checksOf(r), S.me.highAmount);
