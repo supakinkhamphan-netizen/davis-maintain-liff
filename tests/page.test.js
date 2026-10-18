@@ -28,5 +28,8 @@ ok('every user string goes through esc() in the card builders (no raw r.reason)'
 ok('errors are said under the field (class err), not in a dialog', (SRC.match(/class="err"/g) || []).length >= 5);
 ok('ต้องซื้อ lists "รอสาขารับของ" under the rows to act on', /รอสาขารับของ · /.test(SRC) && /receiptSection\(all\.rows/.test(SRC));
 ok('the ต้องซื้อ tab number is the server\'s tobuy count, nothing added', /label: 'ต้องซื้อ' \+ n\('tobuy'\)/.test(SRC));
+ok('a bind code is read from the (liff.state-decoded) query, never in demo', /var code = DEMO \? '' : bindCodeFrom\(QS\);/.test(SRC));
+ok('a successful bind cleans the address bar', /history\.replaceState\(null, '', stripBind\(location\.href\)\)/.test(SRC));
+ok('build v4 · bind link', /var BUILD = 'pr-board v4 · 2026-10-18 · bind link';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);

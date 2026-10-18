@@ -169,6 +169,19 @@ eq('counts and this month\'s approved baht', [shops[0].pending, shops[0].toBuy, 
 eq('shares add up to 100, largest first', [shops[0].categories.reduce((a, c) => a + c.percent, 0), shops[0].categories[0].name], [100, 'ของใช้สิ้นเปลือง']);
 eq('quiet venue is zero', [shops[1].pending, shops[1].approvedTotalMonth, shops[1].categories], [0, 0, []]);
 
+// ---- work order #11: the bind link ---------------------------------------
+const CODE = 'a'.repeat(32);
+eq('bindCodeFrom reads a 32-hex ?bind', [C.bindCodeFrom('?bind=' + CODE), C.bindCodeFrom('?x=1&bind=' + CODE + '&y=2')], [CODE, CODE]);
+eq('… and ignores anything else', [C.bindCodeFrom(''), C.bindCodeFrom('?bind=xyz'), C.bindCodeFrom('?bind=' + 'A'.repeat(32))], ['', '', '']);
+eq('stripBind drops bind and liff.state, keeps the rest',
+  [C.stripBind('https://x/p/?bind=' + CODE), C.stripBind('https://x/p/?demo=0&bind=' + CODE + '&k=2'), C.stripBind('https://x/p/?liff.state=%3Fbind%3D' + CODE)],
+  ['https://x/p/', 'https://x/p/?demo=0&k=2', 'https://x/p/']);
+eq('stripBind leaves a URL without them alone', C.stripBind('https://x/p/?k=2#h'), 'https://x/p/?k=2#h');
+const unk = C.unknownNotice({ known: false, message: 'ระบบยังไม่รู้จักคุณ\nเปิดแชท Davis Care', bindChatUrl: 'https://line.me/R/oaMessage/@423lqahd/?x' });
+eq('the unknown page shows the server\'s message and the open-chat button', [unk.text, unk.link && unk.link.href, unk.link && unk.link.label],
+  ['ระบบยังไม่รู้จักคุณ\nเปิดแชท Davis Care', 'https://line.me/R/oaMessage/@423lqahd/?x', 'เปิดแชท Davis Care']);
+eq('… no button when no bindChatUrl came', C.unknownNotice({ known: false, message: 'x' }).link, null);
+eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ known: false, message: 'x', bindChatUrl: 'javascript:alert(1)' }).link, null);
 // ---- the demo backend walks a whole request -------------------------------------
 (async () => {
   const D = C.makeDemo('venue_manager');
@@ -198,6 +211,18 @@ eq('quiet venue is zero', [shops[1].pending, shops[1].approvedTotalMonth, shops[
   eq('demo: account cannot decide', accDecide.error, C.L.err.notAllowed);
   const board = await D.call('prBoard', { scope: 'pending' });
   ok('demo board has counts, chips and the strip', board.ok && 'pending' in board.counts && board.totals && typeof board.byVenue === 'object');
+  // ---- boot order with a bind code (work order #11) ----
+  const seen = [];
+  const fakeApi = answers => (fn, p) => { seen.push([fn, p]); const a = answers[fn]; return a instanceof Error ? Promise.reject(a) : Promise.resolve(a); };
+  seen.length = 0;
+  const m1 = await C.identify(fakeApi({ prBind: { known: true, role: 'manager' }, prWhoAmI: { known: false } }), CODE);
+  eq('with a code: prBind first, with that code, and its answer is me', [seen.map(x => x[0]), seen[0][1], m1.me.role, m1.bound], [['prBind'], { code: CODE }, 'manager', true]);
+  seen.length = 0;
+  const m2 = await C.identify(fakeApi({ prBind: new Error('ลิงก์ผูกบอร์ดหมดอายุ'), prWhoAmI: { known: true, role: 'account' } }), CODE);
+  eq('an expired code → whoAmI as usual (maybe bound already)', [seen.map(x => x[0]), m2.me.role, m2.bound, m2.bindError], [['prBind', 'prWhoAmI'], 'account', false, 'ลิงก์ผูกบอร์ดหมดอายุ']);
+  seen.length = 0;
+  const m3 = await C.identify(fakeApi({ prWhoAmI: { known: true, role: 'venue_manager' } }), '');
+  eq('no code → whoAmI only, as before', [seen.map(x => x[0]), m3.me.role, m3.bound], [['prWhoAmI'], 'venue_manager', false]);
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 })();

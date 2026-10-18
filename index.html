@@ -218,7 +218,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 <script>
 (function () {
   'use strict';
-  var BUILD = 'pr-board v3 · 2026-10-18';
+  var BUILD = 'pr-board v4 · 2026-10-18 · bind link';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -237,7 +237,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 /* LOGIC START */
   var L = {
     noLine: 'ยังไม่ได้เชื่อมกับไลน์ ปิดหน้านี้แล้วเปิดจากลิงก์ในไลน์อีกครั้ง',
-    unknownPerson: 'ระบบยังไม่รู้จักคุณ พิมพ์ ลงทะเบียน ในกลุ่มไลน์ก่อน',
+    unknownPerson: 'ระบบยังไม่รู้จักคุณ\nเปิดแชท Davis Care พิมพ์ ขอซื้อ แล้วกดปุ่มเปิดบอร์ดในคำตอบ (ทำครั้งเดียว)\nถ้ายังไม่เคยลงทะเบียน พิมพ์ ลงทะเบียน ในกลุ่มไลน์ก่อน',
     notForYou: 'บอร์ดนี้สำหรับผู้จัดการสาขา จัดซื้อ ผู้บริหาร และบัญชี',
     boardOff: 'บอร์ดขอซื้อยังไม่เปิดใช้',
     unknownPrice: 'ยังไม่ทราบ', noCategory: 'ไม่ระบุประเภท', defaultUnit: 'ชิ้น',
@@ -476,6 +476,41 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
         approvedTotalMonth: round2(approved),
         categories: shares(Object.keys(byCat).map(function (k) { return { name: k, baht: byCat[k] }; })),
       };
+    });
+  }
+  // ---- work order #11: the bind link from the Davis Care 1:1 chat ----
+  /** The one-time code the bot put in the link (?bind=<32 hex>), or ''. */
+  function bindCodeFrom(qs) {
+    var m = /[?&]bind=([0-9a-f]{32})(?:&|$)/.exec(String(qs || ''));
+    return m ? m[1] : '';
+  }
+  /** The same URL without bind / liff.state, so a reload never sends a spent code. */
+  function stripBind(url) {
+    var hash = '', q = '';
+    var h = url.indexOf('#'); if (h >= 0) { hash = url.slice(h); url = url.slice(0, h); }
+    var i = url.indexOf('?'); if (i >= 0) { q = url.slice(i + 1); url = url.slice(0, i); }
+    var keep = q.split('&').filter(function (kv) { var k = kv.split('=')[0]; return kv && k !== 'bind' && k !== 'liff.state'; });
+    return url + (keep.length ? '?' + keep.join('&') : '') + hash;
+  }
+  /** The page for someone the system does not know yet: the server's words, and the way to the bot's chat. */
+  function unknownNotice(me) {
+    var href = String((me && me.bindChatUrl) || '');
+    return {
+      title: 'ระบบยังไม่รู้จักคุณ',
+      text: (me && me.message) || L.unknownPerson,
+      link: /^https:\/\/line\.me\//.test(href) ? { href: href, label: 'เปิดแชท Davis Care' } : null,
+    };
+  }
+  /**
+   * Who is this? With a bind code, prBind first (it answers what whoAmI would);
+   * a spent or expired code falls back to whoAmI, since the person may be bound
+   * already. Resolves {me, bound, bindError}.
+   */
+  function identify(apiFn, code) {
+    if (!code) return apiFn('prWhoAmI', {}).then(function (me) { return { me: me, bound: false, bindError: '' }; });
+    return apiFn('prBind', { code: code }).then(function (me) { return { me: me, bound: true, bindError: '' }; }, function (err) {
+      var why = (err && err.message) || '';
+      return apiFn('prWhoAmI', {}).then(function (me) { return { me: me, bound: false, bindError: why }; });
     });
   }
   function esc(s) {
@@ -891,7 +926,9 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       }).join('') + '</div>';
     }
     if (S.notice) {
-      app.innerHTML = h + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text) + '</p></div><div class="build">' + BUILD + '</div>';
+      app.innerHTML = h + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text).replace(/\n/g, '<br>') + '</p>' +
+        (S.notice.link ? '<a class="btn pri" style="max-width:320px" href="' + esc(S.notice.link.href) + '">' + esc(S.notice.link.label) + '</a>' : '') +
+        '</div><div class="build">' + BUILD + '</div>';
       return;
     }
     if (!S.me) { app.innerHTML = h + '<div class="notice"><p>กำลังเปิดบอร์ด…</p></div>'; return; }
@@ -1394,7 +1431,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 
   // ---- start --------------------------------------------------------------------
   function startWith(me) {
-    if (!me.known) { S.notice = { title: 'ระบบยังไม่รู้จักคุณ', text: me.message || L.unknownPerson }; render(); return; }
+    if (!me.known) { S.notice = unknownNotice(me); render(); return; }
     if (me.allowed === false) { S.notice = { title: 'บอร์ดนี้ยังไม่ได้เปิดให้คุณ', text: L.notForYou }; render(); return; }
     S.notice = null;
     S.me = me;
@@ -1405,7 +1442,12 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
   }
   function boot() {
     render();
-    api('prWhoAmI', {}).then(startWith, function (e) {
+    var code = DEMO ? '' : bindCodeFrom(QS);
+    identify(api, code).then(function (res) {
+      if (res.bound) { try { history.replaceState(null, '', stripBind(location.href)); } catch (e) { /* the code is spent anyway */ } }
+      if (res.bindError && !(res.me && res.me.known)) toast(res.bindError, true);
+      startWith(res.me);
+    }, function (e) {
       if (S.me) { toast(e.message, true); return; }
       S.notice = { title: e.message === L.boardOff ? L.boardOff : 'เปิดบอร์ดไม่สำเร็จ', text: e.message === L.boardOff ? 'รอผู้ดูแลระบบเปิดใช้' : e.message };
       render();
