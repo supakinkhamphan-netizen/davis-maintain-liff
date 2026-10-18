@@ -1,0 +1,1386 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>ขอซื้อสาขา</title>
+<link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap">
+<!--
+  Davis ขอซื้อสาขา — the purchase board (work order #9, 2026-10-18).
+  One file, no build, no framework. Talks only to the Davis Maintain web app
+  (purchase-liff-api.js there). Colours are the Order board's, every value.
+  ?demo=1 runs the whole board on sample data in this page, no backend.
+-->
+<style>
+:root{
+  --bg:#23272E; --panel:#262B33; --sink:#1E2228; --line:#2F353E; --edge:#3B4350;
+  --ink:#E8EBF0; --muted:#9AA3B2; --faint:#6B7382;
+  --accent:#2FA39A; --accent-ink:#08201E;
+  --ok:#6FD39A; --ok-bg:#1E3A2C;
+  --warn-bg:#3A3116; --warn-ink:#E3B341;
+  --hot-bg:#3D2A1C; --hot-ink:#F0B48C;
+  --free-bg:#1F2A3F; --free-ink:#93C5FD;
+  --danger:#F08C8C; --no-bg:#3D2222; --danger-ink:#3D1414;
+  --part-bg:#2B2440; --part-ink:#B7A3F5;
+  --raise:6px 6px 14px rgba(0,0,0,.55),-4px -4px 12px rgba(255,255,255,.055);
+  --sink-sh:inset 4px 4px 10px rgba(0,0,0,.55),inset -3px -3px 8px rgba(255,255,255,.055);
+  --r-sm:12px; --r-lg:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans Thai',system-ui,sans-serif;-webkit-text-size-adjust:100%}
+body{min-height:100vh}
+a{color:var(--accent)}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--free-ink);outline-offset:2px}
+#app{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.demo{background:var(--part-bg);color:var(--part-ink);font-size:12px;padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.demo b{margin-right:4px}
+.demo button{min-height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--part-ink);background:none;color:var(--part-ink);font-size:12px;font-weight:700;cursor:pointer}
+.demo button.on{background:var(--part-ink);color:var(--part-bg)}
+.head{min-height:64px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line)}
+.head h1{margin:0;font-size:18px;font-weight:700}
+.who{font-size:12px;color:var(--muted);margin-top:2px}
+.ava{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
+.iconbtn{width:44px;height:44px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--muted);background:var(--panel);border:0;cursor:pointer;flex-shrink:0}
+.tabs{display:flex;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.tab{flex:1;min-height:48px;background:none;border:0;color:var(--muted);font-size:14px;font-weight:600;border-bottom:3px solid transparent;cursor:pointer;padding:0 6px}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent)}
+.fhead{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0;font-size:12px;color:var(--muted);font-weight:600}
+.fhead button{background:none;border:0;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;min-height:44px;padding:0}
+.filters{display:flex;gap:8px;padding:4px 16px 0;overflow-x:auto;scrollbar-width:none}
+.pill{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--edge);background:var(--panel);color:var(--muted);font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:6px}
+.pill b{color:var(--ink)}
+.pill.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.pill.on b{color:var(--accent-ink)}
+.fsum{margin:10px 16px 0;padding:10px 12px;border-radius:var(--r-sm);background:var(--sink);display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.fsum b{color:var(--ink)}
+.body{flex:1;padding:16px 16px 32px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--panel);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--raise);display:flex;flex-direction:column;gap:10px;color:var(--ink);text-align:left;border:0;width:100%}
+button.card{cursor:pointer}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.id{font-size:12px;color:var(--muted);font-weight:600}
+.ttl{font-size:16px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.meta{font-size:13px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
+.chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.chip.wait{background:var(--warn-bg);color:var(--warn-ink)}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.no{background:var(--no-bg);color:var(--danger)}
+.chip.info{background:var(--free-bg);color:var(--free-ink)}
+.chip.part{background:var(--part-bg);color:var(--part-ink)}
+.chip.off{background:var(--sink);color:var(--muted)}
+.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;border:1px solid var(--edge);color:var(--muted)}
+.tag.path{border-color:var(--accent);color:var(--ok)}
+.tag.cat{background:var(--free-bg);color:var(--free-ink);border-color:var(--free-bg)}
+.tag.hi{background:var(--hot-bg);color:var(--hot-ink);border-color:var(--hot-bg)}
+.venue{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--free-bg);color:var(--free-ink);white-space:nowrap}
+.age{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink);white-space:nowrap}
+.age.hot{background:var(--hot-bg);color:var(--hot-ink)}
+.sec{font-size:12px;color:var(--muted);font-weight:700;margin:6px 0 -4px}
+.baht{font-weight:700;color:var(--ink)}
+.empty{color:var(--muted);font-size:14px;text-align:center;padding:32px 8px;line-height:1.6}
+.btn{min-height:56px;border-radius:var(--r-sm);border:0;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;padding:0 16px;width:100%}
+.btn.pri{background:var(--accent);color:var(--accent-ink);box-shadow:var(--raise)}
+.btn.sec{background:var(--panel);color:var(--ink);border:1px solid var(--edge)}
+.btn.no{background:var(--panel);color:var(--danger);border:1px solid #5A2A2A}
+.btn.danger{background:var(--danger);color:var(--danger-ink)}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn.sm{min-height:48px;font-size:15px}
+.acts{display:flex;gap:10px}
+.acts>.btn{flex:1}
+.lines{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.ln{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.ln.ro{grid-template-columns:minmax(0,1fr) auto}
+.ln input[type=checkbox]{width:24px;height:24px;margin:0;accent-color:var(--accent)}
+.ln label,.ln .n{display:flex;flex-direction:column;gap:2px;font-size:15px;min-width:0;overflow-wrap:anywhere}
+.ln label{cursor:pointer;min-height:44px;justify-content:center}
+.ln small{font-size:12px;color:var(--muted)}
+.ln .amt{font-size:15px;font-weight:700;white-space:nowrap;text-align:right}
+.ln .amt.big{font-size:17px}
+.ln .amt.unknown{color:var(--warn-ink);font-weight:600;font-size:13px}
+.ln.off label,.ln.off .n>span:first-child{color:var(--muted);text-decoration:line-through}
+.ln .st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;justify-self:end;white-space:nowrap}
+.st.ok{background:var(--ok-bg);color:var(--ok)}
+.st.no{background:var(--no-bg);color:var(--danger)}
+.st.wait{background:var(--warn-bg);color:var(--warn-ink)}
+.why{font-size:12px;color:var(--hot-ink)}
+.hintno{font-size:12px;color:var(--hot-ink)}
+.total{display:flex;justify-content:space-between;font-size:14px;color:var(--muted)}
+.total b{color:var(--ink);font-size:16px}
+.lnk{display:inline-flex;align-items:center;gap:4px;color:var(--accent);text-decoration:none;font-weight:600;min-height:28px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;color:var(--muted);font-weight:600}
+.in{min-height:48px;border-radius:var(--r-sm);border:1px solid var(--edge);background:var(--sink);color:var(--ink);padding:10px 12px;font-size:16px;width:100%;box-shadow:var(--sink-sh)}
+textarea.in{min-height:96px;resize:vertical;line-height:1.5}
+.err{font-size:13px;color:var(--danger);font-weight:600}
+.in.bad,.item.bad{border-color:var(--danger)}
+/* form */
+.fsec{display:flex;flex-direction:column;gap:12px}
+.sh{display:flex;align-items:center;gap:10px}
+.sh .n{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sh h2{margin:0;font-size:16px;font-weight:700}
+.sh .cnt{margin-left:auto;font-size:12px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tile{border-radius:14px;border:2px solid var(--edge);background:var(--panel);padding:14px 12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:84px;position:relative}
+.tile.on{border-color:var(--accent);background:#1E3A37}
+.tile b{font-size:15px}
+.tile span{font-size:12px;color:var(--muted);line-height:1.35}
+.tile .ck{position:absolute;top:10px;right:10px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-size:12px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.choice{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--edge);background:var(--panel);font-size:13px;font-weight:600;cursor:pointer}
+.choice.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.item{background:var(--panel);border-radius:var(--r-lg);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--raise);border:1px solid transparent}
+.item .top{display:flex;align-items:center;gap:10px}
+.idx{width:24px;height:24px;border-radius:50%;background:var(--sink);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.name{flex:1;min-height:48px;border:0;border-bottom:1px solid var(--edge);background:none;font-size:17px;font-weight:700;padding:0 2px;min-width:0}
+.qtyrow,.pricerow{display:flex;align-items:center;gap:10px}
+.step{display:flex;align-items:center;border:1px solid var(--edge);border-radius:var(--r-sm);overflow:hidden;background:var(--sink)}
+.step button{width:44px;height:44px;border:0;background:none;color:var(--accent);font-size:22px;font-weight:700;cursor:pointer}
+.step input{width:52px;height:44px;border:0;background:none;text-align:center;font-size:17px;font-weight:700;padding:0}
+.unit{min-height:44px;border:1px solid var(--edge);border-radius:var(--r-sm);background:var(--sink);font-size:15px;padding:0 12px;min-width:0;flex:1}
+.pricerow .lbl{font-size:13px;color:var(--muted);white-space:nowrap}
+.price{min-height:44px;border:1px solid var(--edge);border-radius:var(--r-sm);background:var(--sink);display:flex;align-items:center;padding:0 12px;gap:6px;flex:1;min-width:0}
+.price span{color:var(--muted)}
+.price input{border:0;background:none;font-size:17px;font-weight:700;width:100%;min-width:0;padding:0;min-height:42px}
+.eq{font-size:17px;font-weight:700;color:var(--ok);white-space:nowrap;margin-left:auto}
+.eq.unknown{color:var(--warn-ink);font-size:13px;font-weight:600}
+.from{display:flex;align-items:center;gap:8px;min-height:44px;border-radius:var(--r-sm);background:var(--sink);border:1px dashed var(--edge);padding:0 12px}
+.from input{border:0;background:none;font-size:14px;flex:1;min-width:0;padding:0;min-height:42px}
+.from button{border:0;background:none;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;min-height:44px;padding:0}
+.add{min-height:52px;border-radius:14px;border:2px dashed var(--edge);background:none;color:var(--accent);font-size:15px;font-weight:700;cursor:pointer}
+.photos{display:flex;gap:8px;flex-wrap:wrap}
+.thumb{position:relative;width:76px;height:76px;border-radius:var(--r-sm);overflow:hidden;background:var(--sink)}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb button{position:absolute;top:2px;right:2px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.7);color:#fff;cursor:pointer}
+.photo{min-height:56px;border-radius:var(--r-sm);border:1px dashed var(--edge);display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:14px;background:none;cursor:pointer;width:100%}
+.bar{position:sticky;bottom:0;padding:12px 16px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px;background:var(--bg);z-index:6}
+.sum{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sum .l{font-size:13px;color:var(--muted)}
+.sum .big{font-size:24px;font-weight:700;color:var(--ok);line-height:1}
+.sum .note{font-size:12px;color:var(--warn-ink);margin-top:4px}
+/* detail */
+.panel{background:var(--panel);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--raise);display:flex;flex-direction:column;gap:10px}
+.lbl{font-size:12px;color:var(--muted);font-weight:700}
+.dttl{font-size:20px;font-weight:700;line-height:1.3;margin:0;overflow-wrap:anywhere}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.stp{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:var(--muted);text-align:center;line-height:1.25}
+.stp .d{width:100%;height:6px;border-radius:3px;background:var(--line)}
+.stp.done .d{background:var(--accent)}
+.stp.done{color:var(--ink);font-weight:700}
+.stp.now .d{background:var(--warn-ink)}
+.stp.now{color:var(--warn-ink);font-weight:700}
+.tls{display:grid;grid-template-columns:24px minmax(0,1fr);gap:0 12px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--accent);margin:5px auto 0;box-shadow:0 0 0 3px var(--ok-bg)}
+.rail{width:2px;background:var(--line);margin:4px auto 0;min-height:24px}
+.tt{font-size:15px;font-weight:700}
+.sm{font-size:13px;color:var(--muted);line-height:1.45;padding-bottom:12px;overflow-wrap:anywhere}
+.pics{display:flex;gap:8px;flex-wrap:wrap}
+.pics a{display:block;width:96px;height:96px;border-radius:var(--r-sm);overflow:hidden;background:var(--sink)}
+.pics img{width:100%;height:100%;object-fit:cover}
+/* by shop */
+.month{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0}
+.month b{font-size:15px}
+.month button{width:44px;height:44px;border-radius:var(--r-sm);border:1px solid var(--edge);background:var(--panel);cursor:pointer;font-size:18px}
+.shop{font-size:18px;font-weight:700}
+.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.num{background:var(--sink);border-radius:var(--r-sm);padding:10px 10px 8px;display:flex;flex-direction:column;gap:2px}
+.num .v{font-size:20px;font-weight:700;line-height:1}
+.num .k{font-size:11px;color:var(--muted)}
+.num.wait .v{color:var(--warn-ink)} .num.buy .v{color:var(--free-ink)} .num.money .v{color:var(--ok);font-size:17px}
+.sbar{height:8px;border-radius:4px;background:var(--sink);display:flex;overflow:hidden}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.go{font-size:13px;color:var(--accent);font-weight:700}
+/* sheets and toast */
+.dim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--panel);border-radius:20px 20px 0 0;padding:12px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 24px rgba(0,0,0,.6);z-index:21;max-height:90vh;overflow:auto}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--edge);margin:0 auto}
+.sheet h2{margin:0;font-size:18px;font-weight:700}
+.sub{font-size:14px;color:var(--muted);line-height:1.5}
+.q{min-height:44px;padding:0 12px;border-radius:999px;border:1px solid var(--edge);background:var(--bg);font-size:13px;font-weight:600;cursor:pointer}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));max-width:528px;margin:0 auto;z-index:30;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:#11151B;color:var(--ink);border:1px solid var(--edge);border-radius:var(--r-sm);padding:12px 14px;font-size:14px;line-height:1.45;box-shadow:var(--raise)}
+.toast.bad{border-color:var(--danger);color:var(--danger)}
+.notice{padding:48px 24px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.notice h2{margin:0;font-size:18px}
+.notice p{margin:0;color:var(--muted);line-height:1.6}
+.build{font-size:11px;color:var(--faint);text-align:center;padding:8px 0 16px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+(function () {
+  'use strict';
+  var BUILD = 'pr-board v1 · 2026-10-18';
+  // The Davis Maintain web app (prod deployment that LINE uses). One line.
+  var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
+  // The LIFF app "Davis ขอซื้อ". Empty until the owner creates it and sends the id.
+  var LIFF_ID = '';
+  var STORE_KEY = 'davisPurchase.v1';
+  var POLL_MS = 10000;
+  var QS = (function () {
+    var q = location.search || '';
+    // LIFF may redirect and hand the original query over inside liff.state.
+    var m = /[?&]liff\.state=([^&]*)/.exec(q);
+    if (m) { try { q = decodeURIComponent(m[1]); } catch (e) { /* keep q */ } }
+    return q;
+  })();
+  var DEMO_MODE = /[?&]demo=1\b/.test(QS);
+
+/* LOGIC START */
+  var L = {
+    noLine: 'ยังไม่ได้เชื่อมกับไลน์ ปิดหน้านี้แล้วเปิดจากลิงก์ในไลน์อีกครั้ง',
+    unknownPerson: 'ระบบยังไม่รู้จักคุณ พิมพ์ ลงทะเบียน ในกลุ่มไลน์ก่อน',
+    notForYou: 'บอร์ดนี้สำหรับผู้จัดการสาขา จัดซื้อ ผู้บริหาร และบัญชี',
+    boardOff: 'บอร์ดขอซื้อยังไม่เปิดใช้',
+    unknownPrice: 'ยังไม่ทราบ', noCategory: 'ไม่ระบุประเภท', defaultUnit: 'ชิ้น',
+    buyer: { self: 'ฉันซื้อเอง', purchasing: 'ให้จัดซื้อซื้อให้' },
+    role: { venue_manager: 'ผู้จัดการสาขา', purchasing: 'จัดซื้อ', manager: 'ผู้บริหาร', account: 'บัญชี' },
+    action: { CREATE: 'ส่งคำขอ', CANCEL: 'ยกเลิก', DECIDE: 'ตัดสิน', ORDERED: 'สั่งซื้อแล้ว', DELIVERED: 'ส่งถึงสาขาแล้ว', RECEIVED: 'รับของแล้ว' },
+    quickReasons: ['มีของในสต๊อกกลางแล้ว', 'ขอเทียบราคาอีกร้าน', 'รอรวมซื้อกับสาขาอื่น'],
+    err: {
+      notAllowed: 'คุณไม่มีสิทธิ์ทำขั้นนี้',
+      notFound: 'ไม่พบคำขอนี้',
+      venueRequired: 'เลือกร้านที่จะขอซื้อก่อน',
+      venueNotYours: 'คำขอนี้เป็นของร้านที่คุณไม่ได้ดูแล',
+      buyer: 'เลือกก่อนว่าใครเป็นคนซื้อ',
+      category: 'เลือกประเภทของที่จะซื้อ',
+      noItems: 'ใส่รายการอย่างน้อยหนึ่งชิ้น',
+      itemName: function (n) { return 'ชิ้นที่ ' + n + ' ยังไม่มีชื่อ'; },
+      itemQty: function (n) { return 'ชิ้นที่ ' + n + ' จำนวนต้องเป็นตัวเลขตั้งแต่ 1 ขึ้นไป'; },
+      itemPrice: function (n) { return 'ชิ้นที่ ' + n + ' ราคาต้องเป็นตัวเลขไม่ติดลบ หรือเว้นว่างไว้'; },
+      itemFrom: function (n) { return 'ชิ้นที่ ' + n + ' ยังไม่ได้บอกว่าซื้อจากที่ไหน'; },
+      reason: 'บอกเหตุผลที่ขอซื้ออย่างน้อย 5 ตัวอักษร',
+      photos: 'แนบรูปได้ไม่เกิน 3 รูป',
+      notPending: 'คำขอนี้ไม่ได้รออนุมัติแล้ว',
+      linesIncomplete: 'ต้องตัดสินให้ครบทุกชิ้นในคำขอ',
+      lineReason: function (n) { return 'ชิ้นที่ ' + n + ' ไม่อนุมัติ ต้องบอกเหตุผล'; },
+      actualTotal: 'ใส่ยอดที่จ่ายจริงเป็นตัวเลขมากกว่าศูนย์',
+      eta: 'ใส่วันที่คาดว่าของจะถึง',
+      wrongStep: 'คำขอนี้ยังไม่ถึงขั้นนี้ หรือผ่านขั้นนี้ไปแล้ว',
+      network: 'ติดต่อระบบไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง',
+    },
+  };
+  var MAX_PHOTOS = 3;
+  var CAT_COLORS = ['#2FA39A', '#93C5FD', '#B7A3F5', '#F0B48C', '#E3B341', '#6FD39A'];
+  var TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  var TH_MONTH = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+  function fmtBaht(n) {
+    n = Number(n) || 0;
+    var whole = Math.round(n * 100) % 100 === 0;
+    var s = (whole ? Math.round(n) : round2(n)).toFixed(whole ? 0 : 2);
+    var parts = s.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+  }
+  function priceOf(raw) {
+    if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+    var v = Number(String(raw).replace(/,/g, ''));
+    return isFinite(v) ? v : NaN;
+  }
+  /** qty × price, or null while the price is not known. */
+  function lineTotal(it) {
+    var p = priceOf(it.price !== undefined ? it.price : it.unitPrice);
+    if (p === null || isNaN(p)) return null;
+    return round2((Number(it.qty) || 0) * p);
+  }
+  function formTotals(items) {
+    var total = 0, priced = 0;
+    items.forEach(function (it) { var t = lineTotal(it); if (t !== null) { total += t; priced++; } });
+    return { total: round2(total), priced: priced, unpriced: items.length - priced, count: items.length };
+  }
+  /**
+   * The same rules the server enforces, said under the field instead of in a
+   * toast. Returns {ok, errors: {field: text}, first}.
+   */
+  function validateForm(f, opts) {
+    opts = opts || {};
+    var e = {};
+    var buyer = f.buyer;
+    if (buyer !== 'self' && buyer !== 'purchasing') e.buyer = L.err.buyer;
+    if (opts.needVenue && !String(f.venue || '').trim()) e.venue = L.err.venueRequired;
+    var cat = String(f.category || '').trim();
+    if (buyer === 'purchasing' && (!cat || (opts.categories && opts.categories.indexOf(cat) < 0))) e.category = L.err.category;
+    var items = f.items || [];
+    if (!items.length) e.items = L.err.noItems;
+    items.forEach(function (it, i) {
+      var n = i + 1;
+      if (!String(it.name || '').trim()) e['item' + i + '.name'] = L.err.itemName(n);
+      var q = Number(it.qty);
+      if (it.qty === '' || !isFinite(q) || q < 1) e['item' + i + '.qty'] = L.err.itemQty(n);
+      var p = priceOf(it.price);
+      if (p !== null && (isNaN(p) || p < 0)) e['item' + i + '.price'] = L.err.itemPrice(n);
+      if (buyer === 'purchasing' && !String(it.from || '').trim()) e['item' + i + '.from'] = L.err.itemFrom(n);
+    });
+    if (String(f.reason || '').trim().length < 5) e.reason = L.err.reason;
+    if ((f.photos || []).length > MAX_PHOTOS) e.photos = L.err.photos;
+    var keys = Object.keys(e);
+    return { ok: keys.length === 0, errors: e, first: keys[0] || '' };
+  }
+  function approvedCount(row) {
+    var items = row.items || [];
+    return items.filter(function (i) { return i.status === 'approved'; }).length + '/' + items.length;
+  }
+  /** What a request's chip says. The words always carry the meaning; the colour repeats it. */
+  function statusChip(row) {
+    var s = row.status, f = row.fulfilment || '';
+    if (s === 'pending') return { label: 'รออนุมัติ', cls: 'wait' };
+    if (s === 'cancelled') return { label: 'ยกเลิก', cls: 'off' };
+    if (s === 'rejected') return { label: 'ไม่อนุมัติ', cls: 'no' };
+    var base = s === 'partial' ? 'อนุมัติบางส่วน ' + approvedCount(row) : 'อนุมัติแล้ว';
+    if (f === 'awaiting') return { label: base + ' · รอจัดซื้อ', cls: s === 'partial' ? 'part' : 'ok' };
+    if (f === 'ordered') return { label: 'สั่งซื้อแล้ว' + (row.eta ? ' · คาดถึง ' + row.eta : ''), cls: 'info' };
+    if (f === 'delivered') return { label: 'ส่งถึงสาขาแล้ว', cls: 'info' };
+    if (f === 'received') return { label: 'รับของแล้ว', cls: 'ok' };
+    return { label: base, cls: s === 'partial' ? 'part' : 'ok' };
+  }
+  function isActive(row) {
+    return row.status === 'pending' || ['awaiting', 'ordered', 'delivered'].indexOf(row.fulfilment || '') >= 0;
+  }
+  function splitManagerTabs(rows) {
+    return { active: rows.filter(isActive), done: rows.filter(function (r) { return !isActive(r); }) };
+  }
+  function filterByVenue(rows, venue) {
+    return venue ? rows.filter(function (r) { return r.venue === venue; }) : rows.slice();
+  }
+  function rowBaht(r) { return r.status === 'pending' ? (Number(r.estTotal) || 0) : (Number(r.approvedTotal) || 0); }
+  function summarize(rows) {
+    var v = {};
+    rows.forEach(function (r) { v[r.venue] = true; });
+    return { count: rows.length, venues: Object.keys(v).length, baht: round2(rows.reduce(function (a, r) { return a + rowBaht(r); }, 0)) };
+  }
+  /** What the ticks mean before anything is sent. */
+  function decisionPlan(row, checked, highAmount) {
+    var approved = [], rejected = [], total = 0;
+    (row.items || []).forEach(function (it) {
+      if (checked && checked[it.n]) { approved.push(it.n); if (it.lineTotal !== null && it.lineTotal !== undefined) total += Number(it.lineTotal); }
+      else rejected.push(it.n);
+    });
+    total = round2(total);
+    return {
+      approved: approved, rejected: rejected, checkedTotal: total,
+      high: approved.length > 0 && total >= (highAmount || 5000),
+      needsReason: rejected.length > 0, wholeReject: approved.length === 0,
+    };
+  }
+  function buildDecideLines(row, checked, reason) {
+    return (row.items || []).map(function (it) {
+      return checked && checked[it.n] ? { n: it.n, approved: true } : { n: it.n, approved: false, reason: String(reason || '').trim() };
+    });
+  }
+  /** The buttons this person may press on this request now. A button that can only be refused is not drawn. */
+  function buttonsFor(me, row) {
+    if (!me || me.readOnly) return [];
+    var out = [];
+    var f = row.fulfilment || '';
+    if (row.status === 'pending' && me.canDecide) out.push('decide');
+    if (f === 'awaiting' && me.canFulfil) out.push('ordered');
+    if (f === 'ordered' && me.canFulfil) out.push('delivered');
+    if (f === 'delivered' && (me.role === 'manager' || (me.role === 'venue_manager' && (me.venues || []).indexOf(row.venue) >= 0))) out.push('received');
+    if (row.status === 'pending' && (row.mine || me.role === 'manager')) out.push('cancel');
+    return out;
+  }
+  /** The four-step strip, only for "ให้จัดซื้อซื้อให้" once something was approved. */
+  function stepsFor(row) {
+    if (row.buyer !== 'purchasing') return null;
+    if (row.status !== 'approved' && row.status !== 'partial') return null;
+    var reached = { awaiting: 1, ordered: 2, delivered: 3, received: 4 }[row.fulfilment || ''] || 1;
+    var names = ['อนุมัติแล้ว', 'สั่งซื้อแล้ว' + (row.eta ? '\nคาดถึง ' + row.eta : ''), 'ส่งถึงสาขา', 'รับของแล้ว'];
+    return names.map(function (name, i) {
+      return { name: name, state: i < reached ? 'done' : (i === reached ? 'now' : 'todo') };
+    });
+  }
+  function thaiClock(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(String(s || ''));
+    if (!m) return '';
+    return Number(m[3]) + ' ' + TH_MONTH_SHORT[Number(m[2]) - 1] + (m[4] ? ' ' + m[4] + ':' + m[5] : '');
+  }
+  function ageText(min) {
+    min = Math.max(0, Number(min) || 0);
+    if (min < 60) return { text: 'รอมา ' + Math.floor(min) + ' นาที', hot: false };
+    if (min < 1440) return { text: 'รอมา ' + Math.floor(min / 60) + ' ชม.', hot: false };
+    return { text: 'รอมา ' + Math.floor(min / 1440) + ' วัน', hot: true };
+  }
+  function monthLabel(ym) {
+    var m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+    return m ? TH_MONTH[Number(m[2]) - 1] + ' ' + (Number(m[1]) + 543) : '';
+  }
+  function shiftMonth(ym, delta) {
+    var m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+    var idx = Number(m[1]) * 12 + Number(m[2]) - 1 + delta;
+    var y = Math.floor(idx / 12), mo = idx % 12 + 1;
+    return y + '-' + (mo < 10 ? '0' : '') + mo;
+  }
+  /** Shares of a whole that add up to 100: floor, then the largest remainders. */
+  function shares(parts) {
+    var total = parts.reduce(function (a, p) { return a + p.baht; }, 0);
+    if (!(total > 0)) return [];
+    var rows = parts.filter(function (p) { return p.baht > 0; }).map(function (p) {
+      var exact = p.baht * 100 / total;
+      return { name: p.name, baht: round2(p.baht), percent: Math.floor(exact), rem: exact - Math.floor(exact) };
+    });
+    var left = 100 - rows.reduce(function (a, r) { return a + r.percent; }, 0);
+    rows.slice().sort(function (a, b) { return b.rem - a.rem; }).slice(0, left).forEach(function (r) { r.percent++; });
+    return rows.sort(function (a, b) { return b.baht - a.baht; }).map(function (r) { return { name: r.name, baht: r.baht, percent: r.percent }; });
+  }
+  /** The by-shop numbers from rows (the demo's copy of what the server's prByShop answers). */
+  function aggregateByShop(rows, hotels, month) {
+    return hotels.map(function (venue) {
+      var mine = rows.filter(function (r) { return r.venue === venue; });
+      var byCat = {}, approved = 0;
+      mine.forEach(function (r) {
+        if ((r.status !== 'approved' && r.status !== 'partial') || String(r.decidedAt || '').slice(0, 7) !== month) return;
+        var b = Number(r.approvedTotal) || 0;
+        approved += b;
+        var c = String(r.category || '').trim() || L.noCategory;
+        byCat[c] = (byCat[c] || 0) + b;
+      });
+      return {
+        venue: venue,
+        pending: mine.filter(function (r) { return r.status === 'pending'; }).length,
+        toBuy: mine.filter(function (r) { return r.fulfilment === 'awaiting' || r.fulfilment === 'ordered'; }).length,
+        approvedTotalMonth: round2(approved),
+        categories: shares(Object.keys(byCat).map(function (k) { return { name: k, baht: byCat[k] }; })),
+      };
+    });
+  }
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+/* LOGIC END */
+
+/* AUTH START */
+  var DEMO = null;
+  var idToken = '', accessToken = '';
+  var authReadyResolve = null;
+  var authReady = new Promise(function (resolve) {
+    authReadyResolve = resolve;
+    setTimeout(resolve, 15000);
+  });
+  /**
+   * The credentials as of NOW (the Order board's v38 lesson): an id token
+   * about to expire is dropped and the access token carries the call; with
+   * neither, nothing is sent.
+   */
+  function freshCreds() {
+    var it = '', at = '';
+    try { it = liff.getIDToken() || ''; } catch (e) { it = ''; }
+    try { at = liff.getAccessToken() || ''; } catch (e) { at = ''; }
+    if (it && at) {
+      try {
+        var d = liff.getDecodedIDToken();
+        if (d && d.exp && d.exp * 1000 < Date.now() + 60000) it = '';
+      } catch (e) { /* keep it; the server falls back to the access token */ }
+    }
+    if (!it && !at) { it = idToken; at = accessToken; }
+    return { idToken: it, accessToken: at };
+  }
+  function callApi(fn, payload) {
+    if (DEMO) return DEMO.call(fn, payload || {});
+    return authReady.then(function () {
+      var c = freshCreds();
+      if (!c.idToken && !c.accessToken) throw new Error(L.noLine);
+      return callApiSend(fn, payload || {}, c);
+    });
+  }
+  function callApiSend(fn, payload, c) {
+    var isRead = /^(prWhoAmI|prBoard|prByShop|prDetail)$/.test(fn);
+    var isUpload = fn === 'prCreate' && payload.photoDataUrls && payload.photoDataUrls.length;
+    var body = JSON.stringify({ liffCall: true, app: 'purchase', fn: fn, payload: payload, idToken: c.idToken, accessToken: c.accessToken });
+    function attempt() {
+      var controller = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = setTimeout(function () { if (controller) controller.abort(); }, isUpload ? 90000 : (isRead ? 12000 : 20000));
+      var opts = { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body };
+      if (controller) opts.signal = controller.signal;
+      return fetch(API_URL, opts)
+        .then(function (r) { return r.json(); })
+        .finally(function () { clearTimeout(timer); });
+    }
+    // A read that has not answered is retried once; a write never is.
+    return isRead ? attempt().catch(function () { return attempt(); }) : attempt();
+  }
+/* AUTH END */
+
+/* DEMO START */
+  /**
+   * ?demo=1: the whole board on sample data, in this page. Same answers as
+   * the server (purchase-liff-api.js) in shape and wording, so a review of the
+   * demo is a review of the screens. Nothing leaves the page.
+   */
+  function makeDemo(roleKey) {
+    var NOW = new Date('2026-10-18T04:12:00Z').getTime(); // 11:12 in Bangkok
+    var people = {
+      venue_manager: { userId: 'demo-vm', actorName: 'สมหญิง', role: 'venue_manager', venues: ['HOS'] },
+      purchasing: { userId: 'demo-pur', actorName: 'คุณเอ', role: 'purchasing', venues: [] },
+      manager: { userId: 'demo-mgr', actorName: 'คุณบี', role: 'manager', venues: [] },
+      account: { userId: 'demo-acc', actorName: 'หมีน้อย', role: 'account', venues: [] },
+    };
+    var others = { 'demo-nat': 'นัท', 'demo-nick': 'นิค' };
+    var hotels = ['HOS', 'Upperhouse', '24BLVD', 'Davis'];
+    var cats = ['ของใช้สิ้นเปลือง', 'อุปกรณ์/เครื่องใช้', 'ซ่อมบำรุง', 'ตกแต่ง/อีเวนต์', 'อื่น ๆ'];
+    var me = people[roleKey] || people.venue_manager;
+    function item(n, name, qty, unit, price, from, status, reason) {
+      return { n: n, name: name, qty: qty, unit: unit, unitPrice: price, lineTotal: price === null ? null : round2(qty * price), from: from || '', status: status || 'pending', reason: reason || '' };
+    }
+    function req(o) {
+      var r = { id: o.id, createdAt: o.createdAt, venue: o.venue, requesterId: o.requesterId, buyer: o.buyer, category: o.category || '',
+        items: o.items, reason: o.reason, photos: [], status: o.status || 'pending', fulfilment: o.fulfilment || '',
+        decidedBy: o.decidedBy || '', decidedAt: o.decidedAt || '', note: o.note || '', orderedAt: o.orderedAt || '', orderedBy: o.orderedBy || '',
+        actualTotal: o.actualTotal === undefined ? null : o.actualTotal, eta: o.eta || '', deliveredAt: o.deliveredAt || '', receivedAt: '', cancelledAt: '' };
+      r.audit = [{ action: 'CREATE', actor: nameOf(r.requesterId), detail: r.venue + ' · ' + L.buyer[r.buyer], at: r.createdAt }];
+      if (r.decidedAt) r.audit.push({ action: 'DECIDE', actor: r.decidedBy, detail: r.note, at: r.decidedAt });
+      if (r.orderedAt) r.audit.push({ action: 'ORDERED', actor: r.orderedBy, detail: fmtBaht(r.actualTotal) + ' บาท · ' + r.eta, at: r.orderedAt });
+      if (r.deliveredAt) r.audit.push({ action: 'DELIVERED', actor: r.orderedBy, detail: '', at: r.deliveredAt });
+      return r;
+    }
+    function nameOf(uid) {
+      for (var k in people) if (people[k].userId === uid) return people[k].actorName;
+      return others[uid] || '';
+    }
+    var rows = [
+      req({ id: 'PR_20261018_03', createdAt: '2026-10-18 09:12', venue: 'HOS', requesterId: 'demo-vm', buyer: 'purchasing', category: 'ของใช้สิ้นเปลือง',
+        items: [item(1, 'สบู่ล้างมือ', 12, 'ขวด', 45, 'Makro สาขาพระราม 3'), item(2, 'ทิชชู่ม้วนใหญ่', 6, 'แพ็ค', 75, 'https://shopee.co.th/product/88213'), item(3, 'โคมไฟตั้งโต๊ะ', 1, 'ตัว', null, 'Makro สาขาพระราม 3')],
+        reason: 'ของเดิมจะหมดภายในสัปดาห์นี้ ใช้ในห้องน้ำลูกค้า 3 จุด โคมไฟของเดิมเสีย' }),
+      req({ id: 'PR_20261018_02', createdAt: '2026-10-17 10:30', venue: 'Upperhouse', requesterId: 'demo-nat', buyer: 'self', category: 'อุปกรณ์/เครื่องใช้',
+        items: [item(1, 'พัดลมตั้งพื้น 18 นิ้ว', 2, 'ตัว', 3200, '')], reason: 'พัดลมโซนระเบียงเสีย 2 ตัว ลูกค้าบ่นร้อนช่วงเย็น' }),
+      req({ id: 'PR_20261018_01', createdAt: '2026-10-18 07:40', venue: 'HOS', requesterId: 'demo-vm', buyer: 'self',
+        items: [item(1, 'ถุงมือยาง', 5, 'กล่อง', 120, '')], reason: 'ถุงมือในครัวหมด ต้องใช้ทุกกะ' }),
+      req({ id: 'PR_20261017_04', createdAt: '2026-10-17 08:05', venue: 'Upperhouse', requesterId: 'demo-nat', buyer: 'purchasing', category: 'ซ่อมบำรุง',
+        items: [item(1, 'หลอดไฟ LED 9W', 20, 'หลอด', 110, 'ร้านไฟฟ้าสมบูรณ์ ถ.พระราม 4', 'approved')], reason: 'หลอดไฟทางเดินดับหลายจุด',
+        status: 'approved', fulfilment: 'ordered', decidedBy: 'คุณบี', decidedAt: '2026-10-17 09:00', orderedAt: '2026-10-17 13:20', orderedBy: 'คุณเอ', actualTotal: 2100, eta: '19 ต.ค.' }),
+      req({ id: 'PR_20261017_01', createdAt: '2026-10-17 07:15', venue: '24BLVD', requesterId: 'demo-nick', buyer: 'purchasing', category: 'ตกแต่ง/อีเวนต์',
+        items: [item(1, 'ไฟประดับฮาโลวีน', 4, 'ชุด', 390, 'https://www.lazada.co.th/products/halloween-lights', 'approved')], reason: 'ตกแต่งร้านช่วงฮาโลวีน 30–31 ต.ค.',
+        status: 'approved', fulfilment: 'awaiting', decidedBy: 'คุณบี', decidedAt: '2026-10-17 10:40' }),
+      req({ id: 'PR_20261017_02', createdAt: '2026-10-17 14:10', venue: 'HOS', requesterId: 'demo-vm', buyer: 'self',
+        items: [item(1, 'น้ำยาล้างจาน', 4, 'แกลลอน', 245, '', 'approved')], reason: 'น้ำยาล้างจานหมด', status: 'approved', decidedBy: 'คุณเอ', decidedAt: '2026-10-17 16:40' }),
+      req({ id: 'PR_20261016_05', createdAt: '2026-10-16 11:00', venue: 'HOS', requesterId: 'demo-vm', buyer: 'self', category: 'อุปกรณ์/เครื่องใช้',
+        items: [item(1, 'พัดลมตั้งพื้น', 2, 'ตัว', 1900, '', 'rejected')], reason: 'พัดลมห้องพักพนักงานเสีย', status: 'rejected',
+        decidedBy: 'คุณบี', decidedAt: '2026-10-16 15:30', note: 'มีของในสต๊อกกลางแล้ว ขอเบิกจากคลังก่อน' }),
+      req({ id: 'PR_20261015_02', createdAt: '2026-10-15 09:00', venue: 'HOS', requesterId: 'demo-vm', buyer: 'purchasing', category: 'ของใช้สิ้นเปลือง',
+        items: [item(1, 'สบู่ล้างมือ', 12, 'ขวด', 45, 'Makro สาขาพระราม 3', 'approved'), item(2, 'ทิชชู่ม้วนใหญ่', 6, 'แพ็ค', 75, 'https://shopee.co.th/product/88213', 'approved'), item(3, 'โคมไฟตั้งโต๊ะ', 1, 'ตัว', null, 'Makro สาขาพระราม 3', 'rejected', 'รอรวมซื้อกับสาขาอื่น')],
+        reason: 'ของห้องน้ำลูกค้าใกล้หมด', status: 'partial', fulfilment: 'delivered', decidedBy: 'คุณบี', decidedAt: '2026-10-15 11:02',
+        orderedAt: '2026-10-15 14:30', orderedBy: 'คุณเอ', actualTotal: 950, eta: '17 ต.ค.', deliveredAt: '2026-10-17 15:00' }),
+    ];
+    rows.forEach(function (r) {
+      var t = 0;
+      r.items.forEach(function (i) { if (i.status === 'approved' && i.lineTotal !== null) t += i.lineTotal; });
+      r.approvedTotal = round2(t);
+    });
+    var clock = 0;
+    function stamp() {
+      clock++;
+      var d = new Date(NOW + clock * 60000 + 7 * 3600000);
+      var p = function (x) { return (x < 10 ? '0' : '') + x; };
+      return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+    }
+    function mins(s) {
+      var m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(s);
+      return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 7, +m[5]) / 60000 : 0;
+    }
+    function est(r) { return formTotals(r.items.map(function (i) { return { qty: i.qty, price: i.unitPrice }; })); }
+    function pub(r) {
+      var t = est(r);
+      var statusLabel = statusChip(r).label;
+      return {
+        id: r.id, createdAt: r.createdAt, venue: r.venue, requester: nameOf(r.requesterId), mine: r.requesterId === me.userId,
+        buyer: r.buyer, buyerLabel: L.buyer[r.buyer], category: r.category,
+        items: r.items.map(function (i) { var o = JSON.parse(JSON.stringify(i)); o.reasonShown = i.status === 'rejected' ? (i.reason || r.note) : ''; return o; }),
+        estTotal: t.total, pricedLines: t.priced, lineCount: t.count, reason: r.reason, photos: r.photos.slice(),
+        status: r.status, statusLabel: statusLabel, fulfilment: r.fulfilment, fulfilmentLabel: '',
+        decidedBy: r.decidedBy, decidedAt: r.decidedAt, note: r.note, approvedTotal: r.approvedTotal,
+        orderedAt: r.orderedAt, orderedBy: r.orderedBy, actualTotal: r.actualTotal, eta: r.eta,
+        deliveredAt: r.deliveredAt, receivedAt: r.receivedAt, cancelledAt: r.cancelledAt,
+        ageMinutes: Math.max(0, Math.round(NOW / 60000 + clock - mins(r.createdAt))),
+      };
+    }
+    var READ = ['venue_manager', 'purchasing', 'manager', 'account'];
+    var DECIDE = ['purchasing', 'manager'];
+    function need(roles) { if (roles.indexOf(me.role) < 0) throw new Error(L.err.notAllowed); }
+    function visible(r) { return me.role === 'venue_manager' ? me.venues.indexOf(r.venue) >= 0 : READ.indexOf(me.role) >= 0; }
+    function inScope(r, scope) {
+      if (scope === 'mine') return me.role === 'venue_manager' ? true : r.requesterId === me.userId;
+      if (scope === 'pending') return r.status === 'pending';
+      if (scope === 'tobuy') return r.fulfilment === 'awaiting' || r.fulfilment === 'ordered';
+      return true;
+    }
+    function list(scope, venue, month) {
+      need(READ);
+      return rows.filter(function (r) { return visible(r) && inScope(r, scope) && (!venue || r.venue === venue) && (!month || r.createdAt.slice(0, 7) === month); })
+        .sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; }).map(pub);
+    }
+    function find(id) {
+      var r = rows.filter(function (x) { return x.id === id; })[0];
+      if (!r) throw new Error(L.err.notFound);
+      return r;
+    }
+    function log(r, action, detail) { r.audit.push({ action: action, actor: me.actorName, detail: detail || '', at: stamp() }); }
+    var FN = {
+      prWhoAmI: function () {
+        var role = me.role;
+        var out = { known: true, allowed: true, role: role, roleLabel: L.role[role], actorName: me.actorName, venues: me.venues,
+          canCreate: role === 'manager' || (role === 'venue_manager' && me.venues.length > 0), canDecide: DECIDE.indexOf(role) >= 0,
+          canFulfil: DECIDE.indexOf(role) >= 0, canReceive: role === 'manager' || role === 'venue_manager',
+          canByShop: ['purchasing', 'manager', 'account'].indexOf(role) >= 0, readOnly: role === 'account',
+          categories: cats, highAmount: 5000, quickReasons: L.quickReasons, serverNow: stamp(), build: 'demo' };
+        if (role === 'manager') out.venuesAll = hotels.slice();
+        return out;
+      },
+      prBoard: function (p) {
+        var scope = p.scope || 'mine';
+        var counts = {};
+        ['mine', 'pending', 'tobuy', 'all'].forEach(function (s) { counts[s] = list(s, '', p.month).length; });
+        var all = list(scope, '', p.month);
+        var byVenue = {};
+        hotels.forEach(function (h) { var n = all.filter(function (r) { return r.venue === h; }).length; if (n) byVenue[h] = n; });
+        var shown = filterByVenue(all, p.venue || '');
+        return { rows: shown, counts: counts, byVenue: byVenue, totals: summarize(shown) };
+      },
+      prCreate: function (p) {
+        need(['venue_manager', 'manager']);
+        var venue = p.venue || (me.venues.length === 1 ? me.venues[0] : '');
+        var check = validateForm({ buyer: p.buyer, category: p.category, venue: venue, reason: p.reason, photos: p.photoDataUrls || [],
+          items: (p.items || []).map(function (i) { return { name: i.name, qty: i.qty, price: i.unitPrice, from: i.from }; }) }, { categories: cats, needVenue: true });
+        if (!check.ok) throw new Error(check.errors[check.first]);
+        if (me.role === 'venue_manager' && me.venues.indexOf(venue) < 0) throw new Error(L.err.venueNotYours);
+        var day = '20261018';
+        var nn = rows.filter(function (r) { return r.id.indexOf('PR_' + day + '_') === 0; }).length + 1;
+        var id = 'PR_' + day + '_' + (nn < 10 ? '0' : '') + nn;
+        var r = req({ id: id, createdAt: stamp(), venue: venue, requesterId: me.userId, buyer: p.buyer, category: p.category,
+          items: p.items.map(function (i, k) { return item(k + 1, String(i.name).trim(), Number(i.qty), String(i.unit || '').trim() || L.defaultUnit, priceOf(i.unitPrice), String(i.from || '').trim()); }),
+          reason: String(p.reason).trim() });
+        r.approvedTotal = 0;
+        r.photos = (p.photoDataUrls || []).slice();
+        rows.unshift(r);
+        return { id: id, photosSaved: r.photos.length, photosAsked: r.photos.length };
+      },
+      prCancel: function (p) {
+        var r = find(p.id);
+        if (me.role !== 'manager' && r.requesterId !== me.userId) throw new Error(L.err.notAllowed);
+        if (r.status !== 'pending') throw new Error(L.err.notPending);
+        r.status = 'cancelled'; r.cancelledAt = stamp(); log(r, 'CANCEL');
+        return { id: r.id };
+      },
+      prDecide: function (p) {
+        need(DECIDE);
+        var r = find(p.id);
+        if (r.status !== 'pending') throw new Error(L.err.notPending);
+        var byN = {};
+        (p.lines || []).forEach(function (l) { byN[l.n] = l; });
+        if ((p.lines || []).length !== r.items.length || r.items.some(function (i) { return !byN[i.n]; })) throw new Error(L.err.linesIncomplete);
+        var note = String(p.note || '').trim();
+        r.items.forEach(function (i) {
+          var l = byN[i.n];
+          if (l.approved === true) { i.status = 'approved'; i.reason = ''; return; }
+          if (!String(l.reason || '').trim() && !note) throw new Error(L.err.lineReason(i.n));
+          i.status = 'rejected'; i.reason = String(l.reason || '').trim();
+        });
+        var passed = r.items.filter(function (i) { return i.status === 'approved'; });
+        r.status = passed.length === r.items.length ? 'approved' : (passed.length ? 'partial' : 'rejected');
+        r.approvedTotal = round2(passed.reduce(function (a, i) { return a + (i.lineTotal || 0); }, 0));
+        r.fulfilment = r.buyer === 'purchasing' && passed.length ? 'awaiting' : '';
+        r.decidedBy = me.actorName; r.decidedAt = stamp(); r.note = note;
+        log(r, 'DECIDE', statusChip(r).label + (note ? ' · ' + note : ''));
+        return { id: r.id };
+      },
+      prOrdered: function (p) {
+        need(DECIDE);
+        var r = find(p.id);
+        if (r.fulfilment !== 'awaiting') throw new Error(L.err.wrongStep);
+        var a = priceOf(p.actualTotal);
+        if (a === null || isNaN(a) || a <= 0) throw new Error(L.err.actualTotal);
+        if (!String(p.eta || '').trim()) throw new Error(L.err.eta);
+        r.fulfilment = 'ordered'; r.actualTotal = a; r.eta = String(p.eta).trim(); r.orderedAt = stamp(); r.orderedBy = me.actorName;
+        log(r, 'ORDERED', fmtBaht(a) + ' บาท · ' + r.eta);
+        return { id: r.id };
+      },
+      prDelivered: function (p) {
+        need(DECIDE);
+        var r = find(p.id);
+        if (r.fulfilment !== 'ordered') throw new Error(L.err.wrongStep);
+        r.fulfilment = 'delivered'; r.deliveredAt = stamp(); log(r, 'DELIVERED');
+        return { id: r.id };
+      },
+      prReceived: function (p) {
+        need(['venue_manager', 'manager']);
+        var r = find(p.id);
+        if (me.role === 'venue_manager' && me.venues.indexOf(r.venue) < 0) throw new Error(L.err.venueNotYours);
+        if (r.fulfilment !== 'delivered') throw new Error(L.err.wrongStep);
+        r.fulfilment = 'received'; r.receivedAt = stamp(); log(r, 'RECEIVED');
+        return { id: r.id };
+      },
+      prByShop: function (p) {
+        need(['purchasing', 'manager', 'account']);
+        return { shops: aggregateByShop(rows.map(pub), hotels, p.month || '2026-10') };
+      },
+      prDetail: function (p) {
+        need(READ);
+        var r = find(p.id);
+        if (!visible(r)) throw new Error(L.err.venueNotYours);
+        return { row: pub(r), audit: r.audit.map(function (a) { return { action: a.action, label: L.action[a.action], actor: a.actor, detail: a.detail, at: a.at }; }) };
+      },
+    };
+    return {
+      as: function (key) { me = people[key] || me; },
+      roleKey: function () { return me.role; },
+      call: function (fn, payload) {
+        return new Promise(function (resolve) {
+          var out;
+          try {
+            var res = FN[fn] ? FN[fn](payload || {}) : null;
+            out = res ? Object.assign({ ok: true }, res) : { ok: false, error: 'ไม่รู้จักคำสั่ง' };
+          } catch (e) { out = { ok: false, error: e.message }; }
+          setTimeout(function () { resolve(JSON.parse(JSON.stringify(out))); }, 120);
+        });
+      },
+    };
+  }
+/* DEMO END */
+
+  // ======================================================================
+  // The screen
+  // ======================================================================
+  var app = document.getElementById('app');
+  var S = {
+    me: null, notice: null, tab: '', venue: '', month: '', board: null, shops: null,
+    view: 'list', detail: null, detailId: '', form: null, sheet: null,
+    checks: {}, fields: {}, busy: false, lastLoad: 0,
+  };
+
+  function store(get, val) {
+    try {
+      if (get) return JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      localStorage.setItem(STORE_KEY, JSON.stringify(val));
+    } catch (e) { return null; }
+    return null;
+  }
+  function toast(msg, bad) {
+    var box = document.getElementById('toast');
+    var el = document.createElement('div');
+    el.className = 'toast' + (bad ? ' bad' : '');
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(function () { el.remove(); }, bad ? 6000 : 3500);
+  }
+  /** The API, refusals as thrown Errors carrying the server's Thai sentence. */
+  function api(fn, payload) {
+    return callApi(fn, payload).then(function (res) {
+      if (!res || res.ok !== true) throw new Error((res && res.error) || L.err.network);
+      return res;
+    }, function (err) {
+      throw new Error(err && err.message === L.noLine ? L.noLine : L.err.network);
+    });
+  }
+  function icon(name) {
+    var d = {
+      plus: 'M12 5v14M5 12h14', x: 'M6 6l12 12M18 6L6 18', back: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7',
+      check: 'M5 12l5 5L19 7', ext: 'M10 14L20 4M20 4h-6M20 4v6M18 13v6H5V6h6', shop: 'M3 9l1-5h16l1 5M3 9h18M3 9v11h18V9M9 20v-6h6v6',
+      cam: 'M4 8h3l2-3h6l2 3h3v11H4z', trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+    }[name];
+    return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
+  }
+  function fromHtml(from) {
+    var f = String(from || '').trim();
+    if (!f) return '';
+    if (/^https?:\/\//i.test(f)) {
+      var host = f.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0];
+      return '<a class="lnk" href="' + esc(f) + '" target="_blank" rel="noopener">' + icon('ext') + 'เปิดลิงก์ ' + esc(host) + '</a>';
+    }
+    return esc(L.buyer && 'ซื้อจาก ' + f);
+  }
+  function itemText(it) {
+    return esc(it.name) + ' · ' + esc(it.qty) + ' ' + esc(it.unit) + (it.unitPrice !== null && it.unitPrice !== undefined ? ' × ' + fmtBaht(it.unitPrice) : '');
+  }
+  function amtHtml(it, big) {
+    return it.lineTotal === null || it.lineTotal === undefined
+      ? '<span class="amt unknown">' + L.unknownPrice + '</span>'
+      : '<span class="amt' + (big ? ' big' : '') + '">' + fmtBaht(it.lineTotal) + '</span>';
+  }
+  function titleOf(row) { return (row.items || []).map(function (i) { return i.name; }).join(' · '); }
+
+  // ---- tabs per role ----------------------------------------------------------
+  function tabsFor(me) {
+    var c = (S.board && S.board.counts) || {};
+    var n = function (k) { return c[k] !== undefined ? ' · ' + c[k] : ''; };
+    if (me.role === 'venue_manager') {
+      var split = S.board && S.board.mineRows ? splitManagerTabs(S.board.mineRows) : null;
+      return [
+        { key: 'active', label: 'กำลังดำเนินการ' + (split ? ' · ' + split.active.length : '') },
+        { key: 'done', label: 'จบแล้ว' + (split ? ' · ' + split.done.length : '') },
+      ];
+    }
+    if (me.role === 'account') return [{ key: 'pending', label: 'รออนุมัติ' + n('pending') }, { key: 'all', label: 'ทั้งหมด' + n('all') }, { key: 'byshop', label: 'ตามร้าน' }];
+    return [{ key: 'pending', label: 'รออนุมัติ' + n('pending') }, { key: 'tobuy', label: 'ต้องซื้อ' + n('tobuy') }, { key: 'byshop', label: 'ตามร้าน' }];
+  }
+  function scopeOfTab(tab) { return tab === 'active' || tab === 'done' ? 'mine' : tab; }
+
+  // ---- loading ----------------------------------------------------------------
+  function load(silent) {
+    if (!S.me || S.busy) return Promise.resolve();
+    S.busy = true;
+    var p;
+    if (S.tab === 'byshop') {
+      p = api('prByShop', { month: S.month }).then(function (res) { S.shops = res.shops; });
+    } else {
+      p = api('prBoard', { scope: scopeOfTab(S.tab), venue: S.venue }).then(function (res) {
+        if (S.tab === 'active' || S.tab === 'done') res.mineRows = res.rows;
+        S.board = res;
+        var cache = store(true) || {};
+        cache.me = S.me; cache.boards = cache.boards || {}; cache.boards[S.tab + '|' + S.venue] = res;
+        if (!DEMO) store(false, cache);
+      });
+    }
+    return p.then(function () { S.lastLoad = Date.now(); }, function (e) { if (!silent) toast(e.message, true); })
+      .then(function () { S.busy = false; if (!S.sheet && S.view !== 'form') render(); });
+  }
+  function busyNow() {
+    var a = document.activeElement;
+    return !!S.sheet || S.view === 'form' || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName));
+  }
+  setInterval(function () { if (S.me && S.view === 'list' && !busyNow()) load(true); }, POLL_MS);
+
+  // ---- render -----------------------------------------------------------------
+  function render() {
+    var h = '';
+    if (DEMO) {
+      h += '<div class="demo"><b>ตัวอย่าง ไม่บันทึกจริง · ดูเป็น</b>' + ['venue_manager', 'purchasing', 'manager', 'account'].map(function (k) {
+        return '<button type="button" data-act="as" data-k="' + k + '" class="' + (S.me && S.me.role === k ? 'on' : '') + '">' + L.role[k] + '</button>';
+      }).join('') + '</div>';
+    }
+    if (S.notice) {
+      app.innerHTML = h + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text) + '</p></div><div class="build">' + BUILD + '</div>';
+      return;
+    }
+    if (!S.me) { app.innerHTML = h + '<div class="notice"><p>กำลังเปิดบอร์ด…</p></div>'; return; }
+    if (S.view === 'form') { app.innerHTML = h + renderForm(); afterForm(); return; }
+    if (S.view === 'detail') { app.innerHTML = h + renderDetail() + renderSheet(); return; }
+    h += header();
+    h += '<nav class="tabs" aria-label="แท็บ">' + tabsFor(S.me).map(function (t) {
+      return '<button type="button" class="tab' + (S.tab === t.key ? ' on' : '') + '" data-act="tab" data-k="' + t.key + '"' + (S.tab === t.key ? ' aria-current="page"' : '') + '>' + esc(t.label) + '</button>';
+    }).join('') + '</nav>';
+    h += S.tab === 'byshop' ? renderByShop() : renderList();
+    h += '<div class="build">' + esc(BUILD) + (DEMO ? ' · demo' : '') + '</div>';
+    app.innerHTML = h + renderSheet();
+  }
+  function header() {
+    var me = S.me;
+    var where = me.role === 'venue_manager' ? (me.venues.join(', ') || 'ยังไม่ได้ผูกร้าน') : 'เห็นทุกสาขา';
+    return '<header class="head"><div><h1>ขอซื้อสาขา</h1><div class="who">' + esc(me.actorName) + ' · ' + esc(me.roleLabel || L.role[me.role] || '') + ' (' + esc(where) + ')</div></div>' +
+      '<div class="ava" aria-hidden="true">' + esc(Array.from(me.actorName || '?')[0]) + '</div></header>';
+  }
+  function renderList() {
+    var me = S.me, b = S.board, h = '';
+    var withFilter = S.tab === 'pending' || S.tab === 'tobuy' || (S.tab === 'all' && me.role === 'account');
+    if (withFilter && b) {
+      var allN = Object.keys(b.byVenue || {}).reduce(function (a, k) { return a + b.byVenue[k]; }, 0);
+      h += '<div class="fhead"><span>ดูตามร้าน</span>' + (me.canByShop ? '<button type="button" data-act="tab" data-k="byshop">สรุปทุกร้าน ›</button>' : '') + '</div>';
+      h += '<div class="filters" role="group" aria-label="กรองตามร้าน"><button type="button" class="pill' + (S.venue ? '' : ' on') + '" data-act="venue" data-k="" aria-pressed="' + !S.venue + '">ทุกร้าน <b>' + allN + '</b></button>' +
+        Object.keys(b.byVenue || {}).map(function (v) {
+          return '<button type="button" class="pill' + (S.venue === v ? ' on' : '') + '" data-act="venue" data-k="' + esc(v) + '" aria-pressed="' + (S.venue === v) + '">' + esc(v) + ' <b>' + b.byVenue[v] + '</b></button>';
+        }).join('') + '</div>';
+      var t = b.totals || { count: 0, venues: 0, baht: 0 };
+      var what = S.tab === 'tobuy' ? 'ต้องซื้อ' : (S.tab === 'all' ? 'ทั้งหมด' : 'รออนุมัติ');
+      h += '<div class="fsum"><span>' + what + ' ' + t.count + ' ใบ จาก ' + t.venues + ' ร้าน</span><span>รวม <b>' + fmtBaht(t.baht) + ' บาท</b></span></div>';
+    }
+    h += '<div class="body">';
+    if (me.canCreate && (me.role === 'venue_manager' ? S.tab === 'active' : S.tab === 'pending')) {
+      h += '<button type="button" class="btn pri" data-act="new">' + icon('plus') + 'ขอซื้อของใหม่</button>';
+    }
+    if (me.role === 'venue_manager' && !me.venues.length) {
+      h += '<div class="empty">ยังไม่ได้ผูกร้านให้คุณ ให้ผู้ดูแลระบบใส่ชื่อร้านในทะเบียนก่อน แล้วจึงส่งคำขอได้</div>';
+    }
+    if (!b) { h += '<div class="empty">กำลังโหลด…</div></div>'; return h; }
+    var rows = b.rows || [];
+    if (S.tab === 'active' || S.tab === 'done') {
+      var split = splitManagerTabs(rows);
+      rows = S.tab === 'active' ? split.active : split.done;
+    }
+    if (!rows.length) {
+      h += '<div class="empty">' + ({ active: 'ยังไม่มีคำขอที่กำลังดำเนินการ', done: 'ยังไม่มีคำขอที่จบแล้ว', pending: 'ไม่มีคำขอรออนุมัติ', tobuy: 'ไม่มีของที่ต้องซื้อ', all: 'ยังไม่มีคำขอ' }[S.tab] || '') + '</div>';
+    }
+    rows.forEach(function (r) {
+      if (S.tab === 'pending' && me.canDecide) h += approverCard(r);
+      else if (S.tab === 'tobuy' && me.canFulfil) h += buyerCard(r);
+      else h += summaryCard(r);
+    });
+    return h + '</div>';
+  }
+  function summaryCard(r) {
+    var chip = statusChip(r);
+    var line;
+    if (r.status === 'pending') line = 'ส่ง ' + thaiClock(r.createdAt) + ' · ' + ageText(r.ageMinutes).text;
+    else if (r.fulfilment === 'ordered') line = 'จ่ายจริง ' + fmtBaht(r.actualTotal) + ' บาท';
+    else line = r.decidedAt ? 'ตัดสิน ' + thaiClock(r.decidedAt) + (r.decidedBy ? ' · ' + r.decidedBy : '') : '';
+    var refused = (r.items || []).filter(function (i) { return i.status === 'rejected'; });
+    var money = r.status === 'pending' ? 'ประมาณ <span class="baht">' + fmtBaht(r.estTotal) + ' บาท</span>' + (r.lineCount > r.pricedLines ? ' · ' + (r.lineCount - r.pricedLines) + ' ชิ้นยังไม่มีราคา' : '')
+      : (r.status === 'rejected' || r.status === 'cancelled' ? 'ประมาณ <span class="baht">' + fmtBaht(r.estTotal) + ' บาท</span>' : 'อนุมัติ <span class="baht">' + fmtBaht(r.approvedTotal) + ' บาท</span>');
+    var why = r.status === 'rejected' && r.note ? ' · ' + esc(r.decidedBy) + ': ' + esc(r.note)
+      : refused.length && r.status === 'partial' ? ' · ' + refused.map(function (i) { return esc(i.name) + ': ' + esc(i.reasonShown); }).join(' · ') : '';
+    var tail = r.status === 'approved' && r.buyer === 'self' ? ' · เบิกคืนตามระบบบริษัท' : '';
+    return '<button type="button" class="card" data-act="open" data-k="' + esc(r.id) + '">' +
+      '<span class="row"><span class="id">' + esc(r.id) + '</span><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span></span>' +
+      '<span class="ttl">' + esc(titleOf(r)) + '</span>' +
+      '<span class="row"><span class="tags"><span class="tag' + (r.buyer === 'purchasing' ? ' path' : '') + '">' + esc(r.buyerLabel || L.buyer[r.buyer]) + '</span>' +
+      (S.me.role !== 'venue_manager' ? '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span>' : '') + '</span><span class="meta">' + esc(line) + '</span></span>' +
+      '<span class="meta">' + money + why + tail + '</span></button>';
+  }
+  function checksOf(r) {
+    if (!S.checks[r.id]) { S.checks[r.id] = {}; (r.items || []).forEach(function (i) { S.checks[r.id][i.n] = true; }); }
+    return S.checks[r.id];
+  }
+  function approverCard(r) {
+    var ck = checksOf(r);
+    var plan = decisionPlan(r, ck, S.me.highAmount);
+    var age = ageText(r.ageMinutes);
+    var maxLine = Math.max.apply(null, (r.items || []).map(function (i) { return i.lineTotal || 0; }).concat([0]));
+    var h = '<div class="card">';
+    h += '<div class="row"><button type="button" class="lnk" data-act="open" data-k="' + esc(r.id) + '" style="background:none;border:0;padding:0;cursor:pointer"><span class="id">' + esc(r.id) + ' ›</span></button><span class="age' + (age.hot ? ' hot' : '') + '">' + esc(age.text) + '</span></div>';
+    h += '<div class="tags"><span class="tag' + (r.buyer === 'purchasing' ? ' path' : '') + '">' + esc(r.buyerLabel || L.buyer[r.buyer]) + '</span>' +
+      (r.category ? '<span class="tag cat">' + esc(r.category) + '</span>' : '') +
+      (plan.high ? '<span class="tag hi">ยอดสูง ' + fmtBaht(S.me.highAmount) + ' ขึ้นไป</span>' : '') +
+      '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
+    h += '<div class="meta">' + esc(r.reason) + '</div>';
+    h += '<div class="lines">' + (r.items || []).map(function (it) {
+      var on = !!ck[it.n];
+      var idc = 'c_' + esc(r.id) + '_' + it.n;
+      var sub = fromHtml(it.from);
+      return '<div class="ln' + (on ? '' : ' off') + '"><input type="checkbox" id="' + idc + '" data-act="tick" data-k="' + esc(r.id) + '" data-n="' + it.n + '"' + (on ? ' checked' : '') + '>' +
+        '<label for="' + idc + '">' + itemText(it) + (sub ? '<small>' + sub + '</small>' : '') + '</label>' + amtHtml(it, it.lineTotal && it.lineTotal === maxLine && r.items.length > 1) + '</div>';
+    }).join('') + '</div>';
+    if (plan.rejected.length && !plan.wholeReject) h += '<div class="hintno">' + plan.rejected.length + ' รายการไม่ได้ติ๊ก = ไม่อนุมัติ ต้องใส่เหตุผลตอนกดยืนยัน</div>';
+    h += '<div class="total"><span>เลือก ' + plan.approved.length + ' จาก ' + r.items.length + ' รายการ</span><span>รวม <b>' + fmtBaht(plan.checkedTotal) + ' บาท</b></span></div>';
+    h += '<div class="acts">' +
+      (plan.wholeReject ? '' : '<button type="button" class="btn pri sm" data-act="approve" data-k="' + esc(r.id) + '">' + icon('check') + (plan.rejected.length ? 'อนุมัติที่เลือก (' + plan.approved.length + ')' : (plan.high ? 'อนุมัติ (ยืนยันอีกครั้ง)' : 'อนุมัติ')) + '</button>') +
+      '<button type="button" class="btn no sm" data-act="rejectAll" data-k="' + esc(r.id) + '">' + (r.items.length > 1 ? 'ไม่อนุมัติทั้งใบ' : 'ไม่อนุมัติ') + '</button></div>';
+    return h + '</div>';
+  }
+  function buyerCard(r) {
+    var chip = statusChip(r);
+    var f = S.fields[r.id] || (S.fields[r.id] = { actual: '', eta: '' });
+    var approved = (r.items || []).filter(function (i) { return i.status === 'approved'; });
+    var refused = (r.items || []).length - approved.length;
+    var h = '<div class="card">';
+    h += '<div class="row"><button type="button" class="lnk" data-act="open" data-k="' + esc(r.id) + '" style="background:none;border:0;padding:0;cursor:pointer"><span class="id">' + esc(r.id) + ' ›</span></button><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span></div>';
+    h += '<div class="tags">' + (r.category ? '<span class="tag cat">' + esc(r.category) + '</span>' : '') + '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
+    h += '<div class="lines">' + approved.map(function (it) {
+      var sub = fromHtml(it.from);
+      return '<div class="ln ro"><span class="n"><span>' + itemText(it) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</span>' + amtHtml(it) + '</div>';
+    }).join('') + '</div>';
+    h += '<div class="meta">' + (refused ? refused + ' รายการไม่ได้อนุมัติ ไม่ต้องซื้อ · ' : '') + 'ประมาณรวม ' + fmtBaht(r.approvedTotal) + ' บาท' + (r.fulfilment === 'ordered' ? ' · จ่ายจริง ' + fmtBaht(r.actualTotal) : '') + '</div>';
+    if (r.fulfilment === 'awaiting') {
+      h += '<div class="fields"><div class="field"><label for="paid_' + esc(r.id) + '">จ่ายจริง (บาท)</label><input class="in" id="paid_' + esc(r.id) + '" inputmode="decimal" data-field="actual" data-k="' + esc(r.id) + '" value="' + esc(f.actual) + '" placeholder="' + fmtBaht(r.approvedTotal) + '"></div>' +
+        '<div class="field"><label for="eta_' + esc(r.id) + '">คาดว่าถึงสาขา</label><input class="in" id="eta_' + esc(r.id) + '" data-field="eta" data-k="' + esc(r.id) + '" value="' + esc(f.eta) + '" placeholder="เช่น 20 ต.ค."></div></div>';
+      if (f.err) h += '<div class="err">' + esc(f.err) + '</div>';
+      h += '<button type="button" class="btn pri sm" data-act="ordered" data-k="' + esc(r.id) + '">สั่งซื้อแล้ว</button>';
+    } else if (r.fulfilment === 'ordered') {
+      h += '<button type="button" class="btn sec sm" data-act="delivered" data-k="' + esc(r.id) + '">ส่งถึงสาขาแล้ว</button>';
+    }
+    return h + '</div>';
+  }
+  function renderByShop() {
+    var h = '<div class="month"><button type="button" data-act="month" data-k="-1" aria-label="เดือนก่อน">‹</button><b>' + esc(monthLabel(S.month)) + '</b>' +
+      '<button type="button" data-act="month" data-k="1" aria-label="เดือนถัดไป">›</button></div><div class="body">';
+    if (!S.shops) return h + '<div class="empty">กำลังโหลด…</div></div>';
+    S.shops.forEach(function (s, idx) {
+      var quiet = !s.pending && !s.toBuy && !s.approvedTotalMonth;
+      h += '<button type="button" class="card" data-act="shop" data-k="' + esc(s.venue) + '"><span class="row"><span class="shop">' + esc(s.venue) + '</span></span>';
+      if (quiet) { h += '<span class="meta">เดือนนี้ยังไม่มีคำขอ</span></button>'; return; }
+      h += '<span class="nums"><span class="num wait"><span class="v">' + s.pending + '</span><span class="k">รออนุมัติ</span></span>' +
+        '<span class="num buy"><span class="v">' + s.toBuy + '</span><span class="k">จัดซื้อต้องซื้อ</span></span>' +
+        '<span class="num money"><span class="v">' + fmtBaht(s.approvedTotalMonth) + '</span><span class="k">อนุมัติเดือนนี้ (บาท)</span></span></span>';
+      if (s.categories.length) {
+        h += '<span class="sbar" aria-hidden="true">' + s.categories.map(function (c, i) { return '<span style="width:' + c.percent + '%;background:' + CAT_COLORS[i % CAT_COLORS.length] + '"></span>'; }).join('') + '</span>';
+        h += '<span class="legend">' + s.categories.map(function (c, i) { return '<span><i style="background:' + CAT_COLORS[i % CAT_COLORS.length] + '"></i>' + esc(c.name) + ' ' + c.percent + '%</span>'; }).join('') + '</span>';
+      }
+      h += '<span class="go">ดูใบของ ' + esc(s.venue) + ' ›</span></button>';
+    });
+    return h + '</div>';
+  }
+
+  // ---- detail -----------------------------------------------------------------
+  function renderDetail() {
+    var h = '<header class="head" style="justify-content:flex-start"><button type="button" class="iconbtn" data-act="back" aria-label="กลับ">' + icon('back') + '</button><h1>' + esc(S.detailId) + '</h1></header><div class="body">';
+    var d = S.detail;
+    if (!d) return h + '<div class="empty">กำลังโหลด…</div></div>';
+    var r = d.row, chip = statusChip(r);
+    h += '<div class="tags"><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span><span class="tag' + (r.buyer === 'purchasing' ? ' path' : '') + '">' + esc(r.buyerLabel || L.buyer[r.buyer]) + '</span>' +
+      (r.category ? '<span class="tag cat">' + esc(r.category) + '</span>' : '') + '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
+    h += '<h2 class="dttl">' + esc(titleOf(r)) + '</h2>';
+    h += '<div class="meta">ส่งคำขอ ' + esc(thaiClock(r.createdAt)) + (r.decidedAt ? ' · ตัดสิน ' + esc(thaiClock(r.decidedAt)) + ' โดย ' + esc(r.decidedBy) : '') + '</div>';
+    var steps = stepsFor(r);
+    if (steps) {
+      h += '<section class="panel"><div class="lbl">ของถึงไหนแล้ว</div><div class="steps">' + steps.map(function (s) {
+        return '<div class="stp ' + s.state + '"><div class="d"></div>' + esc(s.name).replace('\n', '<br>') + (s.state === 'now' ? '<span class="vh"> (ขั้นนี้)</span>' : '') + '</div>';
+      }).join('') + '</div></section>';
+    }
+    var btns = buttonsFor(S.me, r);
+    if (btns.indexOf('decide') >= 0) {
+      h += approverCard(r);
+    } else {
+      h += '<section class="panel"><div class="lbl">รายการ</div>' + r.items.map(function (it) {
+        var st = it.status === 'approved' ? '<span class="st ok">อนุมัติ</span>' : it.status === 'rejected' ? '<span class="st no">ไม่อนุมัติ</span>' : '<span class="st wait">รอตัดสิน</span>';
+        var sub = it.status === 'rejected' && it.reasonShown ? '<span class="why">' + esc(r.decidedBy) + ': ' + esc(it.reasonShown) + '</span>' : (it.from ? '<small>' + fromHtml(it.from) + '</small>' : '');
+        return '<div class="ln ro' + (it.status === 'rejected' ? ' off' : '') + '"><span class="n"><span>' + itemText(it) + '</span>' + sub + '</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' + amtHtml(it) + st + '</span></div>';
+      }).join('') +
+        '<div class="total"><span>' + (r.status === 'pending' ? 'ประมาณ <b>' + fmtBaht(r.estTotal) + '</b>' : 'อนุมัติ ' + r.items.filter(function (i) { return i.status === 'approved'; }).length + ' รายการ · ประมาณ <b>' + fmtBaht(r.approvedTotal) + '</b>') + '</span>' +
+        (r.actualTotal !== null && r.actualTotal !== undefined ? '<span>จ่ายจริง <b>' + fmtBaht(r.actualTotal) + ' บาท</b></span>' : '') + '</div></section>';
+    }
+    h += '<section class="panel"><div class="lbl">เหตุผล</div><div style="font-size:15px;line-height:1.5;overflow-wrap:anywhere">' + esc(r.reason) + '</div></section>';
+    if (r.photos && r.photos.length) {
+      h += '<section class="panel"><div class="lbl">รูป</div><div class="pics">' + r.photos.map(function (u, i) {
+        return '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt="รูปที่ ' + (i + 1) + '"></a>';
+      }).join('') + '</div></section>';
+    }
+    h += '<section class="panel"><div class="lbl">ประวัติ</div><div>' + d.audit.map(function (a, i) {
+      var last = i === d.audit.length - 1;
+      return '<div class="tls"><div><div class="dot"></div>' + (last ? '' : '<div class="rail"></div>') + '</div><div><div class="tt">' + esc(a.label || L.action[a.action] || a.action) + '</div>' +
+        '<div class="sm"' + (last ? ' style="padding-bottom:0"' : '') + '>' + esc(a.actor) + ' · ' + esc(thaiClock(a.at)) + (a.detail ? ' · ' + esc(a.detail) : '') + '</div></div></div>';
+    }).join('') + '</div></section>';
+    if (btns.indexOf('ordered') >= 0 || btns.indexOf('delivered') >= 0) h += buyerCard(r);
+    if (btns.indexOf('received') >= 0) h += '<button type="button" class="btn pri" data-act="received" data-k="' + esc(r.id) + '">' + icon('check') + 'รับของแล้ว</button>';
+    if (btns.indexOf('cancel') >= 0) h += '<button type="button" class="btn no" data-act="cancel" data-k="' + esc(r.id) + '">ยกเลิกคำขอนี้</button>';
+    return h + '</div>';
+  }
+  function openDetail(id) {
+    S.view = 'detail'; S.detailId = id; S.detail = null; render(); window.scrollTo(0, 0);
+    api('prDetail', { id: id }).then(function (res) { S.detail = res; render(); }, function (e) { toast(e.message, true); S.view = 'list'; render(); });
+  }
+
+  // ---- sheets -----------------------------------------------------------------
+  function findRow(id) {
+    if (S.detail && S.detail.row.id === id) return S.detail.row;
+    return ((S.board && S.board.rows) || []).filter(function (r) { return r.id === id; })[0];
+  }
+  function renderSheet() {
+    var sh = S.sheet;
+    if (!sh) return '';
+    var r = findRow(sh.id);
+    if (!r) return '';
+    var h = '<div class="dim" data-act="closeSheet"></div><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grab"></div>';
+    if (sh.kind === 'reject') {
+      var plan = decisionPlan(r, sh.whole ? {} : checksOf(r), S.me.highAmount);
+      var names = r.items.filter(function (i) { return plan.rejected.indexOf(i.n) >= 0; }).map(function (i) { return i.name + ' ' + i.qty + ' ' + i.unit; }).join(' · ');
+      h += '<h2 id="sheetTitle">ไม่อนุมัติ ' + (sh.whole ? 'ทั้งใบ' : plan.rejected.length + ' รายการ') + ' · ' + esc(r.id) + '</h2>';
+      h += '<div class="sub">' + esc(names) + (sh.whole ? '' : ' (รายการที่ไม่ได้ติ๊ก) · อีก ' + plan.approved.length + ' รายการจะอนุมัติพร้อมกัน') + '<br>เหตุผลจะแสดงที่รายการนั้นบนการ์ดของผู้จัดการ และบันทึกไว้ในประวัติ</div>';
+      if (plan.high && !sh.whole) h += '<div class="sub" style="color:var(--hot-ink)">ยอดที่อนุมัติ ' + fmtBaht(plan.checkedTotal) + ' บาท เป็นยอดสูง ตรวจอีกครั้งก่อนยืนยัน</div>';
+      h += '<div class="field"><label for="why">เหตุผล (จำเป็น)</label><textarea class="in" id="why" data-sheet="reason" placeholder="เช่น มีของในสต๊อกกลางแล้ว">' + esc(sh.reason || '') + '</textarea>' + (sh.err ? '<div class="err">' + esc(sh.err) + '</div>' : '') + '</div>';
+      h += '<div class="chips" role="group" aria-label="เหตุผลที่ใช้บ่อย">' + (S.me.quickReasons || L.quickReasons).map(function (q) {
+        return '<button type="button" class="q" data-act="quick" data-k="' + esc(q) + '">' + esc(q) + '</button>';
+      }).join('') + '</div>';
+      h += '<div class="acts"><button type="button" class="btn sec" data-act="closeSheet">กลับ</button><button type="button" class="btn danger" data-act="confirmReject">' +
+        (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button></div>';
+    } else if (sh.kind === 'high') {
+      var p2 = decisionPlan(r, checksOf(r), S.me.highAmount);
+      h += '<h2 id="sheetTitle">ยืนยันอนุมัติยอดสูง · ' + esc(r.id) + '</h2><div class="sub">ยอดที่อนุมัติ <b style="color:var(--ink)">' + fmtBaht(p2.checkedTotal) + ' บาท</b> เกินหรือเท่ากับ ' + fmtBaht(S.me.highAmount) + ' บาท<br>' + esc(r.venue) + ' · ' + esc(r.requester) + '</div>';
+      h += '<div class="acts"><button type="button" class="btn sec" data-act="closeSheet">กลับ</button><button type="button" class="btn pri" data-act="confirmApprove">ยืนยันอนุมัติ</button></div>';
+    } else if (sh.kind === 'cancel') {
+      h += '<h2 id="sheetTitle">ยกเลิกคำขอ ' + esc(r.id) + '</h2><div class="sub">ยกเลิกแล้วจะตัดสินไม่ได้อีก ถ้ายังต้องการของ ส่งคำขอใหม่</div>';
+      h += '<div class="acts"><button type="button" class="btn sec" data-act="closeSheet">ไม่ยกเลิก</button><button type="button" class="btn danger" data-act="confirmCancel">ยกเลิกคำขอ</button></div>';
+    }
+    return h + '</section>';
+  }
+  function after(promise, okText) {
+    return promise.then(function () {
+      if (okText) toast(okText);
+      S.sheet = null;
+      if (S.view === 'detail') openDetail(S.detailId); else { render(); load(true); }
+    }, function (e) { toast(e.message, true); render(); });
+  }
+  function sendDecision(r, whole, reason) {
+    var checked = whole ? {} : checksOf(r);
+    var lines = buildDecideLines(r, checked, reason);
+    var plan = decisionPlan(r, checked, S.me.highAmount);
+    delete S.checks[r.id];
+    return after(api('prDecide', { id: r.id, lines: lines, note: whole ? String(reason || '').trim() : '' }),
+      plan.wholeReject ? 'ไม่อนุมัติ ' + r.id + ' แล้ว' : (plan.rejected.length ? 'อนุมัติบางส่วน ' + r.id + ' แล้ว' : 'อนุมัติ ' + r.id + ' แล้ว'));
+  }
+
+  // ---- the form ---------------------------------------------------------------
+  function newForm() {
+    var me = S.me;
+    var venues = me.role === 'manager' ? (me.venuesAll || []) : me.venues;
+    return { buyer: '', category: '', venue: venues.length === 1 ? venues[0] : '', venues: venues,
+      items: [{ name: '', qty: 1, unit: L.defaultUnit, price: '', from: '' }], reason: '', photos: [], errors: {}, sending: false };
+  }
+  function renderForm() {
+    var f = S.form, e = f.errors || {};
+    var t = formTotals(f.items);
+    var h = '<header class="head"><h1>ขอซื้อของใหม่</h1>' + (f.venue ? '<span class="venue">' + esc(f.venue) + ' · ' + esc(S.me.actorName) + '</span>' : '') +
+      '<button type="button" class="iconbtn" data-act="closeForm" aria-label="ปิด">' + icon('x') + '</button></header><div class="body" style="gap:22px">';
+    if (f.venues.length > 1) {
+      h += '<section class="fsec"><div class="sh"><h2>ร้าน</h2></div><div class="chips" role="group" aria-label="ร้าน">' + f.venues.map(function (v) {
+        return '<button type="button" class="choice' + (f.venue === v ? ' on' : '') + '" data-act="fvenue" data-k="' + esc(v) + '" aria-pressed="' + (f.venue === v) + '">' + esc(v) + '</button>';
+      }).join('') + '</div>' + (e.venue ? '<div class="err" id="err-venue">' + esc(e.venue) + '</div>' : '') + '</section>';
+    }
+    h += '<section class="fsec" id="sec-buyer"><div class="sh"><span class="n">1</span><h2>ใครเป็นคนซื้อ</h2></div><div class="tiles" role="group" aria-label="ใครเป็นคนซื้อ">' +
+      [['self', 'ฉันซื้อเอง', 'แล้วเบิกคืนตามระบบบริษัท'], ['purchasing', 'ให้จัดซื้อซื้อให้', 'ระบุประเภทและร้านที่จะซื้อ']].map(function (b) {
+        return '<button type="button" class="tile' + (f.buyer === b[0] ? ' on' : '') + '" data-act="buyer" data-k="' + b[0] + '" aria-pressed="' + (f.buyer === b[0]) + '">' +
+          (f.buyer === b[0] ? '<span class="ck" aria-hidden="true">✓</span>' : '') + '<b>' + b[1] + '</b><span>' + b[2] + '</span></button>';
+      }).join('') + '</div>' + (e.buyer ? '<div class="err" id="err-buyer">' + esc(e.buyer) + '</div>' : '') + '</section>';
+    var step = 2;
+    if (f.buyer === 'purchasing') {
+      h += '<section class="fsec" id="sec-category"><div class="sh"><span class="n">' + (step++) + '</span><h2>ประเภท</h2></div><div class="chips" role="group" aria-label="ประเภท">' +
+        (S.me.categories || []).map(function (c) {
+          return '<button type="button" class="choice' + (f.category === c ? ' on' : '') + '" data-act="cat" data-k="' + esc(c) + '" aria-pressed="' + (f.category === c) + '">' + esc(c) + '</button>';
+        }).join('') + '</div>' + (e.category ? '<div class="err" id="err-category">' + esc(e.category) + '</div>' : '') + '</section>';
+    }
+    h += '<section class="fsec" id="sec-items"><div class="sh"><span class="n">' + (step++) + '</span><h2>รายการ</h2><span class="cnt">' + f.items.length + ' ชิ้น · ราคาไม่รู้เว้นได้</span></div>';
+    f.items.forEach(function (it, i) {
+      var k = 'item' + i;
+      var lt = lineTotal(it);
+      var bad = e[k + '.name'] || e[k + '.qty'] || e[k + '.price'] || e[k + '.from'];
+      h += '<div class="item' + (bad ? ' bad' : '') + '" id="sec-' + k + '"><div class="top"><span class="idx">' + (i + 1) + '</span>' +
+        '<input class="name" type="text" data-item="' + i + '" data-f="name" value="' + esc(it.name) + '" placeholder="ชื่อของ เช่น สบู่ล้างมือ" aria-label="ชื่อของ ชิ้นที่ ' + (i + 1) + '">' +
+        (f.items.length > 1 ? '<button type="button" class="iconbtn" style="background:none" data-act="delItem" data-k="' + i + '" aria-label="ลบชิ้นที่ ' + (i + 1) + '">' + icon('trash') + '</button>' : '') + '</div>' +
+        '<div class="qtyrow"><div class="step"><button type="button" data-act="qty" data-k="' + i + '" data-d="-1" aria-label="ลดจำนวน ชิ้นที่ ' + (i + 1) + '">−</button>' +
+        '<input type="text" inputmode="numeric" data-item="' + i + '" data-f="qty" value="' + esc(it.qty) + '" aria-label="จำนวน ชิ้นที่ ' + (i + 1) + '">' +
+        '<button type="button" data-act="qty" data-k="' + i + '" data-d="1" aria-label="เพิ่มจำนวน ชิ้นที่ ' + (i + 1) + '">+</button></div>' +
+        '<input class="unit" type="text" data-item="' + i + '" data-f="unit" value="' + esc(it.unit) + '" aria-label="หน่วย ชิ้นที่ ' + (i + 1) + '"></div>' +
+        '<div class="pricerow"><span class="lbl">× ราคา/หน่วย</span><div class="price"><span>฿</span><input type="text" inputmode="decimal" data-item="' + i + '" data-f="price" value="' + esc(it.price) + '" placeholder="ไม่รู้ เว้นได้" aria-label="ราคาต่อหน่วย ชิ้นที่ ' + (i + 1) + '"></div>' +
+        '<span class="eq' + (lt === null ? ' unknown' : '') + '" id="eq-' + i + '">' + (lt === null ? L.unknownPrice : '= ' + fmtBaht(lt)) + '</span></div>';
+      if (f.buyer === 'purchasing') {
+        h += '<div class="from">' + icon('shop') + '<input type="text" data-item="' + i + '" data-f="from" value="' + esc(it.from) + '" placeholder="ซื้อจาก: ลิงก์ หรือชื่อร้าน" aria-label="ซื้อจาก ชิ้นที่ ' + (i + 1) + '">' +
+          (i > 0 ? '<button type="button" data-act="sameFrom" data-k="' + i + '">เหมือนชิ้นบน</button>' : '') + '</div>';
+      }
+      ['name', 'qty', 'price', 'from'].forEach(function (fld) { if (e[k + '.' + fld]) h += '<div class="err">' + esc(e[k + '.' + fld]) + '</div>'; });
+      h += '</div>';
+    });
+    h += '<button type="button" class="add" data-act="addItem">+ เพิ่มชิ้นที่ ' + (f.items.length + 1) + '</button>' + (e.items ? '<div class="err">' + esc(e.items) + '</div>' : '') + '</section>';
+    h += '<section class="fsec" id="sec-reason"><div class="sh"><span class="n">' + (step++) + '</span><h2>เหตุผลและรูป</h2></div>' +
+      '<div class="field"><label for="why">ทำไมต้องซื้อ</label><textarea class="in' + (e.reason ? ' bad' : '') + '" id="why" data-f="reason" placeholder="เช่น ของเดิมจะหมดภายในสัปดาห์นี้">' + esc(f.reason) + '</textarea>' +
+      (e.reason ? '<div class="err" id="err-reason">' + esc(e.reason) + '</div>' : '') + '</div>';
+    if (f.photos.length) h += '<div class="photos">' + f.photos.map(function (p, i) {
+      return '<div class="thumb"><img src="' + p + '" alt="รูปที่ ' + (i + 1) + '"><button type="button" data-act="delPhoto" data-k="' + i + '" aria-label="ลบรูปที่ ' + (i + 1) + '">×</button></div>';
+    }).join('') + '</div>';
+    if (f.photos.length < MAX_PHOTOS) h += '<label class="photo">' + icon('cam') + 'แนบรูป (ไม่บังคับ · ' + f.photos.length + '/' + MAX_PHOTOS + ')<input type="file" accept="image/*" multiple data-act="photo" class="vh"></label>';
+    if (e.photos) h += '<div class="err">' + esc(e.photos) + '</div>';
+    h += '</section></div>';
+    h += '<div class="bar"><div class="sum"><div><div class="l" id="sumL">รวมประมาณ ' + t.count + ' ชิ้น</div><div class="note" id="sumN">' + (t.unpriced ? 'อีก ' + t.unpriced + ' ชิ้นยังไม่ใส่ราคา' : '') + '</div></div>' +
+      '<div class="big" id="sumB">฿' + fmtBaht(t.total) + '</div></div><button type="button" class="btn pri" data-act="submit"' + (f.sending ? ' disabled' : '') + '>' + (f.sending ? 'กำลังส่ง…' : 'ส่งคำขอ') + '</button></div>';
+    return h;
+  }
+  function afterForm() {
+    if (S.form && S.form.scrollTo) {
+      var el = document.getElementById(S.form.scrollTo);
+      if (el) el.scrollIntoView({ block: 'center' });
+      S.form.scrollTo = '';
+    }
+  }
+  function refreshFormSums() {
+    var t = formTotals(S.form.items);
+    var setT = function (id, s) { var el = document.getElementById(id); if (el) el.textContent = s; };
+    setT('sumL', 'รวมประมาณ ' + t.count + ' ชิ้น');
+    setT('sumN', t.unpriced ? 'อีก ' + t.unpriced + ' ชิ้นยังไม่ใส่ราคา' : '');
+    setT('sumB', '฿' + fmtBaht(t.total));
+    S.form.items.forEach(function (it, i) {
+      var el = document.getElementById('eq-' + i);
+      if (!el) return;
+      var lt = lineTotal(it);
+      el.textContent = lt === null ? L.unknownPrice : '= ' + fmtBaht(lt);
+      el.className = 'eq' + (lt === null ? ' unknown' : '');
+    });
+  }
+  function submitForm() {
+    var f = S.form;
+    var v = validateForm(f, { categories: S.me.categories, needVenue: true });
+    f.errors = v.errors;
+    if (!v.ok) {
+      var key = v.first;
+      f.scrollTo = key.indexOf('item') === 0 ? 'sec-' + key.split('.')[0] : 'sec-' + key;
+      render();
+      return;
+    }
+    f.sending = true; render();
+    var payload = {
+      venue: f.venue, buyer: f.buyer, category: f.buyer === 'purchasing' ? f.category : '',
+      items: f.items.map(function (it) { return { name: it.name, qty: Number(it.qty), unit: it.unit, unitPrice: priceOf(it.price), from: f.buyer === 'purchasing' ? it.from : '' }; }),
+      reason: f.reason, photoDataUrls: f.photos,
+    };
+    api('prCreate', payload).then(function (res) {
+      S.form = null; S.view = 'list';
+      S.tab = S.me.role === 'venue_manager' ? 'active' : 'pending'; S.venue = '';
+      toast('ส่งคำขอแล้ว · ' + res.id + (res.photosAsked && res.photosSaved < res.photosAsked ? ' (รูปขึ้นได้ ' + res.photosSaved + ' จาก ' + res.photosAsked + ')' : ''));
+      // Seen at once: the new request is drawn before the server answers the next read.
+      if (S.board && S.board.rows) {
+        var t = formTotals(f.items);
+        S.board.rows.unshift({ id: res.id, createdAt: '', venue: f.venue, requester: S.me.actorName, mine: true, buyer: f.buyer, buyerLabel: L.buyer[f.buyer],
+          category: payload.category, items: payload.items.map(function (i, k) { return { n: k + 1, name: i.name, qty: i.qty, unit: i.unit, unitPrice: i.unitPrice, lineTotal: lineTotal(i), status: 'pending' }; }),
+          estTotal: t.total, pricedLines: t.priced, lineCount: t.count, status: 'pending', fulfilment: '', ageMinutes: 0 });
+        if (S.board.mineRows) S.board.mineRows = S.board.rows;
+      }
+      render(); window.scrollTo(0, 0); load(true);
+    }, function (e) { f.sending = false; render(); toast(e.message, true); });
+  }
+  /** Phone photos are big: scaled to 1280 px on the long side, JPEG, before they are sent. */
+  function readPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var s = Math.min(1, 1280 / Math.max(img.width, img.height));
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.8));
+        };
+        img.onerror = reject;
+        img.src = fr.result;
+      };
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // ---- events -----------------------------------------------------------------
+  app.addEventListener('click', function (ev) {
+    var el = ev.target.closest('[data-act]');
+    if (!el || el.tagName === 'INPUT') return;
+    var act = el.getAttribute('data-act'), k = el.getAttribute('data-k');
+    var f = S.form;
+    switch (act) {
+      case 'as': DEMO.as(k); S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; boot(); return;
+      case 'tab':
+        S.tab = k; S.venue = ''; S.board = null; S.shops = null;
+        if (k === 'byshop' && !S.month) S.month = (S.me.serverNow || '').slice(0, 7);
+        render(); load(); return;
+      case 'venue': S.venue = k; S.board = Object.assign({}, S.board, { rows: null }); load(); render(); return;
+      case 'shop': S.tab = 'pending'; S.venue = k; S.board = null; render(); load(); return;
+      case 'month': S.month = shiftMonth(S.month, Number(k)); S.shops = null; render(); load(); return;
+      case 'open': openDetail(k); return;
+      case 'back': S.view = 'list'; S.detail = null; render(); load(true); return;
+      case 'new': S.form = newForm(); S.view = 'form'; render(); window.scrollTo(0, 0); return;
+      case 'closeForm': S.form = null; S.view = 'list'; render(); return;
+      case 'buyer': f.buyer = k; delete f.errors.buyer; render(); return;
+      case 'cat': f.category = k; delete f.errors.category; render(); return;
+      case 'fvenue': f.venue = k; delete f.errors.venue; render(); return;
+      case 'qty': f.items[k].qty = Math.max(1, (Number(f.items[k].qty) || 0) + Number(el.getAttribute('data-d'))); render(); return;
+      case 'addItem': f.items.push({ name: '', qty: 1, unit: L.defaultUnit, price: '', from: '' }); f.scrollTo = 'sec-item' + (f.items.length - 1); render(); return;
+      case 'delItem': f.items.splice(Number(k), 1); f.errors = {}; render(); return;
+      case 'sameFrom': f.items[k].from = f.items[k - 1].from; render(); return;
+      case 'delPhoto': f.photos.splice(Number(k), 1); render(); return;
+      case 'submit': if (!f.sending) submitForm(); return;
+      case 'approve': {
+        var r = findRow(k), plan = decisionPlan(r, checksOf(r), S.me.highAmount);
+        if (plan.needsReason) S.sheet = { kind: 'reject', id: k, whole: false };
+        else if (plan.high) S.sheet = { kind: 'high', id: k };
+        else { sendDecision(r, false, ''); return; }
+        render(); return;
+      }
+      case 'rejectAll': S.sheet = { kind: 'reject', id: k, whole: true }; render(); return;
+      case 'quick': S.sheet.reason = k; S.sheet.err = ''; render(); return;
+      case 'closeSheet': S.sheet = null; render(); return;
+      case 'confirmReject': {
+        var why = String(S.sheet.reason || '').trim();
+        if (!why) { S.sheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return; }
+        el.disabled = true;
+        sendDecision(findRow(S.sheet.id), S.sheet.whole, why); return;
+      }
+      case 'confirmApprove': el.disabled = true; sendDecision(findRow(S.sheet.id), false, ''); return;
+      case 'cancel': S.sheet = { kind: 'cancel', id: k }; render(); return;
+      case 'confirmCancel': el.disabled = true; after(api('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว'); return;
+      case 'ordered': {
+        var fl = S.fields[k] || {};
+        var a = priceOf(fl.actual);
+        if (a === null || isNaN(a) || a <= 0) { fl.err = L.err.actualTotal; render(); return; }
+        if (!String(fl.eta || '').trim()) { fl.err = L.err.eta; render(); return; }
+        fl.err = ''; el.disabled = true; el.textContent = 'กำลังบันทึก…';
+        after(api('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k).then(function () { delete S.fields[k]; });
+        return;
+      }
+      case 'delivered': el.disabled = true; el.textContent = 'กำลังบันทึก…'; after(api('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k); return;
+      case 'received': el.disabled = true; el.textContent = 'กำลังบันทึก…'; after(api('prReceived', { id: k }), 'รับของแล้ว · ' + k); return;
+    }
+  });
+  app.addEventListener('change', function (ev) {
+    var el = ev.target;
+    if (el.getAttribute('data-act') === 'tick') {
+      var ck = S.checks[el.getAttribute('data-k')] || {};
+      ck[el.getAttribute('data-n')] = el.checked;
+      render();
+    } else if (el.getAttribute('data-act') === 'photo') {
+      var files = Array.prototype.slice.call(el.files || []).slice(0, MAX_PHOTOS - S.form.photos.length);
+      Promise.all(files.map(readPhoto)).then(function (urls) { S.form.photos = S.form.photos.concat(urls).slice(0, MAX_PHOTOS); render(); },
+        function () { toast('อ่านรูปไม่ได้ ลองเลือกรูปอื่น', true); });
+    }
+  });
+  app.addEventListener('input', function (ev) {
+    var el = ev.target;
+    if (S.form && el.hasAttribute('data-item')) {
+      S.form.items[Number(el.getAttribute('data-item'))][el.getAttribute('data-f')] = el.value;
+      refreshFormSums();
+    } else if (S.form && el.getAttribute('data-f') === 'reason') {
+      S.form.reason = el.value;
+    } else if (el.getAttribute('data-field')) {
+      var fl = S.fields[el.getAttribute('data-k')] || (S.fields[el.getAttribute('data-k')] = {});
+      fl[el.getAttribute('data-field')] = el.value;
+    } else if (el.getAttribute('data-sheet') === 'reason' && S.sheet) {
+      S.sheet.reason = el.value;
+    }
+  });
+
+  // ---- start --------------------------------------------------------------------
+  function startWith(me) {
+    if (!me.known) { S.notice = { title: 'ระบบยังไม่รู้จักคุณ', text: me.message || L.unknownPerson }; render(); return; }
+    if (me.allowed === false) { S.notice = { title: 'บอร์ดนี้ยังไม่ได้เปิดให้คุณ', text: L.notForYou }; render(); return; }
+    S.notice = null;
+    S.me = me;
+    if (!S.tab || !tabsFor(me).some(function (t) { return t.key === S.tab; })) S.tab = tabsFor(me)[0].key;
+    S.month = (me.serverNow || '').slice(0, 7);
+    render();
+    load();
+  }
+  function boot() {
+    render();
+    api('prWhoAmI', {}).then(startWith, function (e) {
+      if (S.me) { toast(e.message, true); return; }
+      S.notice = { title: e.message === L.boardOff ? L.boardOff : 'เปิดบอร์ดไม่สำเร็จ', text: e.message === L.boardOff ? 'รอผู้ดูแลระบบเปิดใช้' : e.message };
+      render();
+    });
+  }
+  if (DEMO_MODE) {
+    var as = (/[?&]as=(\w+)/.exec(QS) || [])[1];
+    DEMO = makeDemo(as || 'venue_manager');
+    boot();
+    return;
+  }
+  // The last board, painted before LINE answers.
+  var cached = store(true);
+  if (cached && cached.me) {
+    S.me = cached.me;
+    S.tab = tabsFor(cached.me)[0].key;
+    S.board = (cached.boards || {})[S.tab + '|'] || null;
+    render();
+  }
+  if (!LIFF_ID) {
+    S.me = null;
+    S.notice = { title: L.boardOff, text: 'ยังไม่ได้ตั้งค่า LIFF ของบอร์ด รอผู้ดูแลระบบเปิดใช้' };
+    render();
+    return;
+  }
+  var sdk = document.createElement('script');
+  sdk.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+  sdk.onload = function () {
+    liff.init({ liffId: LIFF_ID }).then(function () {
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+      try { idToken = liff.getIDToken() || ''; accessToken = liff.getAccessToken() || ''; } catch (e) { /* freshCreds tries again */ }
+      authReadyResolve();
+      boot();
+    }, function () { authReadyResolve(); boot(); });
+  };
+  sdk.onerror = function () { S.notice = { title: 'เปิดบอร์ดไม่สำเร็จ', text: 'โหลดไลน์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วเปิดใหม่' }; render(); };
+  document.head.appendChild(sdk);
+})();
+</script>
+</body>
+</html>
