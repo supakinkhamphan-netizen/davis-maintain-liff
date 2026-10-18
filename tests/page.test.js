@@ -26,5 +26,7 @@ ok('no Firestore this round', !/firebase|firestore/i.test(SRC));
 ok('?demo=1 never loads the LINE SDK (DEMO branch returns before it)', SRC.indexOf('if (DEMO_MODE)') < SRC.indexOf('static.line-scdn.net/liff'.replace('static.line-scdn.net/liff', "sdk.src = 'https://static.line-scdn.net/liff")));
 ok('every user string goes through esc() in the card builders (no raw r.reason)', !/\+ r\.reason \+/.test(SRC));
 ok('errors are said under the field (class err), not in a dialog', (SRC.match(/class="err"/g) || []).length >= 5);
+ok('ต้องซื้อ lists "รอสาขารับของ" under the rows to act on', /รอสาขารับของ · /.test(SRC) && /receiptSection\(all\.rows/.test(SRC));
+ok('the ต้องซื้อ tab number is the server\'s tobuy count, nothing added', /label: 'ต้องซื้อ' \+ n\('tobuy'\)/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);

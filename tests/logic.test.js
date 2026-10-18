@@ -127,6 +127,23 @@ eq('… not another venue\'s manager', C.buttonsFor(me('venue_manager', { venues
 eq('… nor purchasing', C.buttonsFor(me('purchasing'), R({ status: 'approved', fulfilment: 'delivered' })), []);
 eq('a decided self-buy has no buttons', C.buttonsFor(me('manager'), R({ buyer: 'self', status: 'approved' })), []);
 
+// ---- ต้องซื้อ: what purchasing acts on, then "รอสาขารับของ" ---------------
+const allRows = [
+  { id: 'aw', venue: 'HOS', status: 'approved', fulfilment: 'awaiting' },
+  { id: 'or', venue: 'HOS', status: 'partial', fulfilment: 'ordered' },
+  { id: 'd1', venue: 'HOS', status: 'approved', fulfilment: 'delivered', deliveredAt: '2026-10-17 15:00' },
+  { id: 'd2', venue: 'Upperhouse', status: 'approved', fulfilment: 'delivered', deliveredAt: '2026-10-18 09:00' },
+  { id: 'rc', venue: 'HOS', status: 'approved', fulfilment: 'received' },
+  { id: 'pe', venue: 'HOS', status: 'pending', fulfilment: '' },
+];
+const sec = C.receiptSection(allRows, '');
+eq('the section lists delivered rows only, newest delivery first', sec.map(r => r.id), ['d2', 'd1']);
+eq('… narrowed by the venue chip like the rows above it', C.receiptSection(allRows, 'HOS').map(r => r.id), ['d1']);
+eq('the tab number is what purchasing must act on: awaiting + ordered, never the delivered ones',
+  C.tobuyCount(allRows), 2);
+eq('manager gets รับของแล้ว on a waiting row', C.buttonsFor(me('manager'), Object.assign(R(), allRows[2])), ['received']);
+eq('purchasing sees it read-only', C.buttonsFor(me('purchasing'), Object.assign(R(), allRows[2])), []);
+
 // ---- the four steps (purchasing walk only) -----------------------------------
 eq('steps only for ให้จัดซื้อซื้อให้', C.stepsFor({ buyer: 'self', status: 'approved', fulfilment: '' }), null);
 eq('ordered: two done, the third is now', C.stepsFor({ buyer: 'purchasing', status: 'partial', fulfilment: 'ordered', eta: '20 ต.ค.' }).map(s => s.state), ['done', 'done', 'now', 'todo']);

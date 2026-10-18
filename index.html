@@ -218,7 +218,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 <script>
 (function () {
   'use strict';
-  var BUILD = 'pr-board v2 · 2026-10-18 · LIFF on';
+  var BUILD = 'pr-board v3 · 2026-10-18';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -400,6 +400,19 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     if (f === 'delivered' && (me.role === 'manager' || (me.role === 'venue_manager' && (me.venues || []).indexOf(row.venue) >= 0))) out.push('received');
     if (row.status === 'pending' && (row.mine || me.role === 'manager')) out.push('cancel');
     return out;
+  }
+  /**
+   * The ต้องซื้อ tab's number: what purchasing must still act on (awaiting +
+   * ordered), the same count as by-shop's toBuy. Rows waiting for the branch
+   * to receive are listed under it but never counted in it.
+   */
+  function tobuyCount(rows) {
+    return rows.filter(function (r) { return r.fulfilment === 'awaiting' || r.fulfilment === 'ordered'; }).length;
+  }
+  /** "รอสาขารับของ": delivered rows, newest delivery first, narrowed by the venue chip. */
+  function receiptSection(allRows, venue) {
+    return filterByVenue(allRows, venue).filter(function (r) { return r.fulfilment === 'delivered'; })
+      .sort(function (a, b) { return String(b.deliveredAt || '') > String(a.deliveredAt || '') ? 1 : -1; });
   }
   /** The four-step strip, only for "ให้จัดซื้อซื้อให้" once something was approved. */
   function stepsFor(row) {
@@ -765,7 +778,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
   var app = document.getElementById('app');
   var S = {
     me: null, notice: null, tab: '', venue: '', month: '', board: null, shops: null,
-    view: 'list', detail: null, detailId: '', form: null, sheet: null, counts: {},
+    view: 'list', detail: null, detailId: '', form: null, sheet: null, counts: {}, receipt: null,
     checks: {}, fields: {}, busy: false, lastLoad: 0,
   };
 
@@ -845,7 +858,13 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     if (S.tab === 'byshop') {
       p = api('prByShop', { month: S.month }).then(function (res) { S.shops = res.shops; });
     } else {
-      p = api('prBoard', { scope: scopeOfTab(S.tab), venue: S.venue }).then(function (res) {
+      var tab = S.tab;
+      // ต้องซื้อ also shows "รอสาขารับของ" (delivered, from scope all): a delivered
+      // request is in no other tab of purchasing or a manager (ruling (a), 18 Oct).
+      var extra = tab === 'tobuy'
+        ? api('prBoard', { scope: 'all', venue: S.venue }).then(function (all) { S.receipt = receiptSection(all.rows || [], S.venue); })
+        : Promise.resolve(S.receipt = null);
+      p = extra.then(function () { return api('prBoard', { scope: scopeOfTab(tab), venue: S.venue }); }).then(function (res) {
         if (S.tab === 'active' || S.tab === 'done') res.mineRows = res.rows;
         S.board = res;
         S.counts = res.counts || S.counts;
@@ -927,6 +946,10 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       else if (S.tab === 'tobuy' && me.canFulfil) h += buyerCard(r);
       else h += summaryCard(r);
     });
+    if (S.tab === 'tobuy' && S.receipt && S.receipt.length) {
+      h += '<div class="sec">รอสาขารับของ · ' + S.receipt.length + '</div>';
+      S.receipt.forEach(function (r) { h += receiptCard(r); });
+    }
     return h + '</div>';
   }
   function summaryCard(r) {
@@ -998,6 +1021,18 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       h += '<button type="button" class="btn pri sm" data-act="ordered" data-k="' + esc(r.id) + '">สั่งซื้อแล้ว</button>';
     } else if (r.fulfilment === 'ordered') {
       h += '<button type="button" class="btn sec sm" data-act="delivered" data-k="' + esc(r.id) + '">ส่งถึงสาขาแล้ว</button>';
+    }
+    return h + '</div>';
+  }
+  /** A delivered request: read-only for purchasing, รับของแล้ว for whoever may receive it. */
+  function receiptCard(r) {
+    var chip = statusChip(r);
+    var h = '<div class="card"><div class="row"><button type="button" class="lnk" data-act="open" data-k="' + esc(r.id) + '" style="background:none;border:0;padding:0;cursor:pointer"><span class="id">' + esc(r.id) + ' ›</span></button><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span></div>';
+    h += '<div class="ttl">' + esc(titleOf(r)) + '</div>';
+    h += '<div class="tags"><span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
+    h += '<div class="meta">ส่งถึงสาขา ' + esc(thaiClock(r.deliveredAt)) + ' · จ่ายจริง ' + fmtBaht(r.actualTotal) + ' บาท · รอสาขากดรับของ</div>';
+    if (buttonsFor(S.me, r).indexOf('received') >= 0) {
+      h += '<button type="button" class="btn pri sm" data-act="received" data-k="' + esc(r.id) + '">' + icon('check') + 'รับของแล้ว</button>';
     }
     return h + '</div>';
   }
