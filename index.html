@@ -582,6 +582,23 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
    * answers (R-A5). A new request is pending, so it is in mine, pending and all.
    * The server reload still wins afterwards.
    */
+  function scopeOfTab(tab) { return tab === 'active' || tab === 'done' ? 'mine' : tab; }
+  /**
+   * Where the optimistic row goes (A1.2). The board on screen belongs to the tab
+   * the form was opened from; only when that is the tab the request lands in
+   * (same scope, no shop filter, since sending clears it) does the row go on top
+   * of it. Otherwise that board is someone else's list: drop it (null = the
+   * loading skeleton) and let load(true) bring the right one. The tab counts
+   * move either way.
+   */
+  function landOptimistic(board, from, toTab, counts, row) {
+    var same = !!(board && board.rows) && scopeOfTab(from.tab) === scopeOfTab(toTab) && !from.venue;
+    if (!same) { bumpOptimistic({}, counts, row); return null; }
+    board.rows.unshift(row);
+    if (board.mineRows) board.mineRows = board.rows;
+    bumpOptimistic(board, counts, row);
+    return board;
+  }
   function bumpOptimistic(board, counts, row) {
     ['mine', 'pending', 'all'].forEach(function (k) { if (counts && counts[k] !== undefined) counts[k] += 1; });
     if (board.totals) board.totals = summarize(board.rows || []);
@@ -985,7 +1002,6 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     if (me.role === 'account') return [{ key: 'pending', label: 'รออนุมัติ' + n('pending') }, { key: 'all', label: 'ทั้งหมด' + n('all') }, { key: 'byshop', label: 'ตามร้าน' }];
     return [{ key: 'pending', label: 'รออนุมัติ' + n('pending') }, { key: 'tobuy', label: 'ต้องซื้อ' + n('tobuy') }, { key: 'byshop', label: 'ตามร้าน' }];
   }
-  function scopeOfTab(tab) { return tab === 'active' || tab === 'done' ? 'mine' : tab; }
 
   // ---- loading ----------------------------------------------------------------
   function load(silent) {
@@ -1364,18 +1380,15 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       reason: f.reason, photoDataUrls: f.photos,
     };
     api('prCreate', payload).then(function (res) {
+      var from = { tab: S.tab, venue: S.venue };
       S.form = null; S.view = 'list';
       S.tab = S.me.role === 'venue_manager' ? 'active' : 'pending'; S.venue = '';
       toast('ส่งคำขอแล้ว · ' + res.id + (res.photosAsked && res.photosSaved < res.photosAsked ? ' (รูปขึ้นได้ ' + res.photosSaved + ' จาก ' + res.photosAsked + ')' : ''));
       // Seen at once (Order's unconfirmed left edge) before the server answers the next read.
-      if (S.board && S.board.rows) {
-        var t = formTotals(f.items);
-        S.board.rows.unshift({ id: res.id, createdAt: '', venue: f.venue, requester: S.me.actorName, mine: true, buyer: f.buyer, buyerLabel: L.buyer[f.buyer],
+      var t = formTotals(f.items);
+      S.board = landOptimistic(S.board, from, S.tab, S.counts, { id: res.id, createdAt: '', venue: f.venue, requester: S.me.actorName, mine: true, buyer: f.buyer, buyerLabel: L.buyer[f.buyer],
           category: payload.category, items: payload.items.map(function (i, k) { return { n: k + 1, name: i.name, qty: i.qty, unit: i.unit, unitPrice: i.unitPrice, lineTotal: lineTotal(i), status: 'pending', from: i.from }; }),
           estTotal: t.total, pricedLines: t.priced, lineCount: t.count, status: 'pending', fulfilment: '', ageMinutes: 0, photos: [] });
-        if (S.board.mineRows) S.board.mineRows = S.board.rows;
-        bumpOptimistic(S.board, S.counts, S.board.rows[0]);
-      }
       render(); window.scrollTo(0, 0); load(true);
     }, function (e) { f.sending = false; render(); toast(e.message, true); });
   }

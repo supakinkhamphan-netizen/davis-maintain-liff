@@ -247,6 +247,21 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   const oc2 = {};
   C.bumpOptimistic({ rows: [nr] }, oc2, nr);
   eq('R-A5 no server counts yet → nothing invented', oc2, {});
+  // ---- A1.2: ＋ pressed on another tab: never unshift into that tab's board ----
+  const nr2 = { id: 'C', venue: 'Fairway', status: 'pending', estTotal: 50, items: [] };
+  const tobuyBoard = { rows: [{ id: 'T1', venue: 'Fairway', status: 'approved', fulfilment: 'awaiting', approvedTotal: 900, items: [] }], totals: { count: 1, venues: 1, baht: 900 }, byVenue: { Fairway: 1 } };
+  const c3 = { mine: 1, pending: 0, tobuy: 1, all: 1 };
+  const land1 = C.landOptimistic(tobuyBoard, { tab: 'tobuy', venue: '' }, 'pending', c3, nr2);
+  eq('A1.2 from ต้องซื้อ to รออนุมัติ: no stale board (skeleton until load), its rows untouched, counts still +1',
+    [land1, tobuyBoard.rows.map(r => r.id), c3], [null, ['T1'], { mine: 2, pending: 1, tobuy: 1, all: 2 }]);
+  const pendBoard = { rows: [{ id: 'P1', venue: 'Fairway', status: 'pending', estTotal: 10, items: [] }], totals: { count: 1, venues: 1, baht: 10 }, byVenue: { Fairway: 1 } };
+  const land2 = C.landOptimistic(pendBoard, { tab: 'pending', venue: '' }, 'pending', { pending: 1 }, nr2);
+  eq('A1.2 same tab: the row goes on top and the head follows (R-A5 as before)', [land2 === pendBoard, pendBoard.rows.map(r => r.id), pendBoard.totals.count], [true, ['C', 'P1'], 2]);
+  const land3 = C.landOptimistic({ rows: [], totals: { count: 0, venues: 0, baht: 0 }, byVenue: {} }, { tab: 'pending', venue: 'Mandrake' }, 'pending', {}, nr2);
+  eq('A1.2 same tab but filtered to a shop (the filter clears on send): skeleton', land3, null);
+  const mineBoard = { rows: [], mineRows: [] };
+  const land4 = C.landOptimistic(mineBoard, { tab: 'done', venue: '' }, 'active', {}, nr2);
+  eq('A1.2 manager จบแล้ว → กำลังดำเนินการ share the mine board: row lands, mineRows follow', [land4 === mineBoard, mineBoard.mineRows.map(r => r.id)], [true, ['C']]);
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 })();

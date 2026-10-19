@@ -39,7 +39,8 @@ ok('R-A8 viewport meta locks zoom', SRC.indexOf('<meta name="viewport" content="
 ok('R-A8 html, body pan only (keeps both scrolls, no pinch / double-tap zoom)', /html, body\{touch-action:pan-x pan-y\}/.test(SRC));
 ok('R-A8 every field is 16px, after the font:inherit reset (iOS zooms on focus below 16px)', SRC.indexOf('input,select,textarea{font-size:16px}') > SRC.indexOf('button,input,textarea,select{font:inherit;color:inherit}'));
 ok('R-A8 no field rule sets a size below 16px', !/(input|select|textarea)[^{}]*\{[^}]*font-size:(1[0-5]|[0-9])px/.test(SRC));
-ok('R-A5 the optimistic insert bumps counts/head/chips right after the unshift', /S\.board\.mineRows = S\.board\.rows;\n\s*bumpOptimistic\(S\.board, S\.counts, S\.board\.rows\[0\]\);/.test(SRC));
+// A1.2: the insert + bump moved into landOptimistic (logic.test); the send path must go through it.
+ok('R-A5/A1.2 the send lands the optimistic row through landOptimistic, with the tab it came from', /var from = \{ tab: S\.tab, venue: S\.venue \};/.test(SRC) && /S\.board = landOptimistic\(S\.board, from, S\.tab, S\.counts, \{ id: res\.id/.test(SRC));
 ok('build v5.1', /var BUILD = 'pr-board v5\.1 · 2026-10-19 · A1\.1';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);
