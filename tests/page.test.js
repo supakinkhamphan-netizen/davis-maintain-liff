@@ -41,6 +41,12 @@ ok('R-A8 every field is 16px, after the font:inherit reset (iOS zooms on focus b
 ok('R-A8 no field rule sets a size below 16px', !/(input|select|textarea)[^{}]*\{[^}]*font-size:(1[0-5]|[0-9])px/.test(SRC));
 // A1.2: the insert + bump moved into landOptimistic (logic.test); the send path must go through it.
 ok('R-A5/A1.2 the send lands the optimistic row through landOptimistic, with the tab it came from', /var from = \{ tab: S\.tab, venue: S\.venue \};/.test(SRC) && /S\.board = landOptimistic\(S\.board, from, S\.tab, S\.counts, \{ id: res\.id/.test(SRC));
-ok('build v5.2', /var BUILD = 'pr-board v5\.2 · 2026-10-19 · A1\.2';/.test(SRC));
+// A1.3: load() drops an answer for a tab/shop no longer on screen, then asks again once.
+ok('A1.3 load remembers what it asked for', /var asked = \{ tab: S\.tab, venue: S\.venue \}, stale = false;/.test(SRC));
+ok('A1.3 the board is set only if still shown', /if \(!res \|\| !keep\(\)\) return;\n\s*if \(tab === 'active' \|\| tab === 'done'\) res\.mineRows = res\.rows;\n\s*S\.board = res;/.test(SRC));
+ok('A1.3 shops and the receipt strip are guarded too', /if \(keep\(\)\) S\.shops = res\.shops;/.test(SRC) && /if \(keep\(\)\) S\.receipt = /.test(SRC));
+ok('A1.3 a stale answer reloads for the current tab', /S\.busy = false;\n\s*if \(stale\) return load\(silent\);/.test(SRC));
+ok('A1.3 keep() asks stillShown', /if \(!stillShown\(asked, S\)\) stale = true;/.test(SRC));
+ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);

@@ -262,6 +262,10 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   const mineBoard = { rows: [], mineRows: [] };
   const land4 = C.landOptimistic(mineBoard, { tab: 'done', venue: '' }, 'active', {}, nr2);
   eq('A1.2 manager จบแล้ว → กำลังดำเนินการ share the mine board: row lands, mineRows follow', [land4 === mineBoard, mineBoard.mineRows.map(r => r.id)], [true, ['C']]);
+  // ---- A1.3: a board answer for a tab (or shop) no longer on screen is dropped ----
+  eq('A1.3 answer for ต้องซื้อ arriving on รออนุมัติ: stale (dropped, reload)', C.stillShown({ tab: 'tobuy', venue: '' }, { tab: 'pending', venue: '' }), false);
+  eq('A1.3 answer for one shop arriving after the filter changed: stale', C.stillShown({ tab: 'pending', venue: 'Fairway' }, { tab: 'pending', venue: '' }), false);
+  eq('A1.3 answer for the tab and shop still on screen: kept', C.stillShown({ tab: 'pending', venue: 'Fairway' }, { tab: 'pending', venue: 'Fairway' }), true);
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 })();
