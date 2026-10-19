@@ -7,209 +7,202 @@
 <title>ขอซื้อสาขา</title>
 <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap">
 <!--
-  Davis ขอซื้อสาขา — the purchase board (work order #9, 2026-10-18).
+  Davis ขอซื้อสาขา — the purchase board (work order #9, 2026-10-18; Order shape since #12, 2026-10-19).
   One file, no build, no framework. Talks only to the Davis Maintain web app
   (purchase-liff-api.js there). Colours are the Order board's, every value.
   ?demo=1 runs the whole board on sample data in this page, no backend.
 -->
 <style>
+/* Work order #12: the Order board's anatomy, value for value
+   (davis-order-liff/index.html, v45, read-only). Dark always, like Order. */
 :root{
-  --bg:#23272E; --panel:#262B33; --sink:#1E2228; --line:#2F353E; --edge:#3B4350;
-  --ink:#E8EBF0; --muted:#9AA3B2; --faint:#6B7382;
-  --accent:#2FA39A; --accent-ink:#08201E;
+  color-scheme:dark;
+  --bg:#23272E; --card:#23272E; --panel:#262B33; --line:#2F353E;
+  --ink:#E8EBF0; --ink-2:#9AA3B2; --ink-3:#E8EBF0; --muted:#9AA3B2; --faint:#6B7382;
   --ok:#6FD39A; --ok-bg:#1E3A2C;
+  --accent:#2FA39A; --accent-ink:#08201E;
   --warn-bg:#3A3116; --warn-ink:#E3B341;
   --hot-bg:#3D2A1C; --hot-ink:#F0B48C;
   --free-bg:#1F2A3F; --free-ink:#93C5FD;
-  --danger:#F08C8C; --no-bg:#3D2222; --danger-ink:#3D1414;
+  --danger:#F08C8C; --no-bg:#3D2222;
   --part-bg:#2B2440; --part-ink:#B7A3F5;
-  --raise:6px 6px 14px rgba(0,0,0,.55),-4px -4px 12px rgba(255,255,255,.055);
-  --sink-sh:inset 4px 4px 10px rgba(0,0,0,.55),inset -3px -3px 8px rgba(255,255,255,.055);
-  --r-sm:12px; --r-lg:16px;
+  --hi:rgba(255,255,255,.055); --lo:rgba(0,0,0,.55);
+  --raise:6px 6px 14px var(--lo), -4px -4px 12px var(--hi);
+  --raise-sm:3px 3px 8px var(--lo), -2px -2px 6px var(--hi);
+  --sink:inset 4px 4px 10px var(--lo), inset -3px -3px 8px var(--hi);
+  --sink-sh:var(--sink);
+  --btn-h:56px; --btn-r:12px; --card-r:16px; --gap:12px; --pad:16px;
+  --head-h:64px; --tabs-h:48px;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans Thai',system-ui,sans-serif;-webkit-text-size-adjust:100%}
-body{min-height:100vh}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font-family:'IBM Plex Sans Thai',-apple-system,'Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;padding-bottom:40px;min-height:100vh}
 a{color:var(--accent)}
 button,input,textarea,select{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--free-ink);outline-offset:2px}
-#app{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+#app{min-height:100vh}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .demo{background:var(--part-bg);color:var(--part-ink);font-size:12px;padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .demo b{margin-right:4px}
 .demo button{min-height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--part-ink);background:none;color:var(--part-ink);font-size:12px;font-weight:700;cursor:pointer}
 .demo button.on{background:var(--part-ink);color:var(--part-bg)}
-.head{min-height:64px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line)}
-.head h1{margin:0;font-size:18px;font-weight:700}
-.who{font-size:12px;color:var(--muted);margin-top:2px}
-.ava{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
-.iconbtn{width:44px;height:44px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--muted);background:var(--panel);border:0;cursor:pointer;flex-shrink:0}
-.tabs{display:flex;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
-.tab{flex:1;min-height:48px;background:none;border:0;color:var(--muted);font-size:14px;font-weight:600;border-bottom:3px solid transparent;cursor:pointer;padding:0 6px}
-.tab.on{color:var(--ink);border-bottom-color:var(--accent)}
-.fhead{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0;font-size:12px;color:var(--muted);font-weight:600}
-.fhead button{background:none;border:0;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;min-height:44px;padding:0}
-.filters{display:flex;gap:8px;padding:4px 16px 0;overflow-x:auto;scrollbar-width:none}
-.pill{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--edge);background:var(--panel);color:var(--muted);font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:6px}
-.pill b{color:var(--ink)}
-.pill.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.pill.on b{color:var(--accent-ink)}
-.fsum{margin:10px 16px 0;padding:10px 12px;border-radius:var(--r-sm);background:var(--sink);display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
-.fsum b{color:var(--ink)}
-.body{flex:1;padding:16px 16px 32px;display:flex;flex-direction:column;gap:12px}
-.card{background:var(--panel);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--raise);display:flex;flex-direction:column;gap:10px;color:var(--ink);text-align:left;border:0;width:100%}
-button.card{cursor:pointer}
-.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.id{font-size:12px;color:var(--muted);font-weight:600}
-.ttl{font-size:16px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
-.meta{font-size:13px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
-.chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
-.chip.wait{background:var(--warn-bg);color:var(--warn-ink)}
-.chip.ok{background:var(--ok-bg);color:var(--ok)}
-.chip.no{background:var(--no-bg);color:var(--danger)}
-.chip.info{background:var(--free-bg);color:var(--free-ink)}
-.chip.part{background:var(--part-bg);color:var(--part-ink)}
-.chip.off{background:var(--sink);color:var(--muted)}
-.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;border:1px solid var(--edge);color:var(--muted)}
-.tag.path{border-color:var(--accent);color:var(--ok)}
-.tag.cat{background:var(--free-bg);color:var(--free-ink);border-color:var(--free-bg)}
-.tag.hi{background:var(--hot-bg);color:var(--hot-ink);border-color:var(--hot-bg)}
-.venue{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--free-bg);color:var(--free-ink);white-space:nowrap}
-.age{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink);white-space:nowrap}
-.age.hot{background:var(--hot-bg);color:var(--hot-ink)}
-.sec{font-size:12px;color:var(--muted);font-weight:700;margin:6px 0 -4px}
-.baht{font-weight:700;color:var(--ink)}
-.empty{color:var(--muted);font-size:14px;text-align:center;padding:32px 8px;line-height:1.6}
-.btn{min-height:56px;border-radius:var(--r-sm);border:0;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;padding:0 16px;width:100%}
-.btn.pri{background:var(--accent);color:var(--accent-ink);box-shadow:var(--raise)}
-.btn.sec{background:var(--panel);color:var(--ink);border:1px solid var(--edge)}
-.btn.no{background:var(--panel);color:var(--danger);border:1px solid #5A2A2A}
-.btn.danger{background:var(--danger);color:var(--danger-ink)}
-.btn[disabled]{opacity:.55;cursor:default}
-.btn.sm{min-height:48px;font-size:15px}
-.acts{display:flex;gap:10px}
-.acts>.btn{flex:1}
-.lines{display:flex;flex-direction:column;border-top:1px solid var(--line)}
-.ln{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
-.ln.ro{grid-template-columns:minmax(0,1fr) auto}
-.ln input[type=checkbox]{width:24px;height:24px;margin:0;accent-color:var(--accent)}
-.ln label,.ln .n{display:flex;flex-direction:column;gap:2px;font-size:15px;min-width:0;overflow-wrap:anywhere}
-.ln label{cursor:pointer;min-height:44px;justify-content:center}
-.ln small{font-size:12px;color:var(--muted)}
-.ln .amt{font-size:15px;font-weight:700;white-space:nowrap;text-align:right}
-.ln .amt.big{font-size:17px}
-.ln .amt.unknown{color:var(--warn-ink);font-weight:600;font-size:13px}
-.ln.off label,.ln.off .n>span:first-child{color:var(--muted);text-decoration:line-through}
-.ln .st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;justify-self:end;white-space:nowrap}
-.st.ok{background:var(--ok-bg);color:var(--ok)}
-.st.no{background:var(--no-bg);color:var(--danger)}
-.st.wait{background:var(--warn-bg);color:var(--warn-ink)}
-.why{font-size:12px;color:var(--hot-ink)}
-.hintno{font-size:12px;color:var(--hot-ink)}
-.total{display:flex;justify-content:space-between;font-size:14px;color:var(--muted)}
-.total b{color:var(--ink);font-size:16px}
-.lnk{display:inline-flex;align-items:center;gap:4px;color:var(--accent);text-decoration:none;font-weight:600;min-height:28px}
-.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.field{display:flex;flex-direction:column;gap:6px}
-.field label{font-size:13px;color:var(--muted);font-weight:600}
-.in{min-height:48px;border-radius:var(--r-sm);border:1px solid var(--edge);background:var(--sink);color:var(--ink);padding:10px 12px;font-size:16px;width:100%;box-shadow:var(--sink-sh)}
-textarea.in{min-height:96px;resize:vertical;line-height:1.5}
-.err{font-size:13px;color:var(--danger);font-weight:600}
-.in.bad,.item.bad{border-color:var(--danger)}
-/* form */
-.fsec{display:flex;flex-direction:column;gap:12px}
-.sh{display:flex;align-items:center;gap:10px}
-.sh .n{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.sh h2{margin:0;font-size:16px;font-weight:700}
-.sh .cnt{margin-left:auto;font-size:12px;color:var(--muted)}
-.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.tile{border-radius:14px;border:2px solid var(--edge);background:var(--panel);padding:14px 12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:84px;position:relative}
-.tile.on{border-color:var(--accent);background:#1E3A37}
-.tile b{font-size:15px}
-.tile span{font-size:12px;color:var(--muted);line-height:1.35}
-.tile .ck{position:absolute;top:10px;right:10px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-size:12px}
-.chips{display:flex;gap:8px;flex-wrap:wrap}
-.choice{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--edge);background:var(--panel);font-size:13px;font-weight:600;cursor:pointer}
-.choice.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.item{background:var(--panel);border-radius:var(--r-lg);padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--raise);border:1px solid transparent}
-.item .top{display:flex;align-items:center;gap:10px}
-.idx{width:24px;height:24px;border-radius:50%;background:var(--sink);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.name{flex:1;min-height:48px;border:0;border-bottom:1px solid var(--edge);background:none;font-size:17px;font-weight:700;padding:0 2px;min-width:0}
-.qtyrow,.pricerow{display:flex;align-items:center;gap:10px}
-.step{display:flex;align-items:center;border:1px solid var(--edge);border-radius:var(--r-sm);overflow:hidden;background:var(--sink)}
-.step button{width:44px;height:44px;border:0;background:none;color:var(--accent);font-size:22px;font-weight:700;cursor:pointer}
-.step input{width:52px;height:44px;border:0;background:none;text-align:center;font-size:17px;font-weight:700;padding:0}
-.unit{min-height:44px;border:1px solid var(--edge);border-radius:var(--r-sm);background:var(--sink);font-size:15px;padding:0 12px;min-width:0;flex:1}
-.pricerow .lbl{font-size:13px;color:var(--muted);white-space:nowrap}
-.price{min-height:44px;border:1px solid var(--edge);border-radius:var(--r-sm);background:var(--sink);display:flex;align-items:center;padding:0 12px;gap:6px;flex:1;min-width:0}
-.price span{color:var(--muted)}
-.price input{border:0;background:none;font-size:17px;font-weight:700;width:100%;min-width:0;padding:0;min-height:42px}
-.eq{font-size:17px;font-weight:700;color:var(--ok);white-space:nowrap;margin-left:auto}
-.eq.unknown{color:var(--warn-ink);font-size:13px;font-weight:600}
-.from{display:flex;align-items:center;gap:8px;min-height:44px;border-radius:var(--r-sm);background:var(--sink);border:1px dashed var(--edge);padding:0 12px}
-.from input{border:0;background:none;font-size:14px;flex:1;min-width:0;padding:0;min-height:42px}
-.from button{border:0;background:none;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;min-height:44px;padding:0}
-.add{min-height:52px;border-radius:14px;border:2px dashed var(--edge);background:none;color:var(--accent);font-size:15px;font-weight:700;cursor:pointer}
-.photos{display:flex;gap:8px;flex-wrap:wrap}
-.thumb{position:relative;width:76px;height:76px;border-radius:var(--r-sm);overflow:hidden;background:var(--sink)}
+/* header + tabs */
+header{background:var(--bg);color:var(--ink);padding:0 16px;height:var(--head-h);display:flex;align-items:center;position:sticky;top:0;z-index:6;box-shadow:0 6px 14px var(--lo)}
+header .headRow{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+header h1{font-weight:800;font-size:1.2rem;margin:0;white-space:nowrap}
+header h1 small{font-size:11px;font-weight:600;opacity:.6;margin-left:6px}
+header .who{font-size:12px;color:var(--ink-2);margin-top:3px;min-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header #avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0}
+header .initial{width:42px;height:42px;border-radius:50%;background:var(--panel);box-shadow:var(--raise-sm);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0}
+header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);background:var(--card);box-shadow:var(--raise-sm);color:var(--ink);font-size:20px;flex-shrink:0;cursor:pointer}
+.tabs{display:flex;height:var(--tabs-h);position:sticky;top:var(--head-h);background:var(--bg);z-index:5;box-shadow:0 1px 0 var(--line)}
+.tabs button{flex:1;border:none;background:none;padding:12px 6px;font-size:15px;font-weight:600;color:var(--ink-2);font-family:inherit;white-space:nowrap;cursor:pointer}
+.tabs button.active{color:var(--accent);border-bottom:3px solid var(--accent);font-weight:700}
+.tabs .tabPlus{flex:0 0 auto;min-width:48px;color:var(--accent);font-size:22px;font-weight:700;padding:0 12px}
+/* list */
+#list{padding:12px;max-width:520px;margin:0 auto}
+.empty{text-align:center;padding:60px 20px;color:var(--ink-2);line-height:1.7}
+.shopChipRow{display:flex;gap:8px;overflow-x:auto;padding:6px 2px 6px;margin:0 -2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.shopChipRow::-webkit-scrollbar{display:none}
+.shopChip{flex:0 0 auto;border:none;box-shadow:var(--raise-sm);background:var(--card);color:var(--ink-2);font-family:inherit;font-size:14px;font-weight:600;padding:8px 14px;border-radius:999px;white-space:nowrap;min-height:44px;cursor:pointer}
+.shopChip.active{background:var(--card);color:var(--accent);font-weight:800;box-shadow:var(--sink), 0 0 0 2px rgba(47,163,154,.55)}
+.groupHead{font-size:14px;font-weight:700;color:var(--ink-2);margin:18px 4px 8px;display:flex;justify-content:space-between;gap:10px}
+.groupHead b{color:var(--ink);white-space:nowrap}
+.card{background:var(--card);border-radius:var(--card-r);padding:var(--pad);margin-bottom:16px;box-shadow:var(--raise);position:relative}
+.card.pending{border-left:3px solid var(--ink-2)}
+.card .tap{display:block;width:100%;text-align:left;background:none;border:none;padding:0;color:inherit;font-family:inherit;cursor:pointer}
+.card .id{font-size:11px;letter-spacing:.06em;color:var(--ink-2);font-weight:600}
+.card .title{font-size:17px;font-weight:700;margin-top:2px;line-height:1.45;overflow-wrap:anywhere}
+.card .sub{font-size:14px;color:var(--ink-2);margin-top:2px;overflow-wrap:anywhere}
+.card .items{font-size:15px;font-weight:500;color:var(--ink-3);margin-top:10px;line-height:1.55}
+.items .it{display:flex;justify-content:space-between;gap:12px}
+.items .it b{white-space:nowrap}
+.items .it .unknown{color:var(--ink-2);font-weight:600;white-space:nowrap}
+.items .it.struck span:first-child,.items .it.struck b{text-decoration:line-through;color:var(--ink-2)}
+.items .from{font-size:13px;color:var(--ink-2);margin:-2px 0 4px;overflow-wrap:anywhere}
+.items .why{font-size:13px;color:var(--hot-ink);margin:-2px 0 4px}
+.clock{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;padding:10px 12px;border-radius:10px;margin:-4px -4px 12px;line-height:1.4;box-shadow:var(--sink)}
+.clock.calm{background:transparent;color:var(--ink-2);padding-left:0;box-shadow:none}
+.clock.warn{background:var(--warn-bg);color:var(--warn-ink)}
+.clock.hot{background:var(--hot-bg);color:var(--hot-ink)}
+.clock.free{background:var(--free-bg);color:var(--free-ink)}
+.clock.ok{background:var(--ok-bg);color:var(--ok)}
+.clock.no{background:var(--no-bg);color:var(--danger)}
+.promise{margin-top:8px;padding:7px 10px;border-radius:8px;font-size:13px;font-weight:700}
+.promise.ok{background:#1E3A2C;color:var(--ok)}
+.promise.soon{background:var(--warn-bg);color:var(--warn-ink)}
+.promise.late{background:#3D2222;color:var(--danger)}
+.promise.free{background:var(--free-bg);color:var(--free-ink)}
+.actionBtn{margin-top:16px;width:100%;min-height:var(--btn-h);border:none;border-radius:var(--btn-r);font-weight:700;font-size:17px;font-family:inherit;background:var(--accent);color:var(--accent-ink);box-shadow:var(--raise-sm);cursor:pointer}
+.actionBtn:active{box-shadow:var(--sink)}
+.actionBtn.busy{background:var(--panel);color:var(--ink);box-shadow:var(--sink)}
+.actionBtn.danger{background:var(--danger);color:#2A0A0A}
+.actionBtn[disabled]:not(.busy){background:var(--line);color:var(--ink-2)}
+/* ⋯ has its own row: Order's absolute corner sits on the action button's corner when nothing follows it */
+.moreRow{display:flex;justify-content:flex-end;margin:6px -6px -8px 0}
+.moreBtn{width:44px;height:36px;border:none;background:none;color:var(--ink-2);font-size:20px;letter-spacing:2px;cursor:pointer}
+.moreMenu{margin-top:8px;border-top:1px solid var(--line);padding-top:10px;display:none}
+.moreMenu.open{display:block}
+.moreMenu .mid{font-size:12px;color:var(--ink-2);padding:2px 4px 6px}
+.moreMenu button{display:block;width:100%;text-align:left;padding:12px 4px;border:none;background:none;font-size:15px;color:var(--ink);font-family:inherit;cursor:pointer}
+.moreMenu button.danger{color:var(--danger)}
+.lnk{color:var(--accent);text-decoration:none;font-weight:600}
+/* forms */
+.miniform{margin-top:12px}
+.miniform label{display:block;font-size:15px;color:var(--ink-2);font-weight:600;margin-top:12px}
+.miniform input,.miniform select,.miniform textarea{width:100%;min-height:44px;padding:8px 10px;margin-top:4px;border:none;border-radius:10px;font-size:16px;background:var(--bg);color:var(--ink);box-shadow:var(--sink);font-family:inherit}
+.miniform textarea{min-height:96px;resize:vertical;line-height:1.5}
+.miniform input:focus,.miniform select:focus,.miniform textarea:focus{outline:none;box-shadow:var(--sink), 0 0 0 2px rgba(47,163,154,.6)}
+.miniform .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.err{color:var(--danger);font-size:15px;font-weight:600;margin-top:8px;line-height:1.5}
+.bad{box-shadow:var(--sink), 0 0 0 2px rgba(240,140,140,.7)!important}
+.fsec{margin-top:18px}
+.fsec h2{font-size:16px;font-weight:700;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px}
+.fsec h2 small{font-size:12px;color:var(--ink-2);font-weight:600}
+.pickRow{display:flex;gap:8px;flex-wrap:wrap;padding:4px 0}
+.fitem{padding:12px 0 14px;border-bottom:1px solid var(--line)}
+.fitem:last-of-type{border-bottom:none}
+.fitem .top{display:flex;gap:8px;align-items:flex-end}
+.fitem .top input{flex:1}
+.fitem .del{width:44px;height:44px;border:none;border-radius:10px;background:var(--card);box-shadow:var(--raise-sm);color:var(--ink-2);cursor:pointer;flex-shrink:0}
+.stepper{display:flex;align-items:center;gap:8px;margin-top:4px}
+.stepper button{width:44px;height:44px;border:none;border-radius:10px;background:var(--card);box-shadow:var(--raise-sm);color:var(--accent);font-size:22px;font-weight:700;cursor:pointer;flex-shrink:0}
+.stepper input{width:64px;text-align:center;margin-top:0}
+.eq{font-size:15px;font-weight:700;color:var(--ok);margin-top:6px;text-align:right}
+.eq.unknown{color:var(--ink-2);font-weight:600}
+.same{border:none;background:none;color:var(--accent);font-size:14px;font-weight:700;padding:8px 0;min-height:44px;cursor:pointer}
+.addBtn{display:block;width:100%;min-height:52px;margin-top:10px;border:1px dashed var(--line);background:var(--card);color:var(--accent);border-radius:12px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.thumb{position:relative;width:76px;height:76px;border-radius:10px;overflow:hidden;box-shadow:var(--sink)}
 .thumb img{width:100%;height:100%;object-fit:cover}
 .thumb button{position:absolute;top:2px;right:2px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.7);color:#fff;cursor:pointer}
-.photo{min-height:56px;border-radius:var(--r-sm);border:1px dashed var(--edge);display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:14px;background:none;cursor:pointer;width:100%}
-.bar{position:sticky;bottom:0;padding:12px 16px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px;background:var(--bg);z-index:6}
-.sum{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.sum .l{font-size:13px;color:var(--muted)}
-.sum .big{font-size:24px;font-weight:700;color:var(--ok);line-height:1}
-.sum .note{font-size:12px;color:var(--warn-ink);margin-top:4px}
+.photoPick{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;margin-top:10px;border-radius:12px;border:1px dashed var(--line);color:var(--ink-2);font-size:15px;cursor:pointer}
+.sumBar{position:sticky;bottom:0;background:var(--bg);box-shadow:0 -6px 14px var(--lo);padding:12px 16px calc(12px + env(safe-area-inset-bottom));z-index:6}
+.sumBar .sumRow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14px;color:var(--ink-2)}
+.sumBar .sumRow b{font-size:22px;color:var(--ok);font-weight:800}
+.sumBar .note{font-size:12px;color:var(--warn-ink);min-height:16px}
+.sumBar .actionBtn{margin-top:8px}
 /* detail */
-.panel{background:var(--panel);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--raise);display:flex;flex-direction:column;gap:10px}
-.lbl{font-size:12px;color:var(--muted);font-weight:700}
-.dttl{font-size:20px;font-weight:700;line-height:1.3;margin:0;overflow-wrap:anywhere}
-.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
-.stp{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:var(--muted);text-align:center;line-height:1.25}
-.stp .d{width:100%;height:6px;border-radius:3px;background:var(--line)}
-.stp.done .d{background:var(--accent)}
-.stp.done{color:var(--ink);font-weight:700}
-.stp.now .d{background:var(--warn-ink)}
-.stp.now{color:var(--warn-ink);font-weight:700}
-.tls{display:grid;grid-template-columns:24px minmax(0,1fr);gap:0 12px}
-.dot{width:12px;height:12px;border-radius:50%;background:var(--accent);margin:5px auto 0;box-shadow:0 0 0 3px var(--ok-bg)}
-.rail{width:2px;background:var(--line);margin:4px auto 0;min-height:24px}
-.tt{font-size:15px;font-weight:700}
-.sm{font-size:13px;color:var(--muted);line-height:1.45;padding-bottom:12px;overflow-wrap:anywhere}
+.dl{padding:12px;max-width:520px;margin:0 auto}
+.lines .ln{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.lines .ln:last-child{border-bottom:none}
+.lines .ln input{width:24px;height:24px;margin:0;accent-color:var(--accent)}
+.lines .ln label{font-size:15px;min-height:44px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;overflow-wrap:anywhere}
+.lines .ln small{font-size:12px;color:var(--ink-2)}
+.lines .ln.off label{color:var(--ink-2);text-decoration:line-through}
+.lines .amt{font-weight:700;white-space:nowrap}
+.lines .amt.unknown{color:var(--ink-2);font-weight:600;font-size:13px}
+.hint{font-size:13px;color:var(--hot-ink);margin-top:8px}
+.twoBtn{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.twoBtn .actionBtn,.twoBtn .sheetBtn{margin-top:12px}
+.progress{margin-top:14px}
+.progress .track{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.progress .fill{height:100%;background:var(--ok);border-radius:3px}
+.progress .label{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--ink-2);gap:4px;text-align:center}
+.progress .label b{color:var(--ink);font-weight:700}
+.sec{font-size:12px;color:var(--ink-2);font-weight:700;margin:2px 0 8px}
+.tl .ev{display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;padding:6px 0}
+.tl .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);margin-top:7px}
+.tl .tt{font-size:15px;font-weight:700}
+.tl .sm{font-size:13px;color:var(--ink-2);line-height:1.5;overflow-wrap:anywhere}
 .pics{display:flex;gap:8px;flex-wrap:wrap}
-.pics a{display:block;width:96px;height:96px;border-radius:var(--r-sm);overflow:hidden;background:var(--sink)}
+.pics a{display:block;width:96px;height:96px;border-radius:10px;overflow:hidden;box-shadow:var(--sink)}
 .pics img{width:100%;height:100%;object-fit:cover}
 /* by shop */
-.month{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0}
-.month b{font-size:15px}
-.month button{width:44px;height:44px;border-radius:var(--r-sm);border:1px solid var(--edge);background:var(--panel);cursor:pointer;font-size:18px}
-.shop{font-size:18px;font-weight:700}
-.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.num{background:var(--sink);border-radius:var(--r-sm);padding:10px 10px 8px;display:flex;flex-direction:column;gap:2px}
-.num .v{font-size:20px;font-weight:700;line-height:1}
-.num .k{font-size:11px;color:var(--muted)}
-.num.wait .v{color:var(--warn-ink)} .num.buy .v{color:var(--free-ink)} .num.money .v{color:var(--ok);font-size:17px}
-.sbar{height:8px;border-radius:4px;background:var(--sink);display:flex;overflow:hidden}
-.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
-.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
-.go{font-size:13px;color:var(--accent);font-weight:700}
-/* sheets and toast */
-.dim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20}
-.sheet{position:fixed;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--panel);border-radius:20px 20px 0 0;padding:12px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 24px rgba(0,0,0,.6);z-index:21;max-height:90vh;overflow:auto}
-.grab{width:40px;height:4px;border-radius:2px;background:var(--edge);margin:0 auto}
-.sheet h2{margin:0;font-size:18px;font-weight:700}
-.sub{font-size:14px;color:var(--muted);line-height:1.5}
-.q{min-height:44px;padding:0 12px;border-radius:999px;border:1px solid var(--edge);background:var(--bg);font-size:13px;font-weight:600;cursor:pointer}
-#toast{position:fixed;left:16px;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));max-width:528px;margin:0 auto;z-index:30;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-.toast{background:#11151B;color:var(--ink);border:1px solid var(--edge);border-radius:var(--r-sm);padding:12px 14px;font-size:14px;line-height:1.45;box-shadow:var(--raise)}
-.toast.bad{border-color:var(--danger);color:var(--danger)}
-.notice{padding:48px 24px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.month{display:flex;align-items:center;justify-content:space-between;margin:6px 0 2px}
+.month b{font-size:16px}
+.month button{width:44px;height:44px;border:none;border-radius:var(--btn-r);background:var(--card);box-shadow:var(--raise-sm);color:var(--ink);font-size:20px;cursor:pointer}
+.statGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.statBox{background:var(--bg);border-radius:10px;padding:12px 14px;box-shadow:var(--sink)}
+.statBox .k{font-size:12px;color:var(--ink-2);font-weight:600}
+.statBox .v{font-size:20px;font-weight:800;margin-top:4px;line-height:1.2}
+.shopRow{display:block;width:100%;text-align:left;background:none;border:none;font-family:inherit;color:inherit;padding:9px 0 7px;border-bottom:1px solid var(--line);cursor:pointer;min-height:44px}
+.shopRow:last-child{border-bottom:none}
+.shopRowTop{display:flex;justify-content:space-between;gap:10px;font-size:14px;align-items:baseline}
+.shopRowTop b{white-space:nowrap}
+.shopRowSub{font-size:12px;color:var(--ink-2);margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 10px}
+.shopBarTrack{height:6px;border-radius:999px;background:var(--line);margin-top:6px;overflow:hidden}
+.shopBarFill{height:100%;border-radius:999px;background:var(--accent)}
+/* sheet, toast, notice */
+.sheetWrap{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+.sheet{width:100%;max-width:520px;background:var(--card);border-radius:18px 18px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px var(--lo);max-height:90vh;overflow:auto}
+.sheetTitle{font-size:18px;font-weight:800}
+.sheetHint{font-size:13px;color:var(--ink-2);margin:4px 0 12px;line-height:1.5}
+.sheetBtn{display:block;width:100%;min-height:52px;margin-top:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.sheetBtn.cancel{color:var(--ink-2);font-weight:600;border-style:dashed}
+.sheetBtn[disabled]{opacity:.5}
+.quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#toast{position:fixed;left:16px;right:16px;top:calc(var(--head-h) + var(--tabs-h) + 8px);max-width:488px;margin:0 auto;background:var(--panel);color:var(--ink);border:none;box-shadow:var(--raise);padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;z-index:60;opacity:0;visibility:hidden;transform:translateY(-12px);transition:opacity .2s,transform .2s,visibility .2s}
+#toast.show{opacity:1;visibility:visible;transform:translateY(0)}
+#toast.err{background:var(--danger);color:#2A0A0A}
+#lastUpdated{text-align:center;font-size:12px;color:var(--ink-2);padding:10px}
+.notice{padding:60px 24px;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center;max-width:520px;margin:0 auto}
 .notice h2{margin:0;font-size:18px}
-.notice p{margin:0;color:var(--muted);line-height:1.6}
-.build{font-size:11px;color:var(--faint);text-align:center;padding:8px 0 16px}
-.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.notice p{margin:0;color:var(--ink-2);line-height:1.7}
+.notice .actionBtn{max-width:320px;display:flex;align-items:center;justify-content:center;text-decoration:none}
 </style>
 </head>
 <body>
@@ -218,7 +211,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 <script>
 (function () {
   'use strict';
-  var BUILD = 'pr-board v4 · 2026-10-18 · bind link';
+  var BUILD = 'pr-board v5 · 2026-10-19 · order shape';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -478,6 +471,92 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       };
     });
   }
+  // ---- work order #12: what a card in the Order shape says and offers ----
+  /** A Bangkok 'yyyy-MM-dd HH:mm' as ms, or NaN. */
+  function bkkMs(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(String(s || ''));
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], (+m[4] || 0) - 7, +m[5] || 0) : NaN;
+  }
+  function ageTier(min) { return min >= 1440 ? 'hot' : (min >= 60 ? 'warn' : 'calm'); }
+  function clip(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+  /**
+   * The sunk strip on top of each card (Order's .clock), in place of a round
+   * status chip: the words carry the state, the tier repeats it in colour.
+   */
+  function clockFor(row, nowMs) {
+    var s = row.status, f = row.fulfilment || '';
+    if (s === 'pending') {
+      var a = Number(row.ageMinutes) || 0;
+      return { tier: ageTier(a), text: '⏳ รออนุมัติ · ' + ageText(a).text };
+    }
+    if (s === 'cancelled') return { tier: 'calm', text: '✖️ ยกเลิก' };
+    if (s === 'rejected') {
+      var why = row.note || ((row.items || []).map(function (i) { return i.reasonShown || i.reason || ''; }).filter(Boolean)[0]) || '';
+      return { tier: 'no', text: '🚫 ไม่อนุมัติ' + (why ? ' · ' + clip(why, 50) : '') };
+    }
+    if (f === 'awaiting') {
+      var since = bkkMs(row.decidedAt);
+      var m = isNaN(since) ? 0 : Math.max(0, Math.floor(((nowMs || Date.now()) - since) / 60000));
+      return { tier: ageTier(m), text: '🛒 รอจัดซื้อสั่ง · ' + ageText(m).text };
+    }
+    if (f === 'ordered') return { tier: 'free', text: '🚚 สั่งแล้ว' + (row.eta ? ' · ถึงประมาณ ' + row.eta : '') };
+    if (f === 'delivered') return { tier: 'warn', text: '📦 ส่งถึงสาขาแล้ว · รอกดรับ' };
+    if (f === 'received') return { tier: 'ok', text: '✔️ รับของแล้ว' + (row.receivedAt ? ' · ' + thaiClock(String(row.receivedAt).slice(0, 10)) : '') };
+    var base = s === 'partial' ? '✅ อนุมัติบางส่วน ' + approvedCount(row) : '✅ อนุมัติแล้ว';
+    return { tier: 'ok', text: base + (row.decidedAt ? ' · ' + thaiClock(row.decidedAt) : '') + (row.decidedBy ? ' · ' + row.decidedBy : '') };
+  }
+  /** One muted line instead of three pills: venue · requester · who buys · category. */
+  function subLine(row) {
+    return [row.venue, row.requester, row.buyerLabel || L.buyer[row.buyer], row.category].filter(function (x) { return x; }).join(' · ');
+  }
+  function itemLine(it) {
+    var priced = it.unitPrice !== null && it.unitPrice !== undefined && it.unitPrice !== '';
+    var known = it.lineTotal !== null && it.lineTotal !== undefined;
+    return {
+      left: it.name + ' · ' + it.qty + ' ' + it.unit + (priced ? ' × ' + fmtBaht(it.unitPrice) : ''),
+      right: known ? fmtBaht(it.lineTotal) : L.unknownPrice,
+      unknown: !known, struck: it.status === 'rejected', from: it.from || '',
+    };
+  }
+  /** The money pill (Order's .promise): estimate, high-amount warning, what passed, what was paid. */
+  function promiseFor(row, highAmount) {
+    var s = row.status, f = row.fulfilment || '';
+    if (s === 'rejected' || s === 'cancelled') return null;
+    if (s === 'pending') {
+      var est = Number(row.estTotal) || 0;
+      if (est >= (highAmount || 5000)) return { tier: 'soon', text: 'ยอดสูง ' + fmtBaht(est) + ' บาท · ระบบจะถามยืนยันอีกครั้ง' };
+      var unpriced = (Number(row.lineCount) || 0) - (Number(row.pricedLines) || 0);
+      return { tier: 'free', text: 'ประมาณ ' + fmtBaht(est) + ' บาท' + (unpriced > 0 ? ' · ' + unpriced + ' ชิ้นยังไม่มีราคา' : '') };
+    }
+    if ((f === 'ordered' || f === 'delivered' || f === 'received') && row.actualTotal !== null && row.actualTotal !== undefined) {
+      return { tier: 'ok', text: 'จ่ายจริง ' + fmtBaht(row.actualTotal) + ' บาท' };
+    }
+    var refused = (row.items || []).filter(function (i) { return i.status === 'rejected'; }).length;
+    if (refused) return { tier: 'soon', text: 'อนุมัติ ' + fmtBaht(row.approvedTotal) + ' จาก ' + fmtBaht(row.estTotal) + ' บาท · ไม่ผ่าน ' + refused + ' ชิ้น' };
+    return { tier: 'ok', text: 'อนุมัติ ' + fmtBaht(row.approvedTotal) + ' บาท' };
+  }
+  var PROMISE_GLYPH = { ok: '🟢', soon: '🟡', late: '🔴', free: '🔵' };
+  /** The ONE big button a card carries (Order: one action per card), or null. */
+  function primaryActionFor(me, row) {
+    var b = buttonsFor(me, row);
+    if (b.indexOf('decide') >= 0) return { label: '✓ อนุมัติทั้งใบ', act: 'approveAll' };
+    if (b.indexOf('ordered') >= 0) return { label: '🛒 สั่งซื้อแล้ว', act: 'ordered' };
+    if (b.indexOf('delivered') >= 0) return { label: '📦 ส่งถึงสาขาแล้ว', act: 'delivered' };
+    if (b.indexOf('received') >= 0) return { label: '✔️ รับของแล้ว', act: 'received' };
+    return null;
+  }
+  /** Everything else, behind ⋯ (Order's .moreMenu). */
+  function moreMenuFor(me, row) {
+    var b = buttonsFor(me, row), out = [];
+    if (b.indexOf('decide') >= 0) {
+      out.push({ label: '📝 เลือกอนุมัติเป็นรายชิ้น', act: 'lines' });
+      out.push({ label: '🚫 ไม่อนุมัติทั้งใบ', act: 'rejectAll' });
+    }
+    if (b.indexOf('cancel') >= 0) out.push({ label: '✖️ ยกเลิกคำขอ', act: 'cancel', danger: true });
+    if ((row.photos || []).length) out.push({ label: '📷 ดูรูป (' + row.photos.length + ')', act: 'open' });
+    out.push({ label: 'ℹ️ รายละเอียด', act: 'open' });
+    return out;
+  }
   // ---- work order #11: the bind link from the Davis Care 1:1 chat ----
   /** The one-time code the bot put in the link (?bind=<32 hex>), or ''. */
   function bindCodeFrom(qs) {
@@ -506,8 +585,16 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
    * a spent or expired code falls back to whoAmI, since the person may be bound
    * already. Resolves {me, bound, bindError}.
    */
-  function identify(apiFn, code) {
+  function identify(apiFn, code, boundBefore) {
     if (!code) return apiFn('prWhoAmI', {}).then(function (me) { return { me: me, bound: false, bindError: '' }; });
+    // Bound on this phone before and re-opened from the same chat button: the
+    // code is spent, so ask whoAmI first and bind only if it does not know us
+    // (otherwise every re-open logged a harmless PR_BIND_FAIL).
+    if (boundBefore) {
+      return apiFn('prWhoAmI', {}).then(function (me) {
+        return me && me.known ? { me: me, bound: false, bindError: '' } : identify(apiFn, code, false);
+      });
+    }
     return apiFn('prBind', { code: code }).then(function (me) { return { me: me, bound: true, bindError: '' }; }, function (err) {
       var why = (err && err.message) || '';
       return apiFn('prWhoAmI', {}).then(function (me) { return { me: me, bound: false, bindError: why }; });
@@ -808,13 +895,13 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 /* DEMO END */
 
   // ======================================================================
-  // The screen
+  // The screen (work order #12: the Order board's shape)
   // ======================================================================
   var app = document.getElementById('app');
   var S = {
     me: null, notice: null, tab: '', venue: '', month: '', board: null, shops: null,
     view: 'list', detail: null, detailId: '', form: null, sheet: null, counts: {}, receipt: null,
-    checks: {}, fields: {}, busy: false, lastLoad: 0,
+    checks: {}, fields: {}, busy: false, lastLoad: 0, openMenu: '', avatar: '', sending: {},
   };
 
   function store(get, val) {
@@ -824,13 +911,14 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     } catch (e) { return null; }
     return null;
   }
+  var toastTimer = null;
+  /** Order's toast: one line under the tabs, red for a refusal. */
   function toast(msg, bad) {
-    var box = document.getElementById('toast');
-    var el = document.createElement('div');
-    el.className = 'toast' + (bad ? ' bad' : '');
+    var el = document.getElementById('toast');
     el.textContent = msg;
-    box.appendChild(el);
-    setTimeout(function () { el.remove(); }, bad ? 6000 : 3500);
+    el.className = 'show' + (bad ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = ''; }, bad ? 6000 : 3500);
   }
   /** The API, refusals as thrown Errors carrying the server's Thai sentence. */
   function api(fn, payload) {
@@ -841,43 +929,40 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       throw new Error(err && err.message === L.noLine ? L.noLine : L.err.network);
     });
   }
-  function icon(name) {
-    var d = {
-      plus: 'M12 5v14M5 12h14', x: 'M6 6l12 12M18 6L6 18', back: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7',
-      check: 'M5 12l5 5L19 7', ext: 'M10 14L20 4M20 4h-6M20 4v6M18 13v6H5V6h6', shop: 'M3 9l1-5h16l1 5M3 9h18M3 9v11h18V9M9 20v-6h6v6',
-      cam: 'M4 8h3l2-3h6l2 3h3v11H4z', trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
-    }[name];
-    return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
-  }
   function fromHtml(from) {
     var f = String(from || '').trim();
     if (!f) return '';
     if (/^https?:\/\//i.test(f)) {
       var host = f.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0];
-      return '<a class="lnk" href="' + esc(f) + '" target="_blank" rel="noopener">' + icon('ext') + 'เปิดลิงก์ ' + esc(host) + '</a>';
+      return 'ซื้อจาก <a class="lnk" href="' + esc(f) + '" target="_blank" rel="noopener">' + esc(host) + ' ↗</a>';
     }
-    return esc(L.buyer && 'ซื้อจาก ' + f);
-  }
-  function itemText(it) {
-    return esc(it.name) + ' · ' + esc(it.qty) + ' ' + esc(it.unit) + (it.unitPrice !== null && it.unitPrice !== undefined ? ' × ' + fmtBaht(it.unitPrice) : '');
-  }
-  function amtHtml(it, big) {
-    return it.lineTotal === null || it.lineTotal === undefined
-      ? '<span class="amt unknown">' + L.unknownPrice + '</span>'
-      : '<span class="amt' + (big ? ' big' : '') + '">' + fmtBaht(it.lineTotal) + '</span>';
+    return 'ซื้อจาก ' + esc(f);
   }
   function titleOf(row) { return (row.items || []).map(function (i) { return i.name; }).join(' · '); }
+  function clockHtml(r) { var c = clockFor(r, Date.now()); return '<div class="clock ' + c.tier + '">' + esc(c.text) + '</div>'; }
+  function promiseHtml(r) {
+    var p = promiseFor(r, S.me.highAmount);
+    return p ? '<div class="promise ' + p.tier + '">' + PROMISE_GLYPH[p.tier] + ' ' + esc(p.text) + '</div>' : '';
+  }
+  function itemsHtml(r) {
+    return '<div class="items">' + (r.items || []).map(function (it) {
+      var l = itemLine(it);
+      var why = l.struck && it.reasonShown ? '<div class="why">' + esc(r.decidedBy ? r.decidedBy + ': ' : '') + esc(it.reasonShown) + '</div>' : '';
+      return '<div class="it' + (l.struck ? ' struck' : '') + '"><span>' + esc(l.left) + '</span>' +
+        (l.unknown ? '<span class="unknown">' + esc(l.right) + '</span>' : '<b>' + esc(l.right) + '</b>') + '</div>' +
+        (l.from ? '<div class="from">' + fromHtml(l.from) + '</div>' : '') + why;
+    }).join('') + '</div>';
+  }
 
   // ---- tabs per role ----------------------------------------------------------
   function tabsFor(me) {
-    // Kept across tabs, so the by-shop tab still shows how many wait elsewhere.
     var c = S.counts || {};
-    var n = function (k) { return c[k] !== undefined ? ' · ' + c[k] : ''; };
+    var n = function (k) { return c[k] !== undefined ? ' ' + c[k] : ''; };
     if (me.role === 'venue_manager') {
       var split = S.board && S.board.mineRows ? splitManagerTabs(S.board.mineRows) : null;
       return [
-        { key: 'active', label: 'กำลังดำเนินการ' + (split ? ' · ' + split.active.length : '') },
-        { key: 'done', label: 'จบแล้ว' + (split ? ' · ' + split.done.length : '') },
+        { key: 'active', label: 'กำลังดำเนินการ' + (split ? ' ' + split.active.length : '') },
+        { key: 'done', label: 'จบแล้ว' + (split ? ' ' + split.done.length : '') },
       ];
     }
     if (me.role === 'account') return [{ key: 'pending', label: 'รออนุมัติ' + n('pending') }, { key: 'all', label: 'ทั้งหมด' + n('all') }, { key: 'byshop', label: 'ตามร้าน' }];
@@ -913,274 +998,234 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
   }
   function busyNow() {
     var a = document.activeElement;
-    return !!S.sheet || S.view === 'form' || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName));
+    return !!S.sheet || S.view === 'form' || !!S.openMenu || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName));
   }
   setInterval(function () { if (S.me && S.view === 'list' && !busyNow()) load(true); }, POLL_MS);
 
   // ---- render -----------------------------------------------------------------
+  function demoStrip() {
+    if (!DEMO) return '';
+    return '<div class="demo"><b>ตัวอย่าง ไม่บันทึกจริง · ดูเป็น</b>' + ['venue_manager', 'purchasing', 'manager', 'account'].map(function (k) {
+      return '<button type="button" data-act="as" data-k="' + k + '" class="' + (S.me && S.me.role === k ? 'on' : '') + '">' + L.role[k] + '</button>';
+    }).join('') + '</div>';
+  }
+  function footer() {
+    var t = S.lastLoad ? new Date(S.lastLoad + 7 * 3600000) : null;
+    var hhmm = t ? ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2) : '';
+    return '<p id="lastUpdated">' + (hhmm ? 'อัปเดต ' + hhmm + ' · ' : '') + esc(BUILD) + (DEMO ? ' · demo' : '') + '</p>';
+  }
   function render() {
-    var h = '';
-    if (DEMO) {
-      h += '<div class="demo"><b>ตัวอย่าง ไม่บันทึกจริง · ดูเป็น</b>' + ['venue_manager', 'purchasing', 'manager', 'account'].map(function (k) {
-        return '<button type="button" data-act="as" data-k="' + k + '" class="' + (S.me && S.me.role === k ? 'on' : '') + '">' + L.role[k] + '</button>';
-      }).join('') + '</div>';
-    }
+    var h = demoStrip();
     if (S.notice) {
       app.innerHTML = h + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text).replace(/\n/g, '<br>') + '</p>' +
-        (S.notice.link ? '<a class="btn pri" style="max-width:320px" href="' + esc(S.notice.link.href) + '">' + esc(S.notice.link.label) + '</a>' : '') +
-        '</div><div class="build">' + BUILD + '</div>';
+        (S.notice.link ? '<a class="actionBtn" href="' + esc(S.notice.link.href) + '">' + esc(S.notice.link.label) + '</a>' : '') +
+        '</div>' + footer();
       return;
     }
     if (!S.me) { app.innerHTML = h + '<div class="notice"><p>กำลังเปิดบอร์ด…</p></div>'; return; }
     if (S.view === 'form') { app.innerHTML = h + renderForm(); afterForm(); return; }
-    if (S.view === 'detail') { app.innerHTML = h + renderDetail() + renderSheet(); return; }
+    if (S.view === 'detail') { app.innerHTML = h + renderDetail() + footer() + renderSheet(); return; }
     h += header();
     h += '<nav class="tabs" aria-label="แท็บ">' + tabsFor(S.me).map(function (t) {
-      return '<button type="button" class="tab' + (S.tab === t.key ? ' on' : '') + '" data-act="tab" data-k="' + t.key + '"' + (S.tab === t.key ? ' aria-current="page"' : '') + '>' + esc(t.label) + '</button>';
-    }).join('') + '</nav>';
-    h += S.tab === 'byshop' ? renderByShop() : renderList();
-    h += '<div class="build">' + esc(BUILD) + (DEMO ? ' · demo' : '') + '</div>';
-    app.innerHTML = h + renderSheet();
+      return '<button type="button" class="' + (S.tab === t.key ? 'active' : '') + '" data-act="tab" data-k="' + t.key + '"' + (S.tab === t.key ? ' aria-current="page"' : '') + '>' + esc(t.label) + '</button>';
+    }).join('') + (S.me.canCreate ? '<button type="button" class="tabPlus" data-act="new" aria-label="ขอซื้อของใหม่">＋</button>' : '') + '</nav>';
+    h += '<main id="list">' + (S.tab === 'byshop' ? renderByShop() : renderList()) + '</main>';
+    app.innerHTML = h + footer() + renderSheet();
   }
-  function header() {
+  function header(back) {
     var me = S.me;
+    var face = S.avatar ? '<img id="avatar" src="' + esc(S.avatar) + '" alt="">' :
+      '<span id="avatar" class="initial" aria-hidden="true">' + esc(Array.from(me.actorName || '?')[0]) + '</span>';
     var where = me.role === 'venue_manager' ? (me.venues.join(', ') || 'ยังไม่ได้ผูกร้าน') : 'เห็นทุกสาขา';
-    return '<header class="head"><div><h1>ขอซื้อสาขา</h1><div class="who">' + esc(me.actorName) + ' · ' + esc(me.roleLabel || L.role[me.role] || '') + ' (' + esc(where) + ')</div></div>' +
-      '<div class="ava" aria-hidden="true">' + esc(Array.from(me.actorName || '?')[0]) + '</div></header>';
+    return '<header><div class="headRow">' + (back ? '<button type="button" class="back" data-act="' + back + '" aria-label="กลับ">‹</button>' : face) +
+      '<div style="min-width:0"><h1>🛒 Davis ขอซื้อ<small>' + esc(BUILD.split(' · ')[0].replace('pr-board ', '')) + '</small></h1>' +
+      '<div class="who">' + esc(me.actorName) + ' · ' + esc(me.roleLabel || L.role[me.role] || '') + ' (' + esc(where) + ')</div></div></div></header>';
+  }
+  function chipsHtml() {
+    var b = S.board;
+    var venues = Object.keys((b && b.byVenue) || {});
+    if (venues.length <= 1 && !S.venue) return '';   // one shop: Order hides the row
+    var all = venues.reduce(function (a, k) { return a + b.byVenue[k]; }, 0);
+    var chip = function (k, label, n) {
+      var on = S.venue === k;
+      return '<button type="button" class="shopChip' + (on ? ' active' : '') + '" data-act="venue" data-k="' + esc(k) + '" aria-pressed="' + on + '">' + (on ? '✓ ' : '') + esc(label) + ' ' + n + '</button>';
+    };
+    return '<div class="shopChipRow" role="group" aria-label="กรองตามร้าน">' + chip('', 'ทุกร้าน', all) + venues.map(function (v) { return chip(v, v, b.byVenue[v]); }).join('') + '</div>';
+  }
+  function groupHead(icon, label, rows, totals) {
+    var t = totals || summarize(rows);
+    return '<div class="groupHead"><span>' + icon + ' ' + esc(label) + ' (' + t.count + ')' + (t.venues > 1 ? ' · ' + t.venues + ' ร้าน' : '') + '</span>' +
+      (t.baht ? '<b>รวม ' + fmtBaht(t.baht) + ' บาท</b>' : '') + '</div>';
   }
   function renderList() {
     var me = S.me, b = S.board, h = '';
-    var withFilter = S.tab === 'pending' || S.tab === 'tobuy' || (S.tab === 'all' && me.role === 'account');
-    if (withFilter && b) {
-      var allN = Object.keys(b.byVenue || {}).reduce(function (a, k) { return a + b.byVenue[k]; }, 0);
-      h += '<div class="fhead"><span>ดูตามร้าน</span>' + (me.canByShop ? '<button type="button" data-act="tab" data-k="byshop">สรุปทุกร้าน ›</button>' : '') + '</div>';
-      h += '<div class="filters" role="group" aria-label="กรองตามร้าน"><button type="button" class="pill' + (S.venue ? '' : ' on') + '" data-act="venue" data-k="" aria-pressed="' + !S.venue + '">ทุกร้าน <b>' + allN + '</b></button>' +
-        Object.keys(b.byVenue || {}).map(function (v) {
-          return '<button type="button" class="pill' + (S.venue === v ? ' on' : '') + '" data-act="venue" data-k="' + esc(v) + '" aria-pressed="' + (S.venue === v) + '">' + esc(v) + ' <b>' + b.byVenue[v] + '</b></button>';
-        }).join('') + '</div>';
-      var t = b.totals || { count: 0, venues: 0, baht: 0 };
-      var what = S.tab === 'tobuy' ? 'ต้องซื้อ' : (S.tab === 'all' ? 'ทั้งหมด' : 'รออนุมัติ');
-      h += '<div class="fsum"><span>' + what + ' ' + t.count + ' ใบ จาก ' + t.venues + ' ร้าน</span><span>รวม <b>' + fmtBaht(t.baht) + ' บาท</b></span></div>';
-    }
-    h += '<div class="body">';
-    if (me.canCreate && (me.role === 'venue_manager' ? S.tab === 'active' : S.tab === 'pending')) {
-      h += '<button type="button" class="btn pri" data-act="new">' + icon('plus') + 'ขอซื้อของใหม่</button>';
-    }
-    if (me.role === 'venue_manager' && !me.venues.length) {
-      h += '<div class="empty">ยังไม่ได้ผูกร้านให้คุณ ให้ผู้ดูแลระบบใส่ชื่อร้านในทะเบียนก่อน แล้วจึงส่งคำขอได้</div>';
-    }
-    if (!b) { h += '<div class="empty">กำลังโหลด…</div></div>'; return h; }
+    if (me.role === 'venue_manager' && !me.venues.length) h += '<div class="empty">ยังไม่ได้ผูกร้านให้คุณ ให้ผู้ดูแลระบบใส่ชื่อร้านในทะเบียนก่อน แล้วจึงส่งคำขอได้</div>';
+    if (!b) return h + '<div class="empty">กำลังโหลด…</div>';
+    var withChips = S.tab === 'pending' || S.tab === 'tobuy' || S.tab === 'all';
+    if (withChips) h += chipsHtml();
     var rows = b.rows || [];
+    var label = { active: 'กำลังดำเนินการ', done: 'จบแล้ว', pending: 'รออนุมัติ', tobuy: 'ต้องซื้อ', all: 'ทั้งหมด' }[S.tab] || '';
+    var glyph = { active: '⏳', done: '✔️', pending: '⏳', tobuy: '🛒', all: '📋' }[S.tab] || '';
     if (S.tab === 'active' || S.tab === 'done') {
       var split = splitManagerTabs(rows);
       rows = S.tab === 'active' ? split.active : split.done;
     }
     if (!rows.length) {
-      h += '<div class="empty">' + ({ active: 'ยังไม่มีคำขอที่กำลังดำเนินการ', done: 'ยังไม่มีคำขอที่จบแล้ว', pending: 'ไม่มีคำขอรออนุมัติ', tobuy: 'ไม่มีของที่ต้องซื้อ', all: 'ยังไม่มีคำขอ' }[S.tab] || '') + '</div>';
+      h += '<div class="empty">' + ({ active: 'ยังไม่มีคำขอที่กำลังดำเนินการ\nกด ＋ บนแถบแท็บเพื่อขอซื้อของ', done: 'ยังไม่มีคำขอที่จบแล้ว', pending: 'ไม่มีคำขอรออนุมัติ', tobuy: 'ไม่มีของที่ต้องซื้อ', all: 'ยังไม่มีคำขอ' }[S.tab] || '').replace(/\n/g, '<br>') + '</div>';
+    } else {
+      h += groupHead(glyph, label, rows, withChips ? b.totals : null);
+      rows.forEach(function (r) { h += listCard(r); });
     }
-    rows.forEach(function (r) {
-      if (S.tab === 'pending' && me.canDecide) h += approverCard(r);
-      else if (S.tab === 'tobuy' && me.canFulfil) h += buyerCard(r);
-      else h += summaryCard(r);
-    });
     if (S.tab === 'tobuy' && S.receipt && S.receipt.length) {
-      h += '<div class="sec">รอสาขารับของ · ' + S.receipt.length + '</div>';
-      S.receipt.forEach(function (r) { h += receiptCard(r); });
+      h += groupHead('📦', 'รอสาขารับของ', S.receipt);
+      S.receipt.forEach(function (r) { h += listCard(r); });
     }
-    return h + '</div>';
+    return h;
   }
-  function summaryCard(r) {
-    var chip = statusChip(r);
-    var line;
-    if (r.status === 'pending') line = 'ส่ง ' + thaiClock(r.createdAt) + ' · ' + ageText(r.ageMinutes).text;
-    else if (r.fulfilment === 'ordered') line = 'จ่ายจริง ' + fmtBaht(r.actualTotal) + ' บาท';
-    else line = r.decidedAt ? 'ตัดสิน ' + thaiClock(r.decidedAt) + (r.decidedBy ? ' · ' + r.decidedBy : '') : '';
-    var refused = (r.items || []).filter(function (i) { return i.status === 'rejected'; });
-    var money = r.status === 'pending' ? 'ประมาณ <span class="baht">' + fmtBaht(r.estTotal) + ' บาท</span>' + (r.lineCount > r.pricedLines ? ' · ' + (r.lineCount - r.pricedLines) + ' ชิ้นยังไม่มีราคา' : '')
-      : (r.status === 'rejected' || r.status === 'cancelled' ? 'ประมาณ <span class="baht">' + fmtBaht(r.estTotal) + ' บาท</span>' : 'อนุมัติ <span class="baht">' + fmtBaht(r.approvedTotal) + ' บาท</span>');
-    var why = r.status === 'rejected' && r.note ? ' · ' + esc(r.decidedBy) + ': ' + esc(r.note)
-      : refused.length && r.status === 'partial' ? ' · ' + refused.map(function (i) { return esc(i.name) + ': ' + esc(i.reasonShown); }).join(' · ') : '';
-    var tail = r.status === 'approved' && r.buyer === 'self' ? ' · เบิกคืนตามระบบบริษัท' : '';
-    return '<button type="button" class="card" data-act="open" data-k="' + esc(r.id) + '">' +
-      '<span class="row"><span class="id">' + esc(r.id) + '</span><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span></span>' +
-      '<span class="ttl">' + esc(titleOf(r)) + '</span>' +
-      '<span class="row"><span class="tags"><span class="tag' + (r.buyer === 'purchasing' ? ' path' : '') + '">' + esc(r.buyerLabel || L.buyer[r.buyer]) + '</span>' +
-      (S.me.role !== 'venue_manager' ? '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span>' : '') + '</span><span class="meta">' + esc(line) + '</span></span>' +
-      '<span class="meta">' + money + why + tail + '</span></button>';
+  /** The Order card: clock · title · sub · promise · items · one button · ⋯ */
+  function listCard(r) {
+    var act = primaryActionFor(S.me, r);
+    var open = S.openMenu === r.id;
+    var sending = S.sending[r.id];
+    var h = '<article class="card' + (r.createdAt ? '' : ' pending') + '">';
+    h += '<button type="button" class="tap" data-act="open" data-k="' + esc(r.id) + '" aria-label="รายละเอียด ' + esc(r.id) + '">' + clockHtml(r) +
+      '<div class="title">' + esc(titleOf(r)) + '</div><div class="sub">' + esc(subLine(r)) + '</div></button>';
+    h += promiseHtml(r) + itemsHtml(r);
+    if (act) h += '<button type="button" class="actionBtn' + (sending ? ' busy' : '') + '" data-act="' + act.act + '" data-k="' + esc(r.id) + '"' + (sending ? ' disabled' : '') + '>' + (sending ? 'กำลังบันทึก…' : esc(act.label)) + '</button>';
+    h += '<div class="moreRow"><button type="button" class="moreBtn" data-act="more" data-k="' + esc(r.id) + '" aria-expanded="' + open + '" aria-label="เพิ่มเติม">⋯</button></div>';
+    h += '<div class="moreMenu' + (open ? ' open' : '') + '"><div class="mid">' + esc(r.id) + '</div>' + moreMenuFor(S.me, r).map(function (m) {
+      return '<button type="button" class="' + (m.danger ? 'danger' : '') + '" data-act="' + m.act + '" data-k="' + esc(r.id) + '">' + esc(m.label) + '</button>';
+    }).join('') + '</div>';
+    return h + '</article>';
+  }
+  function renderByShop() {
+    var h = '<div class="month"><button type="button" data-act="month" data-k="-1" aria-label="เดือนก่อน">‹</button><b>' + esc(monthLabel(S.month)) + '</b>' +
+      '<button type="button" data-act="month" data-k="1" aria-label="เดือนถัดไป">›</button></div>';
+    if (!S.shops) return h + '<div class="empty">กำลังโหลด…</div>';
+    var tot = S.shops.reduce(function (a, s) { a.p += s.pending; a.b += s.toBuy; a.m += s.approvedTotalMonth; return a; }, { p: 0, b: 0, m: 0 });
+    h += '<div class="statGrid">' +
+      '<div class="statBox"><div class="k">รออนุมัติ</div><div class="v">' + tot.p + '</div></div>' +
+      '<div class="statBox"><div class="k">ต้องซื้อ</div><div class="v">' + tot.b + '</div></div>' +
+      '<div class="statBox"><div class="k">อนุมัติเดือนนี้ (บาท)</div><div class="v">' + fmtBaht(tot.m) + '</div></div>' +
+      '<div class="statBox"><div class="k">จำนวนร้าน</div><div class="v">' + S.shops.length + '</div></div></div>';
+    var max = Math.max.apply(null, S.shops.map(function (s) { return s.approvedTotalMonth; }).concat([0]));
+    h += '<div class="groupHead"><span>🏪 ตามร้าน (' + S.shops.length + ')</span><b>รวม ' + fmtBaht(tot.m) + ' บาท</b></div><section class="card">';
+    S.shops.forEach(function (s) {
+      var quiet = !s.pending && !s.toBuy && !s.approvedTotalMonth;
+      var pct = max > 0 ? Math.round(s.approvedTotalMonth * 100 / max) : 0;
+      h += '<button type="button" class="shopRow" data-act="shop" data-k="' + esc(s.venue) + '"><div class="shopRowTop"><span>' + esc(s.venue) + '</span><b>' + fmtBaht(s.approvedTotalMonth) + ' บาท</b></div>' +
+        '<div class="shopBarTrack" aria-hidden="true"><div class="shopBarFill" style="width:' + pct + '%"></div></div>' +
+        '<div class="shopRowSub">' + (quiet ? '<span>เดือนนี้ยังไม่มีคำขอ</span>' :
+          '<span>รออนุมัติ ' + s.pending + '</span><span>ต้องซื้อ ' + s.toBuy + '</span>' + s.categories.map(function (c) { return '<span>' + esc(c.name) + ' ' + c.percent + '%</span>'; }).join('')) + '</div></button>';
+    });
+    return h + '</section>';
+  }
+
+  // ---- detail -----------------------------------------------------------------
+  function renderDetail() {
+    var h = header('back') + '<main class="dl">';
+    var d = S.detail;
+    if (!d) return h + '<div class="empty">กำลังโหลด…</div></main>';
+    var r = d.row;
+    var btns = buttonsFor(S.me, r);
+    h += '<article class="card"><div class="id">' + esc(r.id) + '</div>' + clockHtml(r) + '<div class="title">' + esc(titleOf(r)) + '</div><div class="sub">' + esc(subLine(r)) + '</div>' +
+      '<div class="sub">ส่งคำขอ ' + esc(thaiClock(r.createdAt)) + (r.decidedAt ? ' · ตัดสิน ' + esc(thaiClock(r.decidedAt)) + ' โดย ' + esc(r.decidedBy) : '') + '</div>' + promiseHtml(r);
+    var steps = stepsFor(r);
+    if (steps) {
+      var done = steps.filter(function (s) { return s.state === 'done'; }).length;
+      h += '<div class="progress"><div class="track"><div class="fill" style="width:' + Math.round(done * 25) + '%"></div></div><div class="label">' + steps.map(function (s) {
+        return '<span>' + (s.state === 'done' ? '<b>' : '') + esc(s.name.split('\n')[0]) + (s.state === 'done' ? '</b>' : '') + (s.state === 'now' ? '<span class="vh"> (ขั้นนี้)</span>' : '') + '</span>';
+      }).join('') + '</div></div>';
+    }
+    if (btns.indexOf('decide') >= 0) h += decidePanel(r); else h += itemsHtml(r);
+    h += '</article>';
+    h += '<article class="card"><div class="sec">เหตุผล</div><div style="font-size:15px;line-height:1.6;overflow-wrap:anywhere">' + esc(r.reason) + '</div>' +
+      (r.photos && r.photos.length ? '<div class="sec" style="margin-top:12px">รูป</div><div class="pics">' + r.photos.map(function (u, i) {
+        return '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt="รูปที่ ' + (i + 1) + '"></a>';
+      }).join('') + '</div>' : '') + '</article>';
+    h += '<article class="card"><div class="sec">ประวัติ</div><div class="tl">' + d.audit.map(function (a) {
+      return '<div class="ev"><span class="dot" aria-hidden="true"></span><div><div class="tt">' + esc(a.label || L.action[a.action] || a.action) + '</div><div class="sm">' +
+        esc(a.actor) + ' · ' + esc(thaiClock(a.at)) + (a.detail ? ' · ' + esc(a.detail) : '') + '</div></div></div>';
+    }).join('') + '</div></article>';
+    var act = primaryActionFor(S.me, r);
+    if (act && act.act !== 'approveAll') h += '<button type="button" class="actionBtn" data-act="' + act.act + '" data-k="' + esc(r.id) + '">' + esc(act.label) + '</button>';
+    if (btns.indexOf('cancel') >= 0) h += '<button type="button" class="sheetBtn cancel" data-act="cancel" data-k="' + esc(r.id) + '">✖️ ยกเลิกคำขอนี้</button>';
+    return h + '</main>';
   }
   function checksOf(r) {
     if (!S.checks[r.id]) { S.checks[r.id] = {}; (r.items || []).forEach(function (i) { S.checks[r.id][i.n] = true; }); }
     return S.checks[r.id];
   }
-  function approverCard(r) {
+  /** Per-line ticks live here (detail), not on the list card. */
+  function decidePanel(r) {
     var ck = checksOf(r);
     var plan = decisionPlan(r, ck, S.me.highAmount);
-    var age = ageText(r.ageMinutes);
-    var maxLine = Math.max.apply(null, (r.items || []).map(function (i) { return i.lineTotal || 0; }).concat([0]));
-    var h = '<div class="card">';
-    h += '<div class="row"><button type="button" class="lnk" data-act="open" data-k="' + esc(r.id) + '" style="background:none;border:0;padding:0;cursor:pointer"><span class="id">' + esc(r.id) + ' ›</span></button><span class="age' + (age.hot ? ' hot' : '') + '">' + esc(age.text) + '</span></div>';
-    h += '<div class="tags"><span class="tag' + (r.buyer === 'purchasing' ? ' path' : '') + '">' + esc(r.buyerLabel || L.buyer[r.buyer]) + '</span>' +
-      (r.category ? '<span class="tag cat">' + esc(r.category) + '</span>' : '') +
-      (plan.high ? '<span class="tag hi">ยอดสูง ' + fmtBaht(S.me.highAmount) + ' ขึ้นไป</span>' : '') +
-      '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
-    h += '<div class="meta">' + esc(r.reason) + '</div>';
-    h += '<div class="lines">' + (r.items || []).map(function (it) {
-      var on = !!ck[it.n];
-      var idc = 'c_' + esc(r.id) + '_' + it.n;
-      var sub = fromHtml(it.from);
+    var h = '<div class="lines" style="margin-top:10px">' + (r.items || []).map(function (it) {
+      var on = !!ck[it.n], idc = 'c_' + esc(r.id) + '_' + it.n, l = itemLine(it);
       return '<div class="ln' + (on ? '' : ' off') + '"><input type="checkbox" id="' + idc + '" data-act="tick" data-k="' + esc(r.id) + '" data-n="' + it.n + '"' + (on ? ' checked' : '') + '>' +
-        '<label for="' + idc + '">' + itemText(it) + (sub ? '<small>' + sub + '</small>' : '') + '</label>' + amtHtml(it, it.lineTotal && it.lineTotal === maxLine && r.items.length > 1) + '</div>';
+        '<label for="' + idc + '">' + esc(l.left) + (l.from ? '<small>' + fromHtml(l.from) + '</small>' : '') + '</label>' +
+        '<span class="amt' + (l.unknown ? ' unknown' : '') + '">' + esc(l.right) + '</span></div>';
     }).join('') + '</div>';
-    if (plan.rejected.length && !plan.wholeReject) h += '<div class="hintno">' + plan.rejected.length + ' รายการไม่ได้ติ๊ก = ไม่อนุมัติ ต้องใส่เหตุผลตอนกดยืนยัน</div>';
-    h += '<div class="total"><span>เลือก ' + plan.approved.length + ' จาก ' + r.items.length + ' รายการ</span><span>รวม <b>' + fmtBaht(plan.checkedTotal) + ' บาท</b></span></div>';
-    h += '<div class="acts">' +
-      (plan.wholeReject ? '' : '<button type="button" class="btn pri sm" data-act="approve" data-k="' + esc(r.id) + '">' + icon('check') + (plan.rejected.length ? 'อนุมัติที่เลือก (' + plan.approved.length + ')' : 'อนุมัติ') + '</button>') +
-      '<button type="button" class="btn no sm" data-act="rejectAll" data-k="' + esc(r.id) + '">' + (r.items.length > 1 ? 'ไม่อนุมัติทั้งใบ' : 'ไม่อนุมัติ') + '</button></div>';
-    return h + '</div>';
-  }
-  function buyerCard(r) {
-    var chip = statusChip(r);
-    var f = S.fields[r.id] || (S.fields[r.id] = { actual: '', eta: '' });
-    var approved = (r.items || []).filter(function (i) { return i.status === 'approved'; });
-    var refused = (r.items || []).length - approved.length;
-    var h = '<div class="card">';
-    h += '<div class="row"><button type="button" class="lnk" data-act="open" data-k="' + esc(r.id) + '" style="background:none;border:0;padding:0;cursor:pointer"><span class="id">' + esc(r.id) + ' ›</span></button><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span></div>';
-    h += '<div class="tags">' + (r.category ? '<span class="tag cat">' + esc(r.category) + '</span>' : '') + '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
-    h += '<div class="lines">' + approved.map(function (it) {
-      var sub = fromHtml(it.from);
-      return '<div class="ln ro"><span class="n"><span>' + itemText(it) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</span>' + amtHtml(it) + '</div>';
-    }).join('') + '</div>';
-    h += '<div class="meta">' + (refused ? refused + ' รายการไม่ได้อนุมัติ ไม่ต้องซื้อ · ' : '') + 'ประมาณรวม ' + fmtBaht(r.approvedTotal) + ' บาท' + (r.fulfilment === 'ordered' ? ' · จ่ายจริง ' + fmtBaht(r.actualTotal) : '') + '</div>';
-    if (r.fulfilment === 'awaiting') {
-      h += '<div class="fields"><div class="field"><label for="paid_' + esc(r.id) + '">จ่ายจริง (บาท)</label><input class="in" id="paid_' + esc(r.id) + '" inputmode="decimal" data-field="actual" data-k="' + esc(r.id) + '" value="' + esc(f.actual) + '" placeholder="' + fmtBaht(r.approvedTotal) + '"></div>' +
-        '<div class="field"><label for="eta_' + esc(r.id) + '">คาดว่าถึงสาขา</label><input class="in" id="eta_' + esc(r.id) + '" data-field="eta" data-k="' + esc(r.id) + '" value="' + esc(f.eta) + '" placeholder="เช่น 20 ต.ค."></div></div>';
-      if (f.err) h += '<div class="err">' + esc(f.err) + '</div>';
-      h += '<button type="button" class="btn pri sm" data-act="ordered" data-k="' + esc(r.id) + '">สั่งซื้อแล้ว</button>';
-    } else if (r.fulfilment === 'ordered') {
-      h += '<button type="button" class="btn sec sm" data-act="delivered" data-k="' + esc(r.id) + '">ส่งถึงสาขาแล้ว</button>';
-    }
-    return h + '</div>';
-  }
-  /** A delivered request: read-only for purchasing, รับของแล้ว for whoever may receive it. */
-  function receiptCard(r) {
-    var chip = statusChip(r);
-    var h = '<div class="card"><div class="row"><button type="button" class="lnk" data-act="open" data-k="' + esc(r.id) + '" style="background:none;border:0;padding:0;cursor:pointer"><span class="id">' + esc(r.id) + ' ›</span></button><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span></div>';
-    h += '<div class="ttl">' + esc(titleOf(r)) + '</div>';
-    h += '<div class="tags"><span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
-    h += '<div class="meta">ส่งถึงสาขา ' + esc(thaiClock(r.deliveredAt)) + ' · จ่ายจริง ' + fmtBaht(r.actualTotal) + ' บาท · รอสาขากดรับของ</div>';
-    if (buttonsFor(S.me, r).indexOf('received') >= 0) {
-      h += '<button type="button" class="btn pri sm" data-act="received" data-k="' + esc(r.id) + '">' + icon('check') + 'รับของแล้ว</button>';
-    }
-    return h + '</div>';
-  }
-  function renderByShop() {
-    var h = '<div class="month"><button type="button" data-act="month" data-k="-1" aria-label="เดือนก่อน">‹</button><b>' + esc(monthLabel(S.month)) + '</b>' +
-      '<button type="button" data-act="month" data-k="1" aria-label="เดือนถัดไป">›</button></div><div class="body">';
-    if (!S.shops) return h + '<div class="empty">กำลังโหลด…</div></div>';
-    S.shops.forEach(function (s, idx) {
-      var quiet = !s.pending && !s.toBuy && !s.approvedTotalMonth;
-      h += '<button type="button" class="card" data-act="shop" data-k="' + esc(s.venue) + '"><span class="row"><span class="shop">' + esc(s.venue) + '</span></span>';
-      if (quiet) { h += '<span class="meta">เดือนนี้ยังไม่มีคำขอ</span></button>'; return; }
-      h += '<span class="nums"><span class="num wait"><span class="v">' + s.pending + '</span><span class="k">รออนุมัติ</span></span>' +
-        '<span class="num buy"><span class="v">' + s.toBuy + '</span><span class="k">จัดซื้อต้องซื้อ</span></span>' +
-        '<span class="num money"><span class="v">' + fmtBaht(s.approvedTotalMonth) + '</span><span class="k">อนุมัติเดือนนี้ (บาท)</span></span></span>';
-      if (s.categories.length) {
-        h += '<span class="sbar" aria-hidden="true">' + s.categories.map(function (c, i) { return '<span style="width:' + c.percent + '%;background:' + CAT_COLORS[i % CAT_COLORS.length] + '"></span>'; }).join('') + '</span>';
-        h += '<span class="legend">' + s.categories.map(function (c, i) { return '<span><i style="background:' + CAT_COLORS[i % CAT_COLORS.length] + '"></i>' + esc(c.name) + ' ' + c.percent + '%</span>'; }).join('') + '</span>';
-      }
-      h += '<span class="go">ดูใบของ ' + esc(s.venue) + ' ›</span></button>';
-    });
-    return h + '</div>';
-  }
-
-  // ---- detail -----------------------------------------------------------------
-  function renderDetail() {
-    var h = '<header class="head" style="justify-content:flex-start"><button type="button" class="iconbtn" data-act="back" aria-label="กลับ">' + icon('back') + '</button><h1>' + esc(S.detailId) + '</h1></header><div class="body">';
-    var d = S.detail;
-    if (!d) return h + '<div class="empty">กำลังโหลด…</div></div>';
-    var r = d.row, chip = statusChip(r);
-    h += '<div class="tags"><span class="chip ' + chip.cls + '">' + esc(chip.label) + '</span><span class="tag' + (r.buyer === 'purchasing' ? ' path' : '') + '">' + esc(r.buyerLabel || L.buyer[r.buyer]) + '</span>' +
-      (r.category ? '<span class="tag cat">' + esc(r.category) + '</span>' : '') + '<span class="venue">' + esc(r.venue) + ' · ' + esc(r.requester) + '</span></div>';
-    h += '<h2 class="dttl">' + esc(titleOf(r)) + '</h2>';
-    h += '<div class="meta">ส่งคำขอ ' + esc(thaiClock(r.createdAt)) + (r.decidedAt ? ' · ตัดสิน ' + esc(thaiClock(r.decidedAt)) + ' โดย ' + esc(r.decidedBy) : '') + '</div>';
-    var steps = stepsFor(r);
-    if (steps) {
-      h += '<section class="panel"><div class="lbl">ของถึงไหนแล้ว</div><div class="steps">' + steps.map(function (s) {
-        return '<div class="stp ' + s.state + '"><div class="d"></div>' + esc(s.name).replace('\n', '<br>') + (s.state === 'now' ? '<span class="vh"> (ขั้นนี้)</span>' : '') + '</div>';
-      }).join('') + '</div></section>';
-    }
-    var btns = buttonsFor(S.me, r);
-    if (btns.indexOf('decide') >= 0) {
-      h += approverCard(r);
-    } else {
-      h += '<section class="panel"><div class="lbl">รายการ</div>' + r.items.map(function (it) {
-        var st = it.status === 'approved' ? '<span class="st ok">อนุมัติ</span>' : it.status === 'rejected' ? '<span class="st no">ไม่อนุมัติ</span>' : '<span class="st wait">รอตัดสิน</span>';
-        var sub = it.status === 'rejected' && it.reasonShown ? '<span class="why">' + esc(r.decidedBy) + ': ' + esc(it.reasonShown) + '</span>' : (it.from ? '<small>' + fromHtml(it.from) + '</small>' : '');
-        return '<div class="ln ro' + (it.status === 'rejected' ? ' off' : '') + '"><span class="n"><span>' + itemText(it) + '</span>' + sub + '</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' + amtHtml(it) + st + '</span></div>';
-      }).join('') +
-        '<div class="total"><span>' + (r.status === 'pending' ? 'ประมาณ <b>' + fmtBaht(r.estTotal) + '</b>' : 'อนุมัติ ' + r.items.filter(function (i) { return i.status === 'approved'; }).length + ' รายการ · ประมาณ <b>' + fmtBaht(r.approvedTotal) + '</b>') + '</span>' +
-        (r.actualTotal !== null && r.actualTotal !== undefined ? '<span>จ่ายจริง <b>' + fmtBaht(r.actualTotal) + ' บาท</b></span>' : '') + '</div></section>';
-    }
-    h += '<section class="panel"><div class="lbl">เหตุผล</div><div style="font-size:15px;line-height:1.5;overflow-wrap:anywhere">' + esc(r.reason) + '</div></section>';
-    if (r.photos && r.photos.length) {
-      h += '<section class="panel"><div class="lbl">รูป</div><div class="pics">' + r.photos.map(function (u, i) {
-        return '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt="รูปที่ ' + (i + 1) + '"></a>';
-      }).join('') + '</div></section>';
-    }
-    h += '<section class="panel"><div class="lbl">ประวัติ</div><div>' + d.audit.map(function (a, i) {
-      var last = i === d.audit.length - 1;
-      return '<div class="tls"><div><div class="dot"></div>' + (last ? '' : '<div class="rail"></div>') + '</div><div><div class="tt">' + esc(a.label || L.action[a.action] || a.action) + '</div>' +
-        '<div class="sm"' + (last ? ' style="padding-bottom:0"' : '') + '>' + esc(a.actor) + ' · ' + esc(thaiClock(a.at)) + (a.detail ? ' · ' + esc(a.detail) : '') + '</div></div></div>';
-    }).join('') + '</div></section>';
-    if (btns.indexOf('ordered') >= 0 || btns.indexOf('delivered') >= 0) h += buyerCard(r);
-    if (btns.indexOf('received') >= 0) h += '<button type="button" class="btn pri" data-act="received" data-k="' + esc(r.id) + '">' + icon('check') + 'รับของแล้ว</button>';
-    if (btns.indexOf('cancel') >= 0) h += '<button type="button" class="btn no" data-act="cancel" data-k="' + esc(r.id) + '">ยกเลิกคำขอนี้</button>';
-    return h + '</div>';
+    if (plan.rejected.length && !plan.wholeReject) h += '<div class="hint">' + plan.rejected.length + ' รายการไม่ได้ติ๊ก = ไม่อนุมัติ ต้องใส่เหตุผลตอนกดยืนยัน</div>';
+    h += '<div class="groupHead" style="margin:12px 0 0"><span>เลือก ' + plan.approved.length + ' จาก ' + r.items.length + ' รายการ</span><b>รวม ' + fmtBaht(plan.checkedTotal) + ' บาท</b></div>';
+    h += '<div class="twoBtn">' + (plan.wholeReject ? '<span></span>' : '<button type="button" class="actionBtn" data-act="approve" data-k="' + esc(r.id) + '">✓ ' + (plan.rejected.length ? 'อนุมัติที่เลือก (' + plan.approved.length + ')' : 'อนุมัติ') + '</button>') +
+      '<button type="button" class="sheetBtn" style="color:var(--danger)" data-act="rejectAll" data-k="' + esc(r.id) + '">🚫 ' + (r.items.length > 1 ? 'ไม่อนุมัติทั้งใบ' : 'ไม่อนุมัติ') + '</button></div>';
+    return h;
   }
   function openDetail(id) {
-    S.view = 'detail'; S.detailId = id; S.detail = null; render(); window.scrollTo(0, 0);
+    S.view = 'detail'; S.detailId = id; S.detail = null; S.openMenu = ''; render(); window.scrollTo(0, 0);
     api('prDetail', { id: id }).then(function (res) { S.detail = res; render(); }, function (e) { toast(e.message, true); S.view = 'list'; render(); });
   }
 
   // ---- sheets -----------------------------------------------------------------
   function findRow(id) {
     if (S.detail && S.detail.row.id === id) return S.detail.row;
-    return ((S.board && S.board.rows) || []).filter(function (r) { return r.id === id; })[0];
+    var all = ((S.board && S.board.rows) || []).concat(S.receipt || []);
+    return all.filter(function (r) { return r.id === id; })[0];
   }
   function renderSheet() {
     var sh = S.sheet;
     if (!sh) return '';
     var r = findRow(sh.id);
     if (!r) return '';
-    var h = '<div class="dim" data-act="closeSheet"></div><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grab"></div>';
+    var h = '<div class="sheetWrap" data-act="closeSheet"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-stop="1">';
     if (sh.kind === 'reject') {
       var plan = decisionPlan(r, sh.whole ? {} : checksOf(r), S.me.highAmount);
       var names = r.items.filter(function (i) { return plan.rejected.indexOf(i.n) >= 0; }).map(function (i) { return i.name + ' ' + i.qty + ' ' + i.unit; }).join(' · ');
-      h += '<h2 id="sheetTitle">ไม่อนุมัติ ' + (sh.whole ? 'ทั้งใบ' : plan.rejected.length + ' รายการ') + ' · ' + esc(r.id) + '</h2>';
-      h += '<div class="sub">' + esc(names) + (sh.whole ? '' : ' (รายการที่ไม่ได้ติ๊ก) · อีก ' + plan.approved.length + ' รายการจะอนุมัติพร้อมกัน') + '<br>เหตุผลจะแสดงที่รายการนั้นบนการ์ดของผู้จัดการ และบันทึกไว้ในประวัติ</div>';
-      if (plan.high && !sh.whole) h += '<div class="sub" style="color:var(--hot-ink)">ยอดที่อนุมัติ ' + fmtBaht(plan.checkedTotal) + ' บาท เป็นยอดสูง ตรวจอีกครั้งก่อนยืนยัน</div>';
-      h += '<div class="field"><label for="why">เหตุผล (จำเป็น)</label><textarea class="in" id="why" data-sheet="reason" placeholder="เช่น มีของในสต๊อกกลางแล้ว">' + esc(sh.reason || '') + '</textarea>' + (sh.err ? '<div class="err">' + esc(sh.err) + '</div>' : '') + '</div>';
-      h += '<div class="chips" role="group" aria-label="เหตุผลที่ใช้บ่อย">' + (S.me.quickReasons || L.quickReasons).map(function (q) {
-        return '<button type="button" class="q" data-act="quick" data-k="' + esc(q) + '">' + esc(q) + '</button>';
+      h += '<div class="sheetTitle" id="sheetTitle">🚫 ไม่อนุมัติ ' + (sh.whole ? 'ทั้งใบ' : plan.rejected.length + ' รายการ') + '</div>';
+      h += '<div class="sheetHint">' + esc(r.id) + ' · ' + esc(names) + (sh.whole ? '' : ' · อีก ' + plan.approved.length + ' รายการจะอนุมัติพร้อมกัน') + '<br>เหตุผลแสดงที่รายการนั้นบนการ์ดของผู้จัดการ และบันทึกในประวัติ</div>';
+      if (plan.high && !sh.whole) h += '<div class="promise soon">🟡 ยอดที่อนุมัติ ' + fmtBaht(plan.checkedTotal) + ' บาท เป็นยอดสูง ตรวจอีกครั้งก่อนยืนยัน</div>';
+      h += '<div class="miniform"><label for="why">เหตุผล (จำเป็น)</label><textarea id="why" data-sheet="reason" placeholder="เช่น มีของในสต๊อกกลางแล้ว">' + esc(sh.reason || '') + '</textarea>' + (sh.err ? '<div class="err">' + esc(sh.err) + '</div>' : '') + '</div>';
+      h += '<div class="quick" role="group" aria-label="เหตุผลที่ใช้บ่อย">' + (S.me.quickReasons || L.quickReasons).map(function (q) {
+        return '<button type="button" class="shopChip" data-act="quick" data-k="' + esc(q) + '">' + esc(q) + '</button>';
       }).join('') + '</div>';
-      h += '<div class="acts"><button type="button" class="btn sec" style="flex:0 0 96px" data-act="closeSheet">กลับ</button><button type="button" class="btn danger" data-act="confirmReject">' +
-        (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button></div>';
+      h += '<button type="button" class="actionBtn danger" data-act="confirmReject">' + (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button>';
     } else if (sh.kind === 'high') {
       var p2 = decisionPlan(r, checksOf(r), S.me.highAmount);
-      h += '<h2 id="sheetTitle">ยืนยันอนุมัติยอดสูง · ' + esc(r.id) + '</h2><div class="sub">ยอดที่อนุมัติ <b style="color:var(--ink)">' + fmtBaht(p2.checkedTotal) + ' บาท</b> เกินหรือเท่ากับ ' + fmtBaht(S.me.highAmount) + ' บาท<br>' + esc(r.venue) + ' · ' + esc(r.requester) + '</div>';
-      h += '<div class="acts"><button type="button" class="btn sec" data-act="closeSheet">กลับ</button><button type="button" class="btn pri" data-act="confirmApprove">ยืนยันอนุมัติ</button></div>';
+      h += '<div class="sheetTitle" id="sheetTitle">ยืนยันอนุมัติยอดสูง</div><div class="sheetHint">' + esc(r.id) + ' · ' + esc(r.venue) + ' · ' + esc(r.requester) + '</div>' +
+        '<div class="promise soon">🟡 ยอดที่อนุมัติ ' + fmtBaht(p2.checkedTotal) + ' บาท · ' + fmtBaht(S.me.highAmount) + ' บาทขึ้นไป</div>';
+      h += '<button type="button" class="actionBtn" data-act="confirmApprove">✓ ยืนยันอนุมัติ</button>';
+    } else if (sh.kind === 'ordered') {
+      var f = S.fields[r.id] || (S.fields[r.id] = { actual: '', eta: '' });
+      h += '<div class="sheetTitle" id="sheetTitle">🛒 สั่งซื้อแล้ว</div><div class="sheetHint">' + esc(r.id) + ' · ' + esc(r.venue) + ' · อนุมัติ ' + fmtBaht(r.approvedTotal) + ' บาท</div>';
+      h += '<div class="miniform"><div class="row2"><div><label for="paid">จ่ายจริง (บาท)</label><input id="paid" inputmode="decimal" data-field="actual" data-k="' + esc(r.id) + '" value="' + esc(f.actual) + '" placeholder="' + fmtBaht(r.approvedTotal) + '"></div>' +
+        '<div><label for="eta">คาดว่าถึงสาขา</label><input id="eta" data-field="eta" data-k="' + esc(r.id) + '" value="' + esc(f.eta) + '" placeholder="เช่น 20 ต.ค."></div></div>' +
+        (f.err ? '<div class="err">' + esc(f.err) + '</div>' : '') + '</div>';
+      h += '<button type="button" class="actionBtn" data-act="confirmOrdered" data-k="' + esc(r.id) + '">🛒 บันทึกสั่งซื้อแล้ว</button>';
     } else if (sh.kind === 'cancel') {
-      h += '<h2 id="sheetTitle">ยกเลิกคำขอ ' + esc(r.id) + '</h2><div class="sub">ยกเลิกแล้วจะตัดสินไม่ได้อีก ถ้ายังต้องการของ ส่งคำขอใหม่</div>';
-      h += '<div class="acts"><button type="button" class="btn sec" data-act="closeSheet">ไม่ยกเลิก</button><button type="button" class="btn danger" data-act="confirmCancel">ยกเลิกคำขอ</button></div>';
+      h += '<div class="sheetTitle" id="sheetTitle">✖️ ยกเลิกคำขอ ' + esc(r.id) + '</div><div class="sheetHint">ยกเลิกแล้วจะตัดสินไม่ได้อีก ถ้ายังต้องการของ ส่งคำขอใหม่</div>';
+      h += '<button type="button" class="actionBtn danger" data-act="confirmCancel">ยกเลิกคำขอ</button>';
     }
-    return h + '</section>';
+    return h + '<button type="button" class="sheetBtn cancel" data-act="closeSheet">กลับ</button></section></div>';
   }
-  function after(promise, okText) {
+  function after(promise, okText, id) {
+    if (id) { S.sending[id] = true; if (!S.sheet) render(); }
     return promise.then(function () {
       if (okText) toast(okText);
-      S.sheet = null;
+      S.sheet = null; S.openMenu = '';
+      if (id) delete S.sending[id];
       if (S.view === 'detail') openDetail(S.detailId); else { render(); load(true); }
-    }, function (e) { toast(e.message, true); render(); });
+    }, function (e) { if (id) delete S.sending[id]; toast(e.message, true); render(); });
   }
   function sendDecision(r, whole, reason) {
     var checked = whole ? {} : checksOf(r);
@@ -1188,7 +1233,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     var plan = decisionPlan(r, checked, S.me.highAmount);
     delete S.checks[r.id];
     return after(api('prDecide', { id: r.id, lines: lines, note: whole ? String(reason || '').trim() : '' }),
-      plan.wholeReject ? 'ไม่อนุมัติ ' + r.id + ' แล้ว' : (plan.rejected.length ? 'อนุมัติบางส่วน ' + r.id + ' แล้ว' : 'อนุมัติ ' + r.id + ' แล้ว'));
+      plan.wholeReject ? 'ไม่อนุมัติ ' + r.id + ' แล้ว' : (plan.rejected.length ? 'อนุมัติบางส่วน ' + r.id + ' แล้ว' : 'อนุมัติ ' + r.id + ' แล้ว'), r.id);
   }
 
   // ---- the form ---------------------------------------------------------------
@@ -1198,61 +1243,60 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     return { buyer: '', category: '', venue: venues.length === 1 ? venues[0] : '', venues: venues,
       items: [{ name: '', qty: 1, unit: L.defaultUnit, price: '', from: '' }], reason: '', photos: [], errors: {}, sending: false };
   }
+  function chipPick(act, k, label, on) {
+    return '<button type="button" class="shopChip' + (on ? ' active' : '') + '" data-act="' + act + '" data-k="' + esc(k) + '" aria-pressed="' + on + '">' + (on ? '✓ ' : '') + esc(label) + '</button>';
+  }
   function renderForm() {
     var f = S.form, e = f.errors || {};
     var t = formTotals(f.items);
-    var h = '<header class="head"><h1>ขอซื้อของใหม่</h1>' + (f.venue ? '<span class="venue">' + esc(f.venue) + ' · ' + esc(S.me.actorName) + '</span>' : '') +
-      '<button type="button" class="iconbtn" data-act="closeForm" aria-label="ปิด">' + icon('x') + '</button></header><div class="body" style="gap:22px">';
+    var h = header('closeForm') + '<main class="dl"><article class="card"><div class="title">ขอซื้อของใหม่</div><div class="sub">' + esc(f.venue || 'เลือกร้าน') + ' · ' + esc(S.me.actorName) + '</div>';
+    h += '<div class="miniform">';
     if (f.venues.length > 1) {
-      h += '<section class="fsec"><div class="sh"><h2>ร้าน</h2></div><div class="chips" role="group" aria-label="ร้าน">' + f.venues.map(function (v) {
-        return '<button type="button" class="choice' + (f.venue === v ? ' on' : '') + '" data-act="fvenue" data-k="' + esc(v) + '" aria-pressed="' + (f.venue === v) + '">' + esc(v) + '</button>';
-      }).join('') + '</div>' + (e.venue ? '<div class="err" id="err-venue">' + esc(e.venue) + '</div>' : '') + '</section>';
+      h += '<section class="fsec" id="sec-venue"><h2>ร้าน</h2><div class="pickRow" role="group" aria-label="ร้าน">' + f.venues.map(function (v) { return chipPick('fvenue', v, v, f.venue === v); }).join('') + '</div>' +
+        (e.venue ? '<div class="err" id="err-venue">' + esc(e.venue) + '</div>' : '') + '</section>';
     }
-    h += '<section class="fsec" id="sec-buyer"><div class="sh"><span class="n">1</span><h2>ใครเป็นคนซื้อ</h2></div><div class="tiles" role="group" aria-label="ใครเป็นคนซื้อ">' +
-      [['self', 'ฉันซื้อเอง', 'แล้วเบิกคืนตามระบบบริษัท'], ['purchasing', 'ให้จัดซื้อซื้อให้', 'ระบุประเภทและร้านที่จะซื้อ']].map(function (b) {
-        return '<button type="button" class="tile' + (f.buyer === b[0] ? ' on' : '') + '" data-act="buyer" data-k="' + b[0] + '" aria-pressed="' + (f.buyer === b[0]) + '">' +
-          (f.buyer === b[0] ? '<span class="ck" aria-hidden="true">✓</span>' : '') + '<b>' + b[1] + '</b><span>' + b[2] + '</span></button>';
-      }).join('') + '</div>' + (e.buyer ? '<div class="err" id="err-buyer">' + esc(e.buyer) + '</div>' : '') + '</section>';
+    h += '<section class="fsec" id="sec-buyer"><h2>1 · ใครเป็นคนซื้อ</h2><div class="pickRow" role="group" aria-label="ใครเป็นคนซื้อ">' +
+      chipPick('buyer', 'self', 'ฉันซื้อเอง', f.buyer === 'self') + chipPick('buyer', 'purchasing', 'ให้จัดซื้อซื้อให้', f.buyer === 'purchasing') + '</div>' +
+      '<div class="sub">' + (f.buyer === 'self' ? 'ซื้อเองแล้วเบิกคืนตามระบบบริษัท' : f.buyer === 'purchasing' ? 'ระบุประเภท และร้านที่จะซื้อต่อชิ้น' : '&nbsp;') + '</div>' +
+      (e.buyer ? '<div class="err" id="err-buyer">' + esc(e.buyer) + '</div>' : '') + '</section>';
     var step = 2;
     if (f.buyer === 'purchasing') {
-      h += '<section class="fsec" id="sec-category"><div class="sh"><span class="n">' + (step++) + '</span><h2>ประเภท</h2></div><div class="chips" role="group" aria-label="ประเภท">' +
-        (S.me.categories || []).map(function (c) {
-          return '<button type="button" class="choice' + (f.category === c ? ' on' : '') + '" data-act="cat" data-k="' + esc(c) + '" aria-pressed="' + (f.category === c) + '">' + esc(c) + '</button>';
-        }).join('') + '</div>' + (e.category ? '<div class="err" id="err-category">' + esc(e.category) + '</div>' : '') + '</section>';
+      h += '<section class="fsec" id="sec-category"><h2>' + (step++) + ' · ประเภท</h2><div class="pickRow" role="group" aria-label="ประเภท">' +
+        (S.me.categories || []).map(function (c) { return chipPick('cat', c, c, f.category === c); }).join('') + '</div>' +
+        (e.category ? '<div class="err" id="err-category">' + esc(e.category) + '</div>' : '') + '</section>';
     }
-    h += '<section class="fsec" id="sec-items"><div class="sh"><span class="n">' + (step++) + '</span><h2>รายการ</h2><span class="cnt">' + f.items.length + ' ชิ้น · ราคาไม่รู้เว้นได้</span></div>';
+    h += '<section class="fsec" id="sec-items"><h2><span>' + (step++) + ' · รายการ</span><small>' + f.items.length + ' ชิ้น · ราคาไม่รู้เว้นได้</small></h2>';
     f.items.forEach(function (it, i) {
-      var k = 'item' + i;
+      var k = 'item' + i, n = i + 1;
       var lt = lineTotal(it);
-      var bad = e[k + '.name'] || e[k + '.qty'] || e[k + '.price'] || e[k + '.from'];
-      h += '<div class="item' + (bad ? ' bad' : '') + '" id="sec-' + k + '"><div class="top"><span class="idx">' + (i + 1) + '</span>' +
-        '<input class="name" type="text" data-item="' + i + '" data-f="name" value="' + esc(it.name) + '" placeholder="ชื่อของ เช่น สบู่ล้างมือ" aria-label="ชื่อของ ชิ้นที่ ' + (i + 1) + '">' +
-        (f.items.length > 1 ? '<button type="button" class="iconbtn" style="background:none" data-act="delItem" data-k="' + i + '" aria-label="ลบชิ้นที่ ' + (i + 1) + '">' + icon('trash') + '</button>' : '') + '</div>' +
-        '<div class="qtyrow"><div class="step"><button type="button" data-act="qty" data-k="' + i + '" data-d="-1" aria-label="ลดจำนวน ชิ้นที่ ' + (i + 1) + '">−</button>' +
-        '<input type="text" inputmode="numeric" data-item="' + i + '" data-f="qty" value="' + esc(it.qty) + '" aria-label="จำนวน ชิ้นที่ ' + (i + 1) + '">' +
-        '<button type="button" data-act="qty" data-k="' + i + '" data-d="1" aria-label="เพิ่มจำนวน ชิ้นที่ ' + (i + 1) + '">+</button></div>' +
-        '<input class="unit" type="text" data-item="' + i + '" data-f="unit" value="' + esc(it.unit) + '" aria-label="หน่วย ชิ้นที่ ' + (i + 1) + '"></div>' +
-        '<div class="pricerow"><span class="lbl">× ราคา/หน่วย</span><div class="price"><span>฿</span><input type="text" inputmode="decimal" data-item="' + i + '" data-f="price" value="' + esc(it.price) + '" placeholder="ไม่รู้ เว้นได้" aria-label="ราคาต่อหน่วย ชิ้นที่ ' + (i + 1) + '"></div>' +
-        '<span class="eq' + (lt === null ? ' unknown' : '') + '" id="eq-' + i + '">' + (lt === null ? L.unknownPrice : '= ' + fmtBaht(lt)) + '</span></div>';
+      h += '<div class="fitem" id="sec-' + k + '"><div class="top"><div style="flex:1"><label for="nm' + i + '">ชิ้นที่ ' + n + '</label>' +
+        '<input id="nm' + i + '" type="text" class="' + (e[k + '.name'] ? 'bad' : '') + '" data-item="' + i + '" data-f="name" value="' + esc(it.name) + '" placeholder="ชื่อของ เช่น สบู่ล้างมือ"></div>' +
+        (f.items.length > 1 ? '<button type="button" class="del" data-act="delItem" data-k="' + i + '" aria-label="ลบชิ้นที่ ' + n + '">🗑</button>' : '') + '</div>' +
+        '<div class="row2"><div><label for="q' + i + '">จำนวน</label><div class="stepper"><button type="button" data-act="qty" data-k="' + i + '" data-d="-1" aria-label="ลดจำนวน ชิ้นที่ ' + n + '">−</button>' +
+        '<input id="q' + i + '" type="text" inputmode="numeric" class="' + (e[k + '.qty'] ? 'bad' : '') + '" data-item="' + i + '" data-f="qty" value="' + esc(it.qty) + '">' +
+        '<button type="button" data-act="qty" data-k="' + i + '" data-d="1" aria-label="เพิ่มจำนวน ชิ้นที่ ' + n + '">+</button></div></div>' +
+        '<div><label for="u' + i + '">หน่วย</label><input id="u' + i + '" type="text" data-item="' + i + '" data-f="unit" value="' + esc(it.unit) + '"></div></div>' +
+        '<label for="p' + i + '">ราคา/หน่วย (บาท)</label><input id="p' + i + '" type="text" inputmode="decimal" class="' + (e[k + '.price'] ? 'bad' : '') + '" data-item="' + i + '" data-f="price" value="' + esc(it.price) + '" placeholder="ไม่รู้ เว้นได้">' +
+        '<div class="eq' + (lt === null ? ' unknown' : '') + '" id="eq-' + i + '">' + (lt === null ? L.unknownPrice : '= ' + fmtBaht(lt) + ' บาท') + '</div>';
       if (f.buyer === 'purchasing') {
-        h += '<div class="from">' + icon('shop') + '<input type="text" data-item="' + i + '" data-f="from" value="' + esc(it.from) + '" placeholder="ซื้อจาก: ลิงก์ หรือชื่อร้าน" aria-label="ซื้อจาก ชิ้นที่ ' + (i + 1) + '">' +
-          (i > 0 ? '<button type="button" data-act="sameFrom" data-k="' + i + '">เหมือนชิ้นบน</button>' : '') + '</div>';
+        h += '<label for="fr' + i + '">ซื้อจาก (ลิงก์ หรือชื่อร้าน)</label><input id="fr' + i + '" type="text" class="' + (e[k + '.from'] ? 'bad' : '') + '" data-item="' + i + '" data-f="from" value="' + esc(it.from) + '">' +
+          (i > 0 ? '<button type="button" class="same" data-act="sameFrom" data-k="' + i + '">เหมือนชิ้นบน</button>' : '');
       }
       ['name', 'qty', 'price', 'from'].forEach(function (fld) { if (e[k + '.' + fld]) h += '<div class="err" id="err-' + k + '.' + fld + '">' + esc(e[k + '.' + fld]) + '</div>'; });
       h += '</div>';
     });
-    h += '<button type="button" class="add" data-act="addItem">+ เพิ่มชิ้นที่ ' + (f.items.length + 1) + '</button>' + (e.items ? '<div class="err">' + esc(e.items) + '</div>' : '') + '</section>';
-    h += '<section class="fsec" id="sec-reason"><div class="sh"><span class="n">' + (step++) + '</span><h2>เหตุผลและรูป</h2></div>' +
-      '<div class="field"><label for="why">ทำไมต้องซื้อ</label><textarea class="in' + (e.reason ? ' bad' : '') + '" id="why" data-f="reason" placeholder="เช่น ของเดิมจะหมดภายในสัปดาห์นี้">' + esc(f.reason) + '</textarea>' +
-      (e.reason ? '<div class="err" id="err-reason">' + esc(e.reason) + '</div>' : '') + '</div>';
+    h += '<button type="button" class="addBtn" data-act="addItem">＋ เพิ่มชิ้นที่ ' + (f.items.length + 1) + '</button>' + (e.items ? '<div class="err">' + esc(e.items) + '</div>' : '') + '</section>';
+    h += '<section class="fsec" id="sec-reason"><h2>' + (step++) + ' · เหตุผลและรูป</h2><label for="why">ทำไมต้องซื้อ</label><textarea id="why" class="' + (e.reason ? 'bad' : '') + '" data-f="reason" placeholder="เช่น ของเดิมจะหมดภายในสัปดาห์นี้">' + esc(f.reason) + '</textarea>' +
+      (e.reason ? '<div class="err" id="err-reason">' + esc(e.reason) + '</div>' : '');
     if (f.photos.length) h += '<div class="photos">' + f.photos.map(function (p, i) {
       return '<div class="thumb"><img src="' + p + '" alt="รูปที่ ' + (i + 1) + '"><button type="button" data-act="delPhoto" data-k="' + i + '" aria-label="ลบรูปที่ ' + (i + 1) + '">×</button></div>';
     }).join('') + '</div>';
-    if (f.photos.length < MAX_PHOTOS) h += '<label class="photo">' + icon('cam') + 'แนบรูป (ไม่บังคับ · ' + f.photos.length + '/' + MAX_PHOTOS + ')<input type="file" accept="image/*" multiple data-act="photo" class="vh"></label>';
+    if (f.photos.length < MAX_PHOTOS) h += '<label class="photoPick">📷 แนบรูป (ไม่บังคับ · ' + f.photos.length + '/' + MAX_PHOTOS + ')<input type="file" accept="image/*" multiple data-act="photo" class="vh"></label>';
     if (e.photos) h += '<div class="err">' + esc(e.photos) + '</div>';
-    h += '</section></div>';
-    h += '<div class="bar"><div class="sum"><div><div class="l" id="sumL">รวมประมาณ ' + t.count + ' ชิ้น</div><div class="note" id="sumN">' + (t.unpriced ? 'อีก ' + t.unpriced + ' ชิ้นยังไม่ใส่ราคา' : '') + '</div></div>' +
-      '<div class="big" id="sumB">฿' + fmtBaht(t.total) + '</div></div><button type="button" class="btn pri" data-act="submit"' + (f.sending ? ' disabled' : '') + '>' + (f.sending ? 'กำลังส่ง…' : 'ส่งคำขอ') + '</button></div>';
+    h += '</section></div></article></main>';
+    h += '<div class="sumBar"><div class="sumRow"><span id="sumL">รวมประมาณ ' + t.count + ' ชิ้น</span><b id="sumB">' + fmtBaht(t.total) + ' บาท</b></div>' +
+      '<div class="note" id="sumN">' + (t.unpriced ? 'อีก ' + t.unpriced + ' ชิ้นยังไม่ใส่ราคา' : '') + '</div>' +
+      '<button type="button" class="actionBtn' + (f.sending ? ' busy' : '') + '" data-act="submit"' + (f.sending ? ' disabled' : '') + '>' + (f.sending ? 'กำลังส่ง…' : 'ส่งคำขอ') + '</button></div>';
     return h;
   }
   function afterForm() {
@@ -1267,12 +1311,12 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     var setT = function (id, s) { var el = document.getElementById(id); if (el) el.textContent = s; };
     setT('sumL', 'รวมประมาณ ' + t.count + ' ชิ้น');
     setT('sumN', t.unpriced ? 'อีก ' + t.unpriced + ' ชิ้นยังไม่ใส่ราคา' : '');
-    setT('sumB', '฿' + fmtBaht(t.total));
+    setT('sumB', fmtBaht(t.total) + ' บาท');
     S.form.items.forEach(function (it, i) {
       var el = document.getElementById('eq-' + i);
       if (!el) return;
       var lt = lineTotal(it);
-      el.textContent = lt === null ? L.unknownPrice : '= ' + fmtBaht(lt);
+      el.textContent = lt === null ? L.unknownPrice : '= ' + fmtBaht(lt) + ' บาท';
       el.className = 'eq' + (lt === null ? ' unknown' : '');
     });
   }
@@ -1285,8 +1329,6 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     if (key in f.errors) { if (line) line.textContent = f.errors[key]; return; }
     if (line) line.remove();
     if (input && input.classList) input.classList.remove('bad');
-    var box = input && input.closest && input.closest('.item');
-    if (box && !box.querySelector('.err')) box.classList.remove('bad');
   }
   function submitForm() {
     var f = S.form;
@@ -1308,12 +1350,12 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       S.form = null; S.view = 'list';
       S.tab = S.me.role === 'venue_manager' ? 'active' : 'pending'; S.venue = '';
       toast('ส่งคำขอแล้ว · ' + res.id + (res.photosAsked && res.photosSaved < res.photosAsked ? ' (รูปขึ้นได้ ' + res.photosSaved + ' จาก ' + res.photosAsked + ')' : ''));
-      // Seen at once: the new request is drawn before the server answers the next read.
+      // Seen at once (Order's unconfirmed left edge) before the server answers the next read.
       if (S.board && S.board.rows) {
         var t = formTotals(f.items);
         S.board.rows.unshift({ id: res.id, createdAt: '', venue: f.venue, requester: S.me.actorName, mine: true, buyer: f.buyer, buyerLabel: L.buyer[f.buyer],
-          category: payload.category, items: payload.items.map(function (i, k) { return { n: k + 1, name: i.name, qty: i.qty, unit: i.unit, unitPrice: i.unitPrice, lineTotal: lineTotal(i), status: 'pending' }; }),
-          estTotal: t.total, pricedLines: t.priced, lineCount: t.count, status: 'pending', fulfilment: '', ageMinutes: 0 });
+          category: payload.category, items: payload.items.map(function (i, k) { return { n: k + 1, name: i.name, qty: i.qty, unit: i.unit, unitPrice: i.unitPrice, lineTotal: lineTotal(i), status: 'pending', from: i.from }; }),
+          estTotal: t.total, pricedLines: t.priced, lineCount: t.count, status: 'pending', fulfilment: '', ageMinutes: 0, photos: [] });
         if (S.board.mineRows) S.board.mineRows = S.board.rows;
       }
       render(); window.scrollTo(0, 0); load(true);
@@ -1342,20 +1384,22 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
 
   // ---- events -----------------------------------------------------------------
   app.addEventListener('click', function (ev) {
+    if (ev.target.closest('[data-stop]') && !ev.target.closest('[data-act]:not(.sheetWrap)')) return; // a tap inside the sheet is not a tap on the dim
     var el = ev.target.closest('[data-act]');
     if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), k = el.getAttribute('data-k');
     var f = S.form;
     switch (act) {
-      case 'as': DEMO.as(k); S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; boot(); return;
+      case 'as': DEMO.as(k); S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; S.openMenu = ''; S.counts = {}; S.tab = ''; boot(); return;
       case 'tab':
-        S.tab = k; S.venue = ''; S.board = null; S.shops = null;
+        S.tab = k; S.venue = ''; S.board = null; S.shops = null; S.openMenu = '';
         if (k === 'byshop' && !S.month) S.month = (S.me.serverNow || '').slice(0, 7);
         render(); load(); return;
       case 'venue': S.venue = k; S.board = Object.assign({}, S.board, { rows: null }); load(); render(); return;
       case 'shop': S.tab = 'pending'; S.venue = k; S.board = null; render(); load(); return;
       case 'month': S.month = shiftMonth(S.month, Number(k)); S.shops = null; render(); load(); return;
-      case 'open': openDetail(k); return;
+      case 'more': S.openMenu = S.openMenu === k ? '' : k; render(); return;
+      case 'open': case 'lines': openDetail(k); return;
       case 'back': S.view = 'list'; S.detail = null; render(); load(true); return;
       case 'new': S.form = newForm(); S.view = 'form'; render(); window.scrollTo(0, 0); return;
       case 'closeForm': S.form = null; S.view = 'list'; render(); return;
@@ -1368,6 +1412,12 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       case 'sameFrom': f.items[k].from = f.items[k - 1].from; render(); return;
       case 'delPhoto': f.photos.splice(Number(k), 1); render(); return;
       case 'submit': if (!f.sending) submitForm(); return;
+      case 'approveAll': {
+        var ra = findRow(k);
+        S.checks[k] = {}; (ra.items || []).forEach(function (i) { S.checks[k][i.n] = true; });
+        if (decisionPlan(ra, S.checks[k], S.me.highAmount).high) { S.sheet = { kind: 'high', id: k }; render(); return; }
+        sendDecision(ra, false, ''); return;
+      }
       case 'approve': {
         var r = findRow(k), plan = decisionPlan(r, checksOf(r), S.me.highAmount);
         if (plan.needsReason) S.sheet = { kind: 'reject', id: k, whole: false };
@@ -1377,7 +1427,7 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       }
       case 'rejectAll': S.sheet = { kind: 'reject', id: k, whole: true }; render(); return;
       case 'quick': S.sheet.reason = k; S.sheet.err = ''; render(); return;
-      case 'closeSheet': S.sheet = null; render(); return;
+      case 'closeSheet': if (el.classList.contains('sheetWrap') && ev.target !== el) return; S.sheet = null; render(); return;
       case 'confirmReject': {
         var why = String(S.sheet.reason || '').trim();
         if (!why) { S.sheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return; }
@@ -1386,18 +1436,19 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
       }
       case 'confirmApprove': el.disabled = true; sendDecision(findRow(S.sheet.id), false, ''); return;
       case 'cancel': S.sheet = { kind: 'cancel', id: k }; render(); return;
-      case 'confirmCancel': el.disabled = true; after(api('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว'); return;
-      case 'ordered': {
+      case 'confirmCancel': el.disabled = true; after(api('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
+      case 'ordered': S.sheet = { kind: 'ordered', id: k }; render(); return;
+      case 'confirmOrdered': {
         var fl = S.fields[k] || {};
         var a = priceOf(fl.actual);
         if (a === null || isNaN(a) || a <= 0) { fl.err = L.err.actualTotal; render(); return; }
         if (!String(fl.eta || '').trim()) { fl.err = L.err.eta; render(); return; }
-        fl.err = ''; el.disabled = true; el.textContent = 'กำลังบันทึก…';
-        after(api('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k).then(function () { delete S.fields[k]; });
+        fl.err = ''; el.disabled = true; el.textContent = 'กำลังบันทึก…'; el.className = 'actionBtn busy';
+        after(api('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k, k).then(function () { delete S.fields[k]; });
         return;
       }
-      case 'delivered': el.disabled = true; el.textContent = 'กำลังบันทึก…'; after(api('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k); return;
-      case 'received': el.disabled = true; el.textContent = 'กำลังบันทึก…'; after(api('prReceived', { id: k }), 'รับของแล้ว · ' + k); return;
+      case 'delivered': after(api('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k, k); return;
+      case 'received': after(api('prReceived', { id: k }), 'รับของแล้ว · ' + k, k); return;
     }
   });
   app.addEventListener('change', function (ev) {
@@ -1443,8 +1494,12 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
   function boot() {
     render();
     var code = DEMO ? '' : bindCodeFrom(QS);
-    identify(api, code).then(function (res) {
-      if (res.bound) { try { history.replaceState(null, '', stripBind(location.href)); } catch (e) { /* the code is spent anyway */ } }
+    var cached0 = store(true) || {};
+    identify(api, code, !!cached0.bound).then(function (res) {
+      if (res.bound) {
+        try { history.replaceState(null, '', stripBind(location.href)); } catch (e) { /* the code is spent anyway */ }
+        if (!DEMO) { var c1 = store(true) || {}; c1.bound = true; store(false, c1); }
+      }
       if (res.bindError && !(res.me && res.me.known)) toast(res.bindError, true);
       startWith(res.me);
     }, function (e) {
@@ -1479,6 +1534,8 @@ textarea.in{min-height:96px;resize:vertical;line-height:1.5}
     liff.init({ liffId: LIFF_ID }).then(function () {
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
       try { idToken = liff.getIDToken() || ''; accessToken = liff.getAccessToken() || ''; } catch (e) { /* freshCreds tries again */ }
+      // The LINE profile picture, top left like Order's header; the initial stays if LINE says no.
+      try { liff.getProfile().then(function (p) { if (p && p.pictureUrl) { S.avatar = p.pictureUrl; if (S.view === 'list' && !S.sheet) render(); } }, function () {}); } catch (e) { /* keep the initial */ }
       authReadyResolve();
       boot();
     }, function () { authReadyResolve(); boot(); });

@@ -12,8 +12,10 @@ const TOKENS = { '--bg': '#23272E', '--panel': '#262B33', '--line': '#2F353E', '
   '--hot-ink': '#F0B48C', '--free-bg': '#1F2A3F', '--free-ink': '#93C5FD', '--danger': '#F08C8C' };
 Object.keys(TOKENS).forEach(k => ok('token ' + k + ' = ' + TOKENS[k], new RegExp(k + ':' + TOKENS[k] + '\\b').test(SRC)));
 ok('raise and sink shadows are tokens', /--raise:/.test(SRC) && /--sink-sh:/.test(SRC));
-ok('main buttons are 56px tall', /\.btn\{min-height:56px/.test(SRC));
-ok('Noto Sans Thai', /family=Noto\+Sans\+Thai/.test(SRC));
+// #12: the main button is Order's .actionBtn on --btn-h (was .btn 56px).
+ok('main buttons are 56px tall', /--btn-h:56px/.test(SRC) && /\.actionBtn\{[^}]*min-height:var\(--btn-h\)/.test(SRC));
+// #12: Order's typeface (was Noto Sans Thai).
+ok('IBM Plex Sans Thai', /family=IBM\+Plex\+Sans\+Thai/.test(SRC));
 ok('the backend URL is the Maintain prod deployment, on one line',
   (SRC.match(/var API_URL = '[^']+';/g) || []).length === 1 && /AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA\/exec/.test(SRC));
 ok('LIFF id is the purchase board\'s own app (2011319750-Cxl4gMue), on one line', (SRC.match(/var LIFF_ID = '[^']*';/g) || []).join() === "var LIFF_ID = '2011319750-Cxl4gMue';");
@@ -26,10 +28,12 @@ ok('no Firestore this round', !/firebase|firestore/i.test(SRC));
 ok('?demo=1 never loads the LINE SDK (DEMO branch returns before it)', SRC.indexOf('if (DEMO_MODE)') < SRC.indexOf('static.line-scdn.net/liff'.replace('static.line-scdn.net/liff', "sdk.src = 'https://static.line-scdn.net/liff")));
 ok('every user string goes through esc() in the card builders (no raw r.reason)', !/\+ r\.reason \+/.test(SRC));
 ok('errors are said under the field (class err), not in a dialog', (SRC.match(/class="err"/g) || []).length >= 5);
-ok('ต้องซื้อ lists "รอสาขารับของ" under the rows to act on', /รอสาขารับของ · /.test(SRC) && /receiptSection\(all\.rows/.test(SRC));
+// #12: the section is now an Order group head "📦 รอสาขารับของ (N)" (was a divider "รอสาขารับของ · N").
+ok('ต้องซื้อ lists "รอสาขารับของ" under the rows to act on', /groupHead\('📦', 'รอสาขารับของ'/.test(SRC) && /receiptSection\(all\.rows/.test(SRC));
 ok('the ต้องซื้อ tab number is the server\'s tobuy count, nothing added', /label: 'ต้องซื้อ' \+ n\('tobuy'\)/.test(SRC));
 ok('a bind code is read from the (liff.state-decoded) query, never in demo', /var code = DEMO \? '' : bindCodeFrom\(QS\);/.test(SRC));
 ok('a successful bind cleans the address bar', /history\.replaceState\(null, '', stripBind\(location\.href\)\)/.test(SRC));
-ok('build v4 · bind link', /var BUILD = 'pr-board v4 · 2026-10-18 · bind link';/.test(SRC));
+// #12: build v5 (was v4 · bind link).
+ok('build v5', /var BUILD = 'pr-board v5 · 2026-10-19 · order shape';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);

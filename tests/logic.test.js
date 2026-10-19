@@ -223,6 +223,13 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   seen.length = 0;
   const m3 = await C.identify(fakeApi({ prWhoAmI: { known: true, role: 'venue_manager' } }), '');
   eq('no code → whoAmI only, as before', [seen.map(x => x[0]), m3.me.role, m3.bound], [['prWhoAmI'], 'venue_manager', false]);
+  // ---- bound on this phone before, re-opened from the same chat button (#12 note) ----
+  seen.length = 0;
+  const m4 = await C.identify(fakeApi({ prWhoAmI: { known: true, role: 'manager' }, prBind: new Error('ไม่พบ') }), CODE, true);
+  eq('bound before + known: whoAmI only, prBind never called', [seen.map(x => x[0]), m4.me.role, m4.bindError], [['prWhoAmI'], 'manager', '']);
+  seen.length = 0;
+  const m5 = await C.identify(fakeApi({ prWhoAmI: { known: false }, prBind: { known: true, role: 'account' } }), CODE, true);
+  eq('bound before but unknown now: whoAmI, then prBind', [seen.map(x => x[0]), m5.me.role, m5.bound], [['prWhoAmI', 'prBind'], 'account', true]);
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 })();
