@@ -219,7 +219,8 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   eq('with a code: prBind first, with that code, and its answer is me', [seen.map(x => x[0]), seen[0][1], m1.me.role, m1.bound], [['prBind'], { code: CODE }, 'manager', true]);
   seen.length = 0;
   const m2 = await C.identify(fakeApi({ prBind: new Error('ลิงก์ผูกบอร์ดหมดอายุ'), prWhoAmI: { known: true, role: 'account' } }), CODE);
-  eq('an expired code → whoAmI as usual (maybe bound already)', [seen.map(x => x[0]), m2.me.role, m2.bound, m2.bindError], [['prBind', 'prWhoAmI'], 'account', false, 'ลิงก์ผูกบอร์ดหมดอายุ']);
+  // A1.1 R-A7: known after all = bound already, so bound is true (was false before A1.1).
+  eq('an expired code → whoAmI as usual (maybe bound already)', [seen.map(x => x[0]), m2.me.role, m2.bound, m2.bindError], [['prBind', 'prWhoAmI'], 'account', true, 'ลิงก์ผูกบอร์ดหมดอายุ']);
   seen.length = 0;
   const m3 = await C.identify(fakeApi({ prWhoAmI: { known: true, role: 'venue_manager' } }), '');
   eq('no code → whoAmI only, as before', [seen.map(x => x[0]), m3.me.role, m3.bound], [['prWhoAmI'], 'venue_manager', false]);
@@ -230,6 +231,22 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   seen.length = 0;
   const m5 = await C.identify(fakeApi({ prWhoAmI: { known: false }, prBind: { known: true, role: 'account' } }), CODE, true);
   eq('bound before but unknown now: whoAmI, then prBind', [seen.map(x => x[0]), m5.me.role, m5.bound], [['prWhoAmI', 'prBind'], 'account', true]);
+  // ---- A1.1 R-A7: a phone bound on v4 never stored bound:true ----
+  seen.length = 0;
+  const m6 = await C.identify(fakeApi({ prBind: new Error('ลิงก์ผูกบอร์ดหมดอายุ'), prWhoAmI: { known: true, role: 'manager' } }), CODE, false);
+  eq('R-A7 prBind fails but whoAmI knows us → bound (stored, so the next open skips prBind)', [seen.map(x => x[0]), m6.me.role, m6.bound], [['prBind', 'prWhoAmI'], 'manager', true]);
+  // ---- A1.1 R-A5: tab, head and list agree the moment the optimistic row lands ----
+  const ob = { rows: [{ id: 'A', venue: 'Fairway', status: 'pending', estTotal: 100, items: [] }], totals: { count: 1, venues: 1, baht: 100 }, byVenue: { Fairway: 1 } };
+  const oc = { mine: 2, pending: 1, tobuy: 4, all: 9 };
+  const nr = { id: 'B', venue: 'Mandrake', status: 'pending', estTotal: 250, items: [] };
+  ob.rows.unshift(nr);
+  C.bumpOptimistic(ob, oc, nr);
+  eq('R-A5 counts: pending/mine/all +1, tobuy untouched', oc, { mine: 3, pending: 2, tobuy: 4, all: 10 });
+  eq('R-A5 group head totals follow the list', ob.totals, C.summarize(ob.rows));
+  eq('R-A5 chip for its shop +1', ob.byVenue, { Fairway: 1, Mandrake: 1 });
+  const oc2 = {};
+  C.bumpOptimistic({ rows: [nr] }, oc2, nr);
+  eq('R-A5 no server counts yet → nothing invented', oc2, {});
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 })();

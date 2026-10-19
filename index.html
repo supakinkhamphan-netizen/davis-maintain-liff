@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>ขอซื้อสาขา</title>
 <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
@@ -39,9 +39,13 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink)}
+/* A1.1 R-A8: no zoom in the LINE webview (owner, 19 Oct); both scrolls stay. */
+html, body{touch-action:pan-x pan-y}
 body{font-family:'IBM Plex Sans Thai',-apple-system,'Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;padding-bottom:40px;min-height:100vh}
 a{color:var(--accent)}
 button,input,textarea,select{font:inherit;color:inherit}
+/* below 16px iOS zooms the page on focus */
+input,select,textarea{font-size:16px}
 :focus-visible{outline:3px solid var(--free-ink);outline-offset:2px}
 #app{min-height:100vh}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -211,7 +215,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 <script>
 (function () {
   'use strict';
-  var BUILD = 'pr-board v5 · 2026-10-19 · order shape';
+  var BUILD = 'pr-board v5.1 · 2026-10-19 · A1.1';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -572,6 +576,17 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     return url + (keep.length ? '?' + keep.join('&') : '') + hash;
   }
   /** The page for someone the system does not know yet: the server's words, and the way to the bot's chat. */
+  /**
+   * The optimistic row just went on top of board.rows: bump what the tab, the
+   * group head and the chips say with it, so all three agree before load(true)
+   * answers (R-A5). A new request is pending, so it is in mine, pending and all.
+   * The server reload still wins afterwards.
+   */
+  function bumpOptimistic(board, counts, row) {
+    ['mine', 'pending', 'all'].forEach(function (k) { if (counts && counts[k] !== undefined) counts[k] += 1; });
+    if (board.totals) board.totals = summarize(board.rows || []);
+    if (board.byVenue) board.byVenue[row.venue] = (board.byVenue[row.venue] || 0) + 1;
+  }
   function unknownNotice(me) {
     var href = String((me && me.bindChatUrl) || '');
     return {
@@ -597,7 +612,9 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     }
     return apiFn('prBind', { code: code }).then(function (me) { return { me: me, bound: true, bindError: '' }; }, function (err) {
       var why = (err && err.message) || '';
-      return apiFn('prWhoAmI', {}).then(function (me) { return { me: me, bound: false, bindError: why }; });
+      // Known after all: bound already (a phone bound on v4 never stored it), so
+      // say bound and the next open goes whoAmI-first (R-A7, PR_BIND_FAIL every open).
+      return apiFn('prWhoAmI', {}).then(function (me) { return { me: me, bound: !!(me && me.known), bindError: why }; });
     });
   }
   function esc(s) {
@@ -1357,6 +1374,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
           category: payload.category, items: payload.items.map(function (i, k) { return { n: k + 1, name: i.name, qty: i.qty, unit: i.unit, unitPrice: i.unitPrice, lineTotal: lineTotal(i), status: 'pending', from: i.from }; }),
           estTotal: t.total, pricedLines: t.priced, lineCount: t.count, status: 'pending', fulfilment: '', ageMinutes: 0, photos: [] });
         if (S.board.mineRows) S.board.mineRows = S.board.rows;
+        bumpOptimistic(S.board, S.counts, S.board.rows[0]);
       }
       render(); window.scrollTo(0, 0); load(true);
     }, function (e) { f.sending = false; render(); toast(e.message, true); });

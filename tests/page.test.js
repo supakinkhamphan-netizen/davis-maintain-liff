@@ -33,7 +33,12 @@ ok('ต้องซื้อ lists "รอสาขารับของ" under 
 ok('the ต้องซื้อ tab number is the server\'s tobuy count, nothing added', /label: 'ต้องซื้อ' \+ n\('tobuy'\)/.test(SRC));
 ok('a bind code is read from the (liff.state-decoded) query, never in demo', /var code = DEMO \? '' : bindCodeFrom\(QS\);/.test(SRC));
 ok('a successful bind cleans the address bar', /history\.replaceState\(null, '', stripBind\(location\.href\)\)/.test(SRC));
-// #12: build v5 (was v4 · bind link).
-ok('build v5', /var BUILD = 'pr-board v5 · 2026-10-19 · order shape';/.test(SRC));
+// #12 build v5 → A1.1 v5.1 (pinned below).
+// A1.1 R-A8: the owner asked to lock zoom on the board (pinch, double-tap, iOS focus zoom).
+ok('R-A8 viewport meta locks zoom', SRC.indexOf('<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">') !== -1);
+ok('R-A8 html, body pan only (keeps both scrolls, no pinch / double-tap zoom)', /html, body\{touch-action:pan-x pan-y\}/.test(SRC));
+ok('R-A8 every field is 16px, after the font:inherit reset (iOS zooms on focus below 16px)', SRC.indexOf('input,select,textarea{font-size:16px}') > SRC.indexOf('button,input,textarea,select{font:inherit;color:inherit}'));
+ok('R-A8 no field rule sets a size below 16px', !/(input|select|textarea)[^{}]*\{[^}]*font-size:(1[0-5]|[0-9])px/.test(SRC));
+ok('build v5.1', /var BUILD = 'pr-board v5\.1 · 2026-10-19 · A1\.1';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);

@@ -104,7 +104,7 @@ ok('7.9 tokens: raise, raise-sm, sink, btn-h, head-h exactly as Order', [/--rais
   /--sink:inset 4px 4px 10px var\(--lo\), inset -3px -3px 8px var\(--hi\)/, /--btn-h:56px/, /--head-h:64px/, /--tabs-h:48px/].every(re => re.test(SRC)));
 ok('7.10 one action button per list card (primaryActionFor), never a pair', /primaryActionFor\(S\.me, r\)/.test(SRC) && !/class="acts"/.test(listCardSrc()));
 ok('7.11 #lastUpdated at the foot', /id="lastUpdated"/.test(SRC));
-ok('7.12 build v5', /var BUILD = 'pr-board v5 · 2026-10-19 · order shape';/.test(SRC));
+ok('7.12 build v5 or later (A1.1 pins v5.1 in page.test)', /var BUILD = 'pr-board v5(\.\d+)? · 2026-10-19 · /.test(SRC));
 function listCardSrc() { const a = SRC.indexOf('function listCard('); return a < 0 ? '' : SRC.slice(a, SRC.indexOf('\n  }\n', a)); }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
