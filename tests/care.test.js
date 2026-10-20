@@ -41,6 +41,7 @@ safe('1', () => {
   eq('1.5 purchasing: one zone, so no zone bar (v5 exactly)', C.zoneBarHtml(['purchase'], 'purchase', {}), '');
   eq('1.6 an engine without bd* (zones missing) still opens the purchase board', C.zonesOf({ known: true, allowed: true, role: 'purchasing' }), ['purchase']);
   ok('1.7 the zone bar marks the current zone', /class="zone active"[^>]*data-k="bills"/.test(C.zoneBarHtml(['approvals', 'bills'], 'bills', {})));
+  ok('1.10 the zone on screen is accent (text and ring), the rest muted', /\.zones \.zone\{[^}]*color:var\(--ink-2\)/.test(SRC) && /\.zones \.zone\.active\{[^}]*color:var\(--accent\)[^}]*rgba\(47,163,154/.test(SRC));
   eq('1.8 tech / staff (zones []) get "ไม่ใช่บอร์ดของคุณ"', (C.noticeFor({ known: true, allowed: false, zones: [] }) || {}).title, 'บอร์ดนี้ยังไม่ได้เปิดให้คุณ');
   eq('1.9 someone with zones gets no notice', C.noticeFor(R('manager').bdWhoAmI), null);
 });
@@ -74,7 +75,14 @@ safe('3', () => {
   const txt = textOf(html);
   eq('3.1 the clock = the counts', ['รอช่างรับ ' + r.counts.open, 'กำลังซ่อม ' + r.counts.inProgress, 'รออนุมัติ ' + r.counts.awaitingApproval,
     'ผู้รับเหมา ' + r.counts.contractor, 'ปิดวันนี้ ' + r.counts.closedToday].filter(t => txt.indexOf(t) < 0), []);
-  ok('3.2 ต้องดู lists each item, red', r.mustSee.every(m => txt.indexOf(m.id) >= 0) && /class="mustSee[^"]*"/.test(html) && /\blate\b/.test(html));
+  // v6.1 (reviewer, board 8): the head "ต้องดู N" and its edge are red; each line is ink with only the part past the line red.
+  const band = (html.match(/<section class="mustSee"[\s\S]*?<\/section>/) || [''])[0];
+  ok('3.2 ต้องดู lists each item', r.mustSee.every(m => band.indexOf(m.id) >= 0));
+  ok('3.2a the head is red: ต้องดู N', /class="msHead late">⚠️ ต้องดู \d+</.test(band));
+  ok('3.2b the lines themselves are ink', (band.match(/class="msItem[^"]*"/g) || []).every(c => !/\blate\b/.test(c)) && /class="msItem"/.test(band));
+  const late = (band.match(/<span class="late">[^<]*<\/span>/g) || []).map(x => x.replace(/<[^>]+>/g, ''));
+  eq('3.2c only the over-the-line part is red', late, r.mustSee.map(m => m.kind === 'emergency' ? 'ฉุกเฉิน' : m.kind === 'repeat' ? 'ครั้งที่ ' + m.nth :
+    m.kind === 'overCap' ? 'เกินวงเงิน ' + C.fmtBaht(m.baht) + ' บาท' : C.durText(m.minutes)));
   ok('3.3 groups in the clock order', ['🚨 รอช่างรับ', '🧾 รออนุมัติ', '🔧 กำลังซ่อม', '⏸ ผู้รับเหมา'].map(g => txt.indexOf(g)).every((x, i, a) => x >= 0 && (i === 0 || x > a[i - 1])));
   ok('3.4 closed today and routine are folded (details)', /<details[^>]*>\s*<summary[^>]*>[^<]*✅ ปิดวันนี้/.test(html) && /<details[^>]*>\s*<summary[^>]*>[^<]*🗓 งานประจำ/.test(html));
   const c0 = r.groups.open[0];
@@ -110,6 +118,9 @@ safe('5', () => {
     [{ text: 'ทีม 67 · ▲ ดีกว่า', red: false }, { text: 'ทีม 80 · ▼ แย่กว่า', red: true }, { text: 'ทีม 180 · ▲ ดีกว่า', red: false }]);
   const cn = (html.match(/class="cn">[^<]*</g) || []).map(x => x.slice(11, -1));
   eq('5.4 seven daily columns, every one with its number (0 included)', [(html.match(/class="col"/g) || []).length, cn], [7, t.daily.map(d => String(d.n))]);
+  const th = C.renderTechs(ts, { window: 7 });
+  const widths = (th.match(/class="bar" style="width:(\d+)%"/g) || []).map(x => Number(/(\d+)%/.exec(x)[1]));
+  eq('5.8 the work-in-hand bars share one scale (the busiest tech = 100)', widths, ts.techs.map(x => x.load));
   ok('5.5 no score, no rank', !/อันดับ|คะแนน/.test(textOf(html)));
   eq('5.6 the median is compared in the same words as it is shown', C.compareLine(180, 170, false, '', C.durText), { text: 'ทีม 2 ชม. 50 นาที · ▼ แย่กว่า', red: true });
   ok('5.7 the team median box uses those words', textOf(html).indexOf('ทีม ' + C.durText(t.team.medianFixMin)) >= 0);
