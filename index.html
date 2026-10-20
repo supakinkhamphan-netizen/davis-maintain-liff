@@ -275,6 +275,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .tick input{width:22px;height:22px;accent-color:var(--accent)}
 .bill select{margin-top:8px;width:100%;min-height:44px;border:none;border-radius:10px;background:var(--bg);color:var(--ink);box-shadow:var(--sink);font-family:inherit;font-size:16px;padding:0 10px}
 .linkBtn{display:flex;align-items:center;justify-content:center;text-decoration:none;margin-top:18px}
+/* Last colour word: red beats any rule that colours its children (.slaRow span, .xline, .sub). */
+#app .late{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -786,12 +788,13 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     return { text: (x.up ? '▲' : '▼') + ' ' + x.pct + '% ' + (x.good ? 'ดีขึ้น' : 'แย่ลง') + ' · ช่วงก่อนหน้า ' + x.prevText, red: !!x.red };
   }
   /** A technician against the team: ▲ muted when better or equal, ▼ red when worse. No score, no rank. */
-  function compareLine(mine, team, higherIsBetter, unit) {
+  function compareLine(mine, team, higherIsBetter, unit, fmt) {
     unit = unit || '';
     if (mine === null || mine === undefined || team === null || team === undefined) return { text: 'ทีม —', red: false };
-    if (mine === team) return { text: 'ทีม ' + team + unit + ' · เท่าทีม', red: false };
+    var shown = (fmt ? fmt(team) : team) + unit;
+    if (mine === team) return { text: 'ทีม ' + shown + ' · เท่าทีม', red: false };
     var better = higherIsBetter ? mine > team : mine < team;
-    return { text: 'ทีม ' + team + unit + ' · ' + (better ? '▲ ดีกว่า' : '▼ แย่กว่า'), red: !better };
+    return { text: 'ทีม ' + shown + ' · ' + (better ? '▲ ดีกว่า' : '▼ แย่กว่า'), red: !better };
   }
 
   // ---- charts: every bar carries its number (9px under the 10px labels) ------------
@@ -1044,7 +1047,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       box('ปิดงาน', String(me.closes), compareLine(me.closes, perTech, true)) +
       box('รับงานทันใน 1 ชม.', me.claimInTimePct === null ? '—' : me.claimInTimePct + '%', compareLine(me.claimInTimePct, team.claimInTimePct, true, '%')) +
       box('ปิดงานใน 24 ชม.', me.closeInTimePct === null ? '—' : me.closeInTimePct + '%', compareLine(me.closeInTimePct, team.closeInTimePct, true, '%')) +
-      box('เวลาต่องาน (ค่ากลาง)', me.medianFixMin === null ? '—' : durText(me.medianFixMin), compareLine(me.medianFixMin, team.medianFixMin, false, ' นาที')) + '</div>';
+      box('เวลาต่องาน (ค่ากลาง)', me.medianFixMin === null ? '—' : durText(me.medianFixMin), compareLine(me.medianFixMin, team.medianFixMin, false, '', durText)) + '</div>';
     h += section('ปิดงานรายวัน 7 วัน', '<div class="card">' + colChart((t.daily || []).map(function (d) { return { label: dayLabel(d.day), n: d.n }; })) + '</div>');
     h += section('ประเภทงาน', '<div class="card">' + barChart((t.categories || []).map(function (x) { return { label: x.name, n: x.n, text: x.n + ' งาน' }; })) + '</div>');
     h += section('ตามร้าน', '<div class="card">' + barChart((t.venues || []).map(function (x) { return { label: x.name, n: x.n, text: x.n + ' งาน' }; })) + '</div>');

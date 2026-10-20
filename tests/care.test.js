@@ -108,6 +108,8 @@ safe('5', () => {
   const days = (html.match(/class="col"/g) || []).length, nums = (html.match(/class="cn"/g) || []).length;
   eq('5.4 seven daily columns, every one with its number (0 included)', [days, nums], [7, 7]);
   ok('5.5 no score, no rank', !/อันดับ|คะแนน/.test(textOf(html)));
+  eq('5.6 the median is compared in the same words as it is shown', C.compareLine(180, 170, false, '', C.durText), { text: 'ทีม 2 ชม. 50 นาที · ▼ แย่กว่า', red: true });
+  ok('5.7 the team median box uses those words', textOf(html).indexOf('ทีม ' + C.durText(t.team.medianFixMin)) >= 0);
 });
 
 // ---- 6. accounting: approvals, bills, all jobs ----------------------------------------------
@@ -138,6 +140,9 @@ safe('7', () => {
     C.renderApprovals(callOf('account', 'bdApprovals', {}), R('account').bdWhoAmI, {}), C.renderBills(callOf('account', 'bdBills', { weekOffset: 0 }), {})].join('');
   eq('7.2 no "label  value" rows anywhere', textNodes(all).filter(t => /[ก-๙A-Za-z]{2,}  +[^\s]/.test(t)).slice(0, 5), []);
   ok('7.3 red only via late/over', !/#F08C8C|var\(--danger\)/.test(all));
+  // A1.4's lesson: a class that colours its children (.slaRow span) beats .late at equal weight.
+  ok('7.5 red wins over every descendant colour rule: #app .late is the last colour word', /#app \.late\{color:var\(--danger\)\}/.test(SRC) &&
+    SRC.lastIndexOf('#app .late{color:var(--danger)}') > SRC.lastIndexOf('.slaRow span{'));
   ok('7.4 build v6', /var BUILD = 'care-board v6 · 2026-10-2\d/.test(SRC));
 });
 
