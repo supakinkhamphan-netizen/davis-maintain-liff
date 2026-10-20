@@ -70,5 +70,16 @@ ok('#18 apple title Davis Care', HEAD.indexOf('<meta name="apple-mobile-web-app-
 ok('#18 sw.js registered only where there are service workers', /if \('serviceWorker' in navigator\) \{[\s\S]{0,200}navigator\.serviceWorker\.register\('sw\.js'\)/.test(SRC));
 // A1.3 build v5.3 (retired by the v5.4 pin above):
 // ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
+// #18 F1 (review of 8c33153): black-translucent puts the installed app under the iPhone status bar.
+// In standalone, the sticky header grows by the top inset and everything stuck under it moves with it.
+const STANDALONE = (/@media \(display-mode: standalone\)\{([\s\S]*?)\n\}/.exec(SRC) || [])[1] || '';
+ok('#18 F1 a display-mode: standalone block pads the header by safe-area-inset-top',
+  /header\{padding-top:env\(safe-area-inset-top\);height:calc\(var\(--head-h\) \+ env\(safe-area-inset-top\)\)\}/.test(STANDALONE));
+ok('#18 F1 … the sticky zone bar and tabs sit under the taller header',
+  /\.tabs,\s*\.zones\{top:calc\(var\(--head-h\) \+ env\(safe-area-inset-top\)\)\}/.test(STANDALONE));
+ok('#18 F1 … the screens with no header (notice, loading) clear the status bar too',
+  /\.notice\{padding-top:calc\(60px \+ env\(safe-area-inset-top\)\)\}/.test(STANDALONE));
+ok('#18 F1 every sticky top rule is covered (header top:0, .tabs and .zones top:var(--head-h), nothing else)',
+  JSON.stringify((SRC.match(/(^|\n)[^{}\n]*\{[^}]*position:sticky;top:[^;}]*/g) || []).map(r => r.trim().split('{')[0]).sort()) === JSON.stringify(['.tabs', '.zones', 'header']));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);
