@@ -30,6 +30,7 @@ function bootPage(SRC, o) {
     static now() { return RealDate.now() + clock.skew; }
   }
   const doc = { visibilityState: 'visible' };
+  const swap = { fetch: null };   // the test may change the network after boot (pg.fetch = …)
   const href = o.href || 'https://davis.example/davis-maintain-liff/';
   const ctx = {
     console, Date: FakeDate, Math, JSON, Object, Array, String, Number, Promise, Error, TypeError, RegExp, Map, Set,
@@ -52,14 +53,15 @@ function bootPage(SRC, o) {
       try { const b = JSON.parse(opts.body); fn = b.fn; payload = b.payload; } catch (e) { fn = ''; }
       log.fns.push(fn);
       log.calls.push({ fn, payload });
-      return (pg.fetch || o.fetch)(fn, opts, payload);
+      return (swap.fetch || o.fetch)(fn, opts, payload);
     },
   };
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
   const pg = {
-    ctx, app: els.app, toast: els.toast, sdk: appended[0], win, sw, log, local, session, docL, intervals, clock, doc, fetch: null,
+    ctx, app: els.app, toast: els.toast, sdk: appended[0], win, sw, log, local, session, docL, intervals, clock, doc,
+    set fetch(f) { swap.fetch = f; },
     /** A tap on the element carrying data-act (and data-k) — enough for the page's click handler. */
     tap(act, k) {
       const target = {

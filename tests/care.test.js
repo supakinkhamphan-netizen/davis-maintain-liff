@@ -171,7 +171,8 @@ safe('8', () => {
     const [zone, fn, p] = first[role], me = R(role).bdWhoAmI, res = callOf(role, fn, p);
     const cache = C.cacheZone(C.cacheZone({}, me, 'overview', '', { ok: true, x: 1 }, T0 - 60000), me, zone, '', res, T0);
     const paint = C.cachedPaint(cache, firstTab);
-    eq('8.1 ' + role + ': the cache paints me, the first zone (' + zone + ') and its last answer', paint && [paint.me.role, paint.zone, paint.data === res, paint.at], [role, zone, true, T0]);
+    // v7.1 (WO#19 B3): stamped with the answer's serverNow, the phone's clock only without it.
+    eq('8.1 ' + role + ': the cache paints me, the first zone (' + zone + ') and its last answer', paint && [paint.me.role, paint.zone, paint.data === res, paint.at], [role, zone, true, res.serverNow ? C.bkkMs(res.serverNow) : T0]);
     const html = zone === 'repair' ? C.renderRepair(paint.data, {}, NOW, paint.me) : C.renderApprovals(paint.data, paint.me, {});
     ok('8.2 ' + role + ': the painted zone draws (not the loading line)', html.length > 200 && html.indexOf('กำลังโหลด') < 0);
   });
@@ -224,7 +225,8 @@ const { bootPage, answer, offline } = require('./fake-browser');
 const tick = ms => new Promise(r => setTimeout(r, ms));
 const firstOf = { manager: ['repair', 'bdRepairLive'], account: ['approvals', 'bdApprovals'], venue_manager: ['repair', 'bdRepairLive'] };
 const T9 = Date.now() - 3 * 3600000;
-const hhmm9 = (t => ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2))(new Date(T9 + 7 * 3600000));
+// v7.1 (WO#19 B3): the line reads the cached answer's serverNow (the fixture's 12:00), not when the phone stored it.
+const hhmm9 = (t => ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2))(new Date(C.bkkMs(R('manager').calls['bdRepairLive{}'].serverNow) + 7 * 3600000));
 const firstKey = role => Object.keys(R(role).calls).filter(x => x.indexOf(firstOf[role][1] + '{') === 0)[0];
 const UNKNOWN_FN = 'บอร์ดขอคำสั่งที่ระบบไม่รู้จัก ปิดแล้วเปิดบอร์ดใหม่';
 /** @77: bdBoot answers {me, first:{zone, params, data}} with serverNow on the envelope only. */
@@ -273,9 +275,10 @@ async function section9() {
   live.lineLoads({ isInClient: () => true });
   await tick(150);
   const tl = textOf(live.app.innerHTML);
-  ok('9.5 the fresh answer replaces the painted one: no "ข้อมูลเมื่อ" line left', live.log.fns.indexOf('bdRepairLive') >= 0 && tl.indexOf('ข้อมูลเมื่อ') < 0 && tl.indexOf('ไม่มีเน็ต') < 0);
+  // v7.1: the fresh answer is bdBoot's first zone (WO#19 B1), no bdRepairLive after it.
+  ok('9.5 the fresh answer replaces the painted one: no "ข้อมูลเมื่อ" line left', live.log.fns.join() === 'bdBoot' && tl.indexOf('ข้อมูลเมื่อ') < 0 && tl.indexOf('ไม่มีเน็ต') < 0);
   ok('9.6 inside LINE: the "ติดตั้งเป็นแอป ›" line, and no sheet without ?install=1', tl.indexOf('ติดตั้งเป็นแอป ›') >= 0 && tl.indexOf('ติดตั้ง Davis Care เป็นแอป') < 0);
-  ok('9.7 the fresh answer is cached under its zone', (c => c && c.boards && !!c.boards['repair|'] && c.at['repair|'] > T9)(JSON.parse(live.local.get('davisPurchase.v1') || 'null')));
+  ok('9.7 the fresh answer is cached under its zone (stamped with its serverNow, v7.1)', (c => c && c.boards && !!c.boards['repair|'] && c.at['repair|'] === C.bkkMs('2026-10-20 12:00:00'))(JSON.parse(live.local.get('davisPurchase.v1') || 'null')));
 
   const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
   const inst = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?install=1', ua: IOS, fetch: answerOf('manager') });
@@ -380,6 +383,11 @@ async function section10() {
   acc.doc.visibilityState = 'visible'; acc.docL.visibilitychange && acc.docL.visibilitychange();
   await tick(80);
   eq('10.10 back in view on a zone that does not poll (account รออนุมัติ): refreshed too', acc.log.fns.slice(1), ['bdApprovals']);
+
+  // ?demo=1 runs bdBoot too (the demo is the review of the real screens).
+  const dm = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=manager', fetch: fn => fn === '' ? answer(DEMO) : offline() });
+  await tick(400);
+  ok('10.22 ?demo=1 opens on bdBoot: the manager\'s งานซ่อม drawn', textOf(dm.app.innerHTML).indexOf('ต้องดู') >= 0 && textOf(dm.app.innerHTML).indexOf('ตัวอย่างไม่มีข้อมูล') < 0);
 
   // #18 §6: install before login.
   const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
