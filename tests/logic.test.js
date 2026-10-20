@@ -206,9 +206,14 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   eq('demo detail: one audit row per step', det.audit.map(a => a.action), ['CREATE', 'DECIDE', 'ORDERED', 'DELIVERED', 'RECEIVED']);
   const again = await D.call('prReceived', { id: made.id });
   eq('demo refuses a step out of order', again.ok, false);
+  D.as('venue_manager');
+  const fresh = await D.call('prCreate', { venue: 'HOS', buyer: 'self', category: '', items: [{ name: 'ถุงขยะ', qty: 2, unit: 'แพ็ค', unitPrice: 50, from: '' }], reason: 'หมด' });
   D.as('account');
-  const accDecide = await D.call('prDecide', { id: made.id, lines: [], note: '' });
-  eq('demo: account cannot decide', accDecide.error, C.L.err.notAllowed);
+  const accDecide = await D.call('prDecide', { id: fresh.id, lines: [{ n: 1, approved: true }], note: '' });
+  // #17 §8.2 (owner, 20 Oct): accounting decides branch requests (was 'account cannot decide').
+  eq('demo: account decides a branch request', [accDecide.ok, accDecide.error], [true, undefined]);
+  const accMe = (await D.call('prWhoAmI', {}));
+  eq('#17: account may decide but not order, deliver or cancel', [C.buttonsFor(accMe, { status: 'pending', mine: false }), C.buttonsFor(accMe, { status: 'approved', fulfilment: 'awaiting' })], [['decide'], []]);
   const board = await D.call('prBoard', { scope: 'pending' });
   ok('demo board has counts, chips and the strip', board.ok && 'pending' in board.counts && board.totals && typeof board.byVenue === 'object');
   // ---- boot order with a bind code (work order #11) ----
