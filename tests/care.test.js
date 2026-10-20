@@ -61,8 +61,10 @@ safe('2', () => {
   ok('2.7 money: approved purchases in the window, cumulative cost under it', txt.indexOf(Number(o.report.purchaseApprovedCost).toLocaleString('en-US')) >= 0 && txt.indexOf(Number(o.report.totalCost).toLocaleString('en-US')) >= 0);
   ok('2.8 every section the exec page has, under its own title', ['ปริมาณงาน', 'ความเร็วในการทำงาน', 'เงิน', 'งานซ่อม', 'แนวโน้มใบแจ้งรายวัน', 'ค่าซ่อมแยกร้าน (สะสม)', 'จุดที่ซ่อมซ้ำบ่อยที่สุด', 'หมวดปัญหาที่พบบ่อยสุด', 'เวลาทำงานแยกตามร้าน', 'เวลาทำงานแยกตามช่าง', 'เวลาทำงานแยกตามระดับความสำคัญ', 'งานประจำและรอบตรวจ'].every(s => txt.indexOf(s) >= 0));
   ok('2.9 the link to the old page (PDF/CSV)', html.indexOf(C.esc(o.pageUrl)) >= 0 && txt.indexOf('เปิดหน้าเว็บเดิม') >= 0);
-  const bars = (html.match(/class="bar"/g) || []).length, bn = (html.match(/class="bn"/g) || []).length;
+  const bars = (html.match(/class="bar"/g) || []).length, bn = (html.match(/class="bn">[^<]+</g) || []).filter(x => /\d/.test(x)).length;
   ok('2.10 every bar has its number (including 0)', bars > 0 && bars === bn);
+  const cols = (html.match(/class="cn">[^<]*</g) || []).map(x => x.slice(11, -1));
+  ok('2.11 every daily column has its number (including 0)', cols.length > 0 && cols.every(x => /^\d+$/.test(x)));
 });
 
 // ---- 3. งานซ่อม: live, read only --------------------------------------------------------
@@ -82,7 +84,8 @@ safe('3', () => {
   eq('3.8 liveLine: on it', C.liveLine({ status: 'กำลังดำเนินการ', assignee: 'นัท', createdMs: NOW - 200 * 60000, claimMs: NOW - 130 * 60000 }, NOW).text, 'ช่าง นัท · ซ่อมมา 2 ชม. 10 นาที');
   ok('3.9 "โหลดเพิ่ม" when the engine says more', /data-act="liveMore"/.test(C.renderRepair(Object.assign({}, r, { more: true }), {}, NOW, R('manager').bdWhoAmI)) && !/data-act="liveMore"/.test(html));
   ok('3.10 a manager approves from the 🧾 group', /data-act="bdApprove"/.test(html));
-  ok('3.11 a venue manager does not', !/data-act="bdApprove"/.test(C.renderRepair(callOf('venue_manager', 'bdRepairLive', {}), {}, NOW, R('venue_manager').bdWhoAmI)));
+  // The manager's live answer has a purchase waiting (Fairway); drawn for a venue manager it must carry no อนุมัติ.
+  ok('3.11 a venue manager does not (same cards, their role)', /data-act="bdApprove"/.test(html) && !/data-act="bdApprove"/.test(C.renderRepair(r, {}, NOW, R('venue_manager').bdWhoAmI)));
 });
 
 // ---- 4. one job ----------------------------------------------------------------------------
@@ -105,8 +108,8 @@ safe('5', () => {
   ok('5.2 four boxes: closes, claim %, close %, median', [String(t.me.closes), t.me.claimInTimePct + '%', t.me.closeInTimePct + '%'].every(x => textOf(html).indexOf(x) >= 0));
   eq('5.3 better than the team = ▲ muted; worse = ▼ red', [C.compareLine(80, 67, true), C.compareLine(67, 80, true), C.compareLine(170, 180, false)],
     [{ text: 'ทีม 67 · ▲ ดีกว่า', red: false }, { text: 'ทีม 80 · ▼ แย่กว่า', red: true }, { text: 'ทีม 180 · ▲ ดีกว่า', red: false }]);
-  const days = (html.match(/class="col"/g) || []).length, nums = (html.match(/class="cn"/g) || []).length;
-  eq('5.4 seven daily columns, every one with its number (0 included)', [days, nums], [7, 7]);
+  const cn = (html.match(/class="cn">[^<]*</g) || []).map(x => x.slice(11, -1));
+  eq('5.4 seven daily columns, every one with its number (0 included)', [(html.match(/class="col"/g) || []).length, cn], [7, t.daily.map(d => String(d.n))]);
   ok('5.5 no score, no rank', !/อันดับ|คะแนน/.test(textOf(html)));
   eq('5.6 the median is compared in the same words as it is shown', C.compareLine(180, 170, false, '', C.durText), { text: 'ทีม 2 ชม. 50 นาที · ▼ แย่กว่า', red: true });
   ok('5.7 the team median box uses those words', textOf(html).indexOf('ทีม ' + C.durText(t.team.medianFixMin)) >= 0);
