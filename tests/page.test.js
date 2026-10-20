@@ -23,7 +23,8 @@ ok('… and never the Order board\'s LIFF id', SRC.indexOf('2011319750-tMh303eW'
 ok('localStorage key davisPurchase.v1', /'davisPurchase\.v1'/.test(SRC));
 ok('polls every 10 s', /POLL_MS = 10000/.test(SRC));
 ok('a build tag', /var BUILD = '/.test(SRC));
-ok('no alert / confirm / prompt anywhere', !/\b(alert|confirm|prompt)\s*\(/.test(SRC.replace(/confirmReject|confirmApprove|confirmCancel/g, '')));
+// #18: ask.prompt() is Chrome's held install prompt (beforeinstallprompt), on the ติดตั้ง tap; not window.prompt.
+ok('no alert / confirm / prompt anywhere', !/\b(alert|confirm|prompt)\s*\(/.test(SRC.replace(/confirmReject|confirmApprove|confirmCancel|ask\.prompt\(\)/g, '')));
 ok('no Firestore this round', !/firebase|firestore/i.test(SRC));
 ok('?demo=1 never loads the LINE SDK (DEMO branch returns before it)', SRC.indexOf('if (DEMO_MODE)') < SRC.indexOf('static.line-scdn.net/liff'.replace('static.line-scdn.net/liff', "sdk.src = 'https://static.line-scdn.net/liff")));
 ok('every user string goes through esc() in the card builders (no raw r.reason)', !/\+ r\.reason \+/.test(SRC));

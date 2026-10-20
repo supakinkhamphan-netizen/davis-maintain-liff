@@ -1,4 +1,6 @@
 .DS_Store
 .gstack/
 *.png
+# Work order #18: the app icons are committed (no build step).
+!icons/*.png
 node_modules/

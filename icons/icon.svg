@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Davis Care app icon (work order #18). The source of every PNG in this folder.
+       Ground #1E2228, rounded 22 %; a wrench in #2FA39A drawn as paths, never a glyph. -->
+  <rect width="512" height="512" rx="113" fill="#1E2228"/>
+  <g transform="translate(256 256) rotate(45) scale(0.85)">
+    <mask id="cut" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600">
+      <rect x="-300" y="-300" width="600" height="600" fill="#FFFFFF"/>
+      <path d="M -26 -200 H 26 V -120 A 26 26 0 0 1 -26 -120 Z" fill="#000000"/>
+      <path d="M -11 140 A 11 11 0 1 0 11 140 A 11 11 0 1 0 -11 140 Z" fill="#000000"/>
+    </mask>
+    <g mask="url(#cut)" fill="#2FA39A">
+      <path d="M -70 -110 A 70 70 0 1 0 70 -110 A 70 70 0 1 0 -70 -110 Z"/>
+      <path d="M -28 -60 H 28 V 150 A 28 28 0 0 1 -28 150 Z"/>
+    </g>
+  </g>
+</svg>

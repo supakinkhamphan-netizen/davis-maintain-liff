@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>ขอซื้อสาขา</title>
+<title>Davis Care</title>
+<!-- Work order #18: an installable app (manifest, icons, sw.js). -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1E2228">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Davis Care">
 <link rel="preconnect" href="https://static.line-scdn.net" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -275,6 +282,13 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .tick input{width:22px;height:22px;accent-color:var(--accent)}
 .bill select{margin-top:8px;width:100%;min-height:44px;border:none;border-radius:10px;background:var(--bg);color:var(--ink);box-shadow:var(--sink);font-family:inherit;font-size:16px;padding:0 10px}
 .linkBtn{display:flex;align-items:center;justify-content:center;text-decoration:none;margin-top:18px}
+/* Work order #18: the lines above the board (install, a new build, the age of the data). Muted, never red. */
+.topLine{margin:0;padding:8px 16px;font-size:13px;line-height:1.4;color:var(--ink)}
+.topLine.muted{color:var(--ink-2)}
+button.topLine{display:block;width:100%;min-height:44px;text-align:left;background:none;border:none;font-family:inherit;cursor:pointer}
+.isteps{margin:4px 0 8px;padding-left:22px;font-size:15px;line-height:1.7;color:var(--ink)}
+.isteps li{margin:4px 0}
+.isteps svg{width:18px;height:18px;vertical-align:-3px;margin:0 2px}
 /* Last colour word: red beats any rule that colours its children (.slaRow span, .xline, .sub). */
 #app .late{color:var(--danger)}
 </style>
@@ -285,7 +299,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v6.1 · 2026-10-20 · Davis Care';
+  var BUILD = 'care-board v7.0 · 2026-10-20 · ติดตั้งเป็นแอป';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -1126,6 +1140,104 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 /* CARE END */
 
 
+/* PWA START */
+  // ---- work order #18: the board as an installable app ----------------------------
+  // Pure: no DOM, no liff, no storage. The controller feeds them what it reads.
+  var INSTALL_LATER_MS = 7 * 86400000;
+  /** HH:MM in Bangkok. */
+  function bkkHhmm(ms) {
+    var t = new Date(ms + 7 * 3600000);
+    return ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2);
+  }
+  /**
+   * What install help this viewer gets: 'line' (inside LINE: open the phone's
+   * browser), 'android' / 'ios' / 'other' (a browser, not installed), or 'none'
+   * (installed, or "ไว้ก่อน" within 7 days unless the link says ?install=1).
+   */
+  function installHintFor(o) {
+    if (o.standalone) return 'none';
+    if (o.inClient) return 'line';
+    var asked = /[?&]install=1(?:&|#|$)/.test(String(o.qs || ''));
+    if (!asked && o.dismissedAt && (o.now || Date.now()) - o.dismissedAt < INSTALL_LATER_MS) return 'none';
+    var ua = String(o.ua || '');
+    // In-app browsers (LINE's own, Facebook's, Android webviews) cannot install.
+    if (/\bLine\/|FBAN|FBAV|FB_IAB|Instagram|; wv\)/.test(ua)) return 'other';
+    if (/iPhone|iPad|iPod/.test(ua)) return /Version\/[\d.]+.*Safari|CriOS\//.test(ua) ? 'ios' : 'other';
+    if (/Chrome\//.test(ua)) return 'android';
+    return 'other';
+  }
+  function installLineHtml(hint) {
+    return hint === 'none' ? '' : '<button type="button" class="topLine muted" data-act="installLine">ติดตั้งเป็นแอป ›</button>';
+  }
+  // iOS's share glyph (a box with an arrow up), drawn so it looks the same on every phone.
+  var SHARE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="ปุ่มแชร์">' +
+    '<path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/></svg>';
+  /** The install sheet for 'android' (with or without Chrome's held prompt), 'ios' or 'other'. */
+  function installSheetHtml(kind, hasPrompt) {
+    var body;
+    if (kind === 'android' && hasPrompt) {
+      body = '<p class="sheetHint">เปิดบอร์ดจากไอคอนบนหน้าจอได้เลย ไม่ต้องเข้าไลน์</p><button type="button" class="actionBtn" data-act="installGo">ติดตั้ง</button>';
+    } else if (kind === 'android') {
+      body = '<ol class="isteps"><li>แตะ ⋮ มุมขวาบนของ Chrome</li><li>แตะ \'ติดตั้งแอป\' หรือ \'เพิ่มลงในหน้าจอหลัก\'</li><li>แตะ \'ติดตั้ง\'</li></ol>';
+    } else if (kind === 'ios') {
+      body = '<ol class="isteps"><li>แตะปุ่มแชร์ ' + SHARE_SVG + '</li><li>เลื่อนหา \'เพิ่มไปยังหน้าจอโฮม\'</li><li>แตะ \'เพิ่ม\'</li></ol>';
+    } else {
+      body = '<p class="sheetHint">เปิดหน้านี้ใน Safari หรือ Chrome แล้วทำตามขั้นตอน</p>';
+    }
+    return '<div class="sheetWrap" data-act="installClose"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-stop="1">' +
+      '<h2 id="sheetTitle" class="sheetTitle">ติดตั้ง Davis Care เป็นแอป</h2>' + body +
+      '<button type="button" class="sheetBtn cancel" data-act="installLater">ไว้ก่อน</button></section></div>';
+  }
+  function splitUrl(url) {
+    var hash = '', q = '';
+    var h = url.indexOf('#'); if (h >= 0) { hash = url.slice(h); url = url.slice(0, h); }
+    var i = url.indexOf('?'); if (i >= 0) { q = url.slice(i + 1); url = url.slice(0, i); }
+    return { base: url, params: q ? q.split('&').filter(Boolean) : [], hash: hash };
+  }
+  /** Inside LINE, the url the phone's browser opens: this page, ?install=1, nothing else. */
+  function installUrl(href) { return splitUrl(href).base + '?install=1'; }
+  /** Where LINE Login comes back to: no install=1 (the sheet opens once, not after every login), src=pwa kept. */
+  function pwaRedirectUri(href) {
+    var u = splitUrl(href);
+    var keep = u.params.filter(function (kv) { return kv !== 'install=1'; });
+    return u.base + (keep.length ? '?' + keep.join('&') : '') + u.hash;
+  }
+  /** A board left installed for days: both tokens gone. Log out and in once, never offline, never twice. */
+  function needsRelogin(o) {
+    return !!(o.failed && !o.offline && o.loggedIn && o.exp && o.exp * 1000 < o.now && !o.tried);
+  }
+  // ---- §2.6 the last data first, every role ----
+  /** The cache with one more answer: me, the answer under zone|venue, and when it came. */
+  function cacheZone(cache, me, zone, venue, res, now) {
+    var c = cache || {};
+    c.me = me; c.boards = c.boards || {}; c.at = c.at || {};
+    c.boards[zone + '|' + (venue || '')] = res;
+    c.at[zone + '|' + (venue || '')] = now;
+    return c;
+  }
+  /** What boot paints before the network answers: {me, zone, tab, data, at}, or null. */
+  function cachedPaint(cache, firstTab) {
+    if (!cache || !cache.me || !cache.boards) return null;
+    var zs = zonesOf(cache.me);
+    if (!zs.length) return null;
+    var zone = zs.indexOf(cache.zone) >= 0 ? cache.zone : zs[0];
+    var key = zone === 'purchase' ? firstTab(cache.me) + '|' : zone + '|';
+    return { me: cache.me, zone: zone, tab: zone === 'purchase' ? firstTab(cache.me) : '', data: cache.boards[key] || null, at: (cache.at || {})[key] || 0 };
+  }
+  function staleLineHtml(at, offline) {
+    if (!at) return '';
+    return '<p class="topLine muted">' + (offline ? 'ไม่มีเน็ต · แสดงข้อมูลเมื่อ ' : 'ข้อมูลเมื่อ ') + bkkHhmm(at) + '</p>';
+  }
+  /** The first call failed: 'offline' (keep the painted data, one muted line), 'toast' (a refusal), or 'notice'. */
+  function bootFailView(o) {
+    if (!o.painted) return 'notice';
+    return o.online === false || o.msg === o.network ? 'offline' : 'toast';
+  }
+  function updateLineHtml() {
+    return '<button type="button" class="topLine" data-act="reloadNew">มีรุ่นใหม่ · แตะเพื่อโหลด</button>';
+  }
+/* PWA END */
+
 /* AUTH START */
   var DEMO = null;
   var DEMO_BD = null;   // demo-bd.json, fetched only with ?demo=1
@@ -1457,6 +1569,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     checks: {}, fields: {}, busy: false, lastLoad: 0, openMenu: '', avatar: '', sending: {},
     // v6: the zone on screen, its answer and its chips; the job / tech page over it; a bd sheet.
     zone: '', z: {}, zui: {}, ticket: null, tech: null, csheet: null, zbusy: false,
+    // #18: painted from the cache at (0 = fresh), offline, a new build waiting, the install hint and sheet.
+    cachedAt: 0, offline: false, updateReady: false, hint: 'none', isheet: '',
   };
 
   function store(get, val) {
@@ -1550,12 +1664,10 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         if (tab === 'active' || tab === 'done') res.mineRows = res.rows;
         S.board = res;
         S.counts = res.counts || S.counts;
-        var cache = store(true) || {};
-        cache.me = S.me; cache.boards = cache.boards || {}; cache.boards[tab + '|' + asked.venue] = res;
-        if (!DEMO) store(false, cache);
+        if (!DEMO) store(false, cacheZone(store(true) || {}, S.me, tab, asked.venue, res, Date.now()));
       });
     }
-    return p.then(function () { if (!stale) S.lastLoad = Date.now(); }, function (e) { if (!silent && keep()) toast(e.message, true); })
+    return p.then(function () { if (!stale) { S.lastLoad = Date.now(); S.cachedAt = 0; S.offline = false; } }, function (e) { if (!silent && keep()) toast(e.message, true); })
       .then(function () {
         S.busy = false;
         if (stale) return load(silent);
@@ -1585,7 +1697,15 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     var hhmm = t ? ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2) : '';
     return '<p id="lastUpdated">' + (hhmm ? 'อัปเดต ' + hhmm + ' · ' : '') + esc(BUILD) + (DEMO ? ' · demo' : '') + '</p>';
   }
+  /** #18: the lines under the header: a new build, the install line, the age of painted data. */
+  function topLines() {
+    return (S.updateReady ? updateLineHtml() : '') + installLineHtml(S.hint) + staleLineHtml(S.cachedAt, S.offline);
+  }
   function render() {
+    renderPage();
+    if (S.isheet) app.insertAdjacentHTML('beforeend', installSheetHtml(S.isheet, !!installPrompt));
+  }
+  function renderPage() {
     var h = demoStrip();
     if (S.notice) {
       app.innerHTML = h + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text).replace(/\n/g, '<br>') + '</p>' +
@@ -1612,7 +1732,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     var where = me.role === 'venue_manager' ? (me.venues.join(', ') || 'ยังไม่ได้ผูกร้าน') : 'เห็นทุกสาขา';
     return '<header><div class="headRow">' + (back ? '<button type="button" class="back" data-act="' + back + '" aria-label="กลับ">‹</button>' : face) +
       '<div style="min-width:0"><h1>' + (zonesOf(me).length > 1 ? '🔧 Davis Care' : '🛒 Davis ขอซื้อ') + '<small>' + esc(BUILD.split(' · ')[0].replace(/^(pr|care)-board /, '')) + '</small></h1>' +
-      '<div class="who">' + esc(me.actorName) + ' · ' + esc(me.roleLabel || L.role[me.role] || '') + ' (' + esc(where) + ')</div></div></div></header>';
+      '<div class="who">' + esc(me.actorName) + ' · ' + esc(me.roleLabel || L.role[me.role] || '') + ' (' + esc(where) + ')</div></div></div></header>' + topLines();
   }
   function chipsHtml() {
     var b = S.board;
@@ -1960,6 +2080,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), k = el.getAttribute('data-k');
     if (act === 'closeCsheet' && el.classList.contains('sheetWrap') && ev.target !== el) return;   // a tap inside the bd sheet
+    if (pwaClick(act, el, ev)) return;
     if (careClick(act, k, el)) return;
     var f = S.form;
     switch (act) {
@@ -2089,6 +2210,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     return p.then(function (res) {
       if (S.zone !== z) { again = true; return; }
       S.z[z] = res;
+      S.cachedAt = 0; S.offline = false;
+      if (res && !DEMO) store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', res, Date.now()));
       if (res && res.serverNow) S.serverSkew = bkkMs(res.serverNow) - Date.now();
       if (z === 'approvals' && res) S.board = { rows: res.branch };   // the v5 detail and decide work on these rows
       S.lastLoad = Date.now();
@@ -2242,6 +2365,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     if (notice) { S.notice = notice; render(); return; }
     S.notice = null;
     S.me = me;
+    openInstallOnce();
     var zs = zonesOf(me), saved = (store(true) || {}).zone;
     S.zone = zs.indexOf(S.zone) >= 0 ? S.zone : (zs.indexOf(saved) >= 0 ? saved : zs[0]);
     if (S.zone !== 'purchase') { S.month = (me.serverNow || '').slice(0, 7); render(); load(); return; }
@@ -2257,6 +2381,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     // v6: whoAmI is asked as bdWhoAmI (with the zones); an engine without it answers prWhoAmI.
     var apiWho = function (fn, p) { return fn === 'prWhoAmI' ? api('bdWhoAmI', p).catch(function () { return api('prWhoAmI', p); }) : api(fn, p); };
     identify(apiWho, code, !!cached0.bound).then(function (res) {
+      try { sessionStorage.removeItem(RELOGIN_KEY); } catch (e) { /* nothing to clear */ }
       if (res.bound) {
         try { history.replaceState(null, '', stripBind(location.href)); } catch (e) { /* the code is spent anyway */ }
         if (!DEMO) { var c1 = store(true) || {}; c1.bound = true; store(false, c1); }
@@ -2264,23 +2389,101 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       if (res.bindError && !(res.me && res.me.known)) toast(res.bindError, true);
       startWith(res.me);
     }, function (e) {
+      var view = bootFailView({ painted: !!(S.me && S.cachedAt), msg: e.message, online: navigator.onLine, network: L.err.network });
+      if (view === 'offline') { S.offline = true; render(); return; }
+      if (!DEMO && relogin()) return;
       if (S.me) { toast(e.message, true); return; }
       S.notice = { title: e.message === L.boardOff ? L.boardOff : 'เปิดบอร์ดไม่สำเร็จ', text: e.message === L.boardOff ? 'รอผู้ดูแลระบบเปิดใช้' : e.message };
       render();
     });
   }
+  // ---- work order #18: installable app ----------------------------------------------
+  var INSTALL_KEY = 'davisCare.installLater', INSTALL_ASK = 'davisCare.install', RELOGIN_KEY = 'davisCare.relogin';
+  var installPrompt = null;   // Chrome's beforeinstallprompt, held until the ติดตั้ง tap
+  function standaloneNow() {
+    try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; }
+  }
+  function pwaHint(inClient) {
+    var forced = DEMO && (/[?&]hint=(line|android|ios|other|none)\b/.exec(QS) || [])[1];
+    if (forced) return forced;
+    var later = 0, q = QS;
+    try { later = Number(localStorage.getItem(INSTALL_KEY)) || 0; } catch (e) { later = 0; }
+    try { if (sessionStorage.getItem(INSTALL_ASK) === '1') q += '&install=1'; } catch (e) { /* no session storage: the line still shows */ }
+    return installHintFor({ inClient: inClient, standalone: standaloneNow(), ua: navigator.userAgent, dismissedAt: later, qs: q, now: Date.now() });
+  }
+  /** ?install=1 (kept across the LINE Login round trip in sessionStorage) opens the sheet once the board shows. */
+  function openInstallOnce() {
+    var asked = /[?&]install=1\b/.test(QS);
+    try { asked = asked || sessionStorage.getItem(INSTALL_ASK) === '1'; sessionStorage.removeItem(INSTALL_ASK); } catch (e) { /* the URL alone */ }
+    if (!asked || ['android', 'ios', 'other'].indexOf(S.hint) < 0) return;
+    S.isheet = S.hint;
+    try { history.replaceState(null, '', pwaRedirectUri(location.href)); } catch (e) { /* a reload reopens it; harmless */ }
+  }
+  function installLater() {
+    try { localStorage.setItem(INSTALL_KEY, String(Date.now())); } catch (e) { /* asked again next time */ }
+    S.isheet = ''; S.hint = 'none'; render();
+  }
+  /** Both tokens dead on a board left installed for days: log out and in, once per tab. */
+  function relogin() {
+    var tried = true, loggedIn = false, exp = 0;
+    try { tried = sessionStorage.getItem(RELOGIN_KEY) === '1'; } catch (e) { tried = true; }
+    try { loggedIn = liff.isLoggedIn(); exp = (liff.getDecodedIDToken() || {}).exp || 0; } catch (e) { return false; }
+    if (!needsRelogin({ failed: true, offline: false, loggedIn: loggedIn, exp: exp, now: Date.now(), tried: tried })) return false;
+    try { sessionStorage.setItem(RELOGIN_KEY, '1'); } catch (e) { return false; }
+    liff.logout();
+    liff.login({ redirectUri: pwaRedirectUri(location.href) });
+    return true;
+  }
+  function pwaClick(act, el, ev) {
+    switch (act) {
+      case 'installLine':
+        if (S.hint !== 'line') { S.isheet = S.hint; render(); return true; }
+        if (DEMO) { toast('(ตัวอย่าง) เปิดเบราว์เซอร์ของเครื่อง'); return true; }
+        liff.openWindow({ url: installUrl(location.href), external: true });
+        return true;
+      case 'installGo': {
+        var ask = installPrompt;
+        if (!ask) return true;
+        el.disabled = true;
+        ask.prompt();
+        ask.userChoice.then(function (c) { installPrompt = null; S.isheet = ''; if (c && c.outcome === 'accepted') S.hint = 'none'; render(); }, function () { S.isheet = ''; render(); });
+        return true;
+      }
+      case 'installLater': installLater(); return true;
+      case 'installClose': if (ev.target !== el) return true; S.isheet = ''; render(); return true;
+      case 'reloadNew': location.reload(); return true;
+    }
+    return false;
+  }
+  try { if (/[?&]install=1\b/.test(QS)) sessionStorage.setItem(INSTALL_ASK, '1'); } catch (e) { /* the URL alone */ }
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installPrompt = e; if (S.isheet) render(); });
+  window.addEventListener('appinstalled', function () { installPrompt = null; S.hint = 'none'; S.isheet = ''; render(); });
+  window.addEventListener('offline', function () { if (S.cachedAt) { S.offline = true; render(); } });
+  // A new worker takes over (a new build): say so in one line; the page reloads only on the tap.
+  var hadWorker = false;
+  if ('serviceWorker' in navigator) {
+    hadWorker = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').catch(function () { /* the board works without it */ });
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadWorker) { hadWorker = true; return; }   // the first install, not a new build
+      S.updateReady = true;
+      if (!busyNow() && !S.csheet) render();
+    });
+  }
+
   if (DEMO_MODE) {
     var as = (/[?&]as=(\w+)/.exec(QS) || [])[1];
     DEMO = makeDemo(as || 'venue_manager');
+    S.hint = pwaHint(false);
     fetch('demo-bd.json').then(function (r) { return r.json(); }).then(function (j) { DEMO_BD = j; }, function () { DEMO_BD = null; }).then(boot);
     return;
   }
-  // The last board, painted before LINE answers.
-  var cached = store(true);
-  if (cached && cached.me && zonesOf(cached.me)[0] === 'purchase') {
-    S.me = cached.me;
-    S.tab = tabsFor(cached.me)[0].key;
-    S.board = (cached.boards || {})[S.tab + '|'] || null;
+  // #18 §2.6: the last answer of the person's zone, painted before LINE answers, every role.
+  var paint = cachedPaint(store(true), function (me) { return tabsFor(me)[0].key; });
+  if (paint) {
+    S.me = paint.me; S.zone = paint.zone; S.cachedAt = paint.data ? paint.at : 0;
+    if (paint.zone === 'purchase') { S.tab = paint.tab; S.board = paint.data; } else S.z[paint.zone] = paint.data;
+    if (S.cachedAt && navigator.onLine === false) S.offline = true;
     render();
   }
   if (!LIFF_ID) {
@@ -2293,15 +2496,18 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
   sdk.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
   sdk.onload = function () {
     liff.init({ liffId: LIFF_ID }).then(function () {
-      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+      S.hint = pwaHint(liff.isInClient());
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: pwaRedirectUri(location.href) }); return; }
       try { idToken = liff.getIDToken() || ''; accessToken = liff.getAccessToken() || ''; } catch (e) { /* freshCreds tries again */ }
       // The LINE profile picture, top left like Order's header; the initial stays if LINE says no.
       try { liff.getProfile().then(function (p) { if (p && p.pictureUrl) { S.avatar = p.pictureUrl; if (S.view === 'list' && !S.sheet) render(); } }, function () {}); } catch (e) { /* keep the initial */ }
       authReadyResolve();
       boot();
-    }, function () { authReadyResolve(); boot(); });
+    }, function () { S.hint = pwaHint(false); authReadyResolve(); boot(); });
   };
-  sdk.onerror = function () { S.notice = { title: 'เปิดบอร์ดไม่สำเร็จ', text: 'โหลดไลน์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วเปิดใหม่' }; render(); };
+  sdk.onerror = function () {
+    if (S.me && S.cachedAt) { S.offline = true; render(); return; }
+    S.notice = { title: 'เปิดบอร์ดไม่สำเร็จ', text: 'โหลดไลน์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วเปิดใหม่' }; render(); };
   document.head.appendChild(sdk);
 })();
 </script>
