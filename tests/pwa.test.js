@@ -174,7 +174,7 @@ async function section7() {
   const strip = u => u.split('?')[0];
   const base = 'https://davis.example/davis-maintain-liff/';
   const caches = {
-    open: () => Promise.resolve({ put: (req, res) => { store.set(typeof req === 'string' ? req : req.url, res); return Promise.resolve(); }, addAll: () => Promise.resolve() }),
+    open: () => Promise.resolve({ put: (req, res) => { store.set(new URL(typeof req === 'string' ? req : req.url, base).href, res); return Promise.resolve(); }, addAll: () => Promise.resolve() }),
     match: (req, opt) => {
       const url = new URL(typeof req === 'string' ? req : req.url, base).href;
       if (store.has(url)) return Promise.resolve(store.get(url));
@@ -195,12 +195,12 @@ async function section7() {
   });
   const r1 = await go({ url: base + '?src=pwa', mode: 'navigate' });
   await new Promise(r => setTimeout(r, 10));
-  eq('7.1 online: the network answers, and a copy goes into the cache', [r1.body, (store.get(base + '?src=pwa') || {}).body], ['net:' + base + '?src=pwa', 'cached:' + base + '?src=pwa']);
+  eq('7.1 online: the network answers, and the page goes into the cache once, under ./ (not one copy per query)',
+    [r1.body, (store.get(base) || {}).body, store.has(base + '?src=pwa')], ['net:' + base + '?src=pwa', 'cached:' + base + '?src=pwa', false]);
   eq('7.2 a cross-origin call is never answered by the worker', await go({ url: 'https://script.google.com/macros/s/X/exec', method: 'POST' }), 'PASSTHROUGH');
   online = false;
   eq('7.3 offline: the icon\'s ./?src=pwa comes from the cache', (await go({ url: base + '?src=pwa', mode: 'navigate' })).body, 'cached:' + base + '?src=pwa');
   store.set(base, { body: 'cached:root' });
-  store.delete(base + '?src=pwa');
   eq('7.4 offline, another query on the page: the cached page (search ignored)', (await go({ url: base + '?src=pwa&x=1', mode: 'navigate' })).body, 'cached:root');
   eq('7.5 offline, a file never cached: a network error, never the page in its place', await go({ url: base + 'demo-bd.json' }), 'NETWORK-ERROR');
 }

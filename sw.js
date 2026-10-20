@@ -28,12 +28,12 @@ self.addEventListener('activate', function (ev) {
 self.addEventListener('fetch', function (ev) {
   var r = ev.request;
   if (swStrategyFor({ url: r.url, mode: r.mode, method: r.method, origin: self.location.origin }) !== 'network-first') return;
+  // The icon's ./?src=pwa, a LINE Login return and a plain ./ are the same page: one copy, under ./.
+  var nav = r.mode === 'navigate';
   ev.respondWith(fetch(r).then(function (res) {
-    if (res && res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { return c.put(r, copy); }); }
+    if (res && res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { return c.put(nav ? './' : r, copy); }); }
     return res;
   }).catch(function () {
-    // The icon's ./?src=pwa and a plain ./ are the same page.
-    var nav = r.mode === 'navigate';
     return caches.match(r, { ignoreSearch: nav }).then(function (hit) {
       return hit || (nav ? caches.match('./') : null);
     }).then(function (hit) { return hit || Response.error(); });
