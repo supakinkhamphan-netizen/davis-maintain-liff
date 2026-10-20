@@ -246,7 +246,8 @@ async function section9() {
   bare.sdk.onerror();
   ok('9.4 nothing cached and no LINE: the error page as before', textOf(bare.app.innerHTML).indexOf('เปิดบอร์ดไม่สำเร็จ') >= 0);
 
-  const live = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: answerOf('manager') });
+  // "ไว้ก่อน" pressed a minute ago in some browser: inside LINE the line still shows (only LINE knows it is LINE).
+  const live = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'], 'davisCare.installLater': String(Date.now() - 60000) }, fetch: answerOf('manager') });
   live.lineLoads({ isInClient: () => true });
   await tick(150);
   const tl = textOf(live.app.innerHTML);
@@ -269,6 +270,11 @@ async function section9() {
   gone.lineLoads({ isLoggedIn: () => false });
   await tick(50);
   ok('9.10 not logged in: LINE Login comes back without install=1', gone.log.logins.length === 1 && gone.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/' && gone.session.get('davisCare.install') === '1');
+  const plain = bootPage(SRC, { ua: IOS, fetch: answerOf('manager') });
+  plain.lineLoads();
+  await tick(150);
+  ok('9.16 the phone\'s browser without ?install=1: the line, but no sheet until it is tapped',
+    textOf(plain.app.innerHTML).indexOf('ติดตั้งเป็นแอป ›') >= 0 && textOf(plain.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') < 0);
   const std = bootPage(SRC, { ua: IOS, standalone: true, href: 'https://davis.example/davis-maintain-liff/?src=pwa', fetch: answerOf('manager') });
   std.lineLoads();
   await tick(150);
