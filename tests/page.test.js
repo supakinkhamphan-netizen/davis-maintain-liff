@@ -6,10 +6,10 @@ const path = require('path');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 let fails = 0, n = 0;
 const ok = (l, c) => { n++; if (!c) fails++; console.log((c ? 'ok   ' : 'FAIL ') + l); };
-// Every colour token of the Order board, exactly (work order #9 §5.3).
+// The colour tokens, exactly (work order #9 §5.3; A1.4 / #16 §5 retired --ok, --warn-*,
+// --hot-*, --free-*: three colours, see the A1.4 checks below).
 const TOKENS = { '--bg': '#23272E', '--panel': '#262B33', '--line': '#2F353E', '--ink': '#E8EBF0', '--accent': '#2FA39A',
-  '--accent-ink': '#08201E', '--ok': '#6FD39A', '--warn-bg': '#3A3116', '--warn-ink': '#E3B341', '--hot-bg': '#3D2A1C',
-  '--hot-ink': '#F0B48C', '--free-bg': '#1F2A3F', '--free-ink': '#93C5FD', '--danger': '#F08C8C' };
+  '--accent-ink': '#08201E', '--danger': '#F08C8C' };
 Object.keys(TOKENS).forEach(k => ok('token ' + k + ' = ' + TOKENS[k], new RegExp(k + ':' + TOKENS[k] + '\\b').test(SRC)));
 ok('raise and sink shadows are tokens', /--raise:/.test(SRC) && /--sink-sh:/.test(SRC));
 // #12: the main button is Order's .actionBtn on --btn-h (was .btn 56px).
@@ -47,6 +47,14 @@ ok('A1.3 the board is set only if still shown', /if \(!res \|\| !keep\(\)\) retu
 ok('A1.3 shops and the receipt strip are guarded too', /if \(keep\(\)\) S\.shops = res\.shops;/.test(SRC) && /if \(keep\(\)\) S\.receipt = /.test(SRC));
 ok('A1.3 a stale answer reloads for the current tab', /S\.busy = false;\n\s*if \(stale\) return load\(silent\);/.test(SRC));
 ok('A1.3 keep() asks stillShown', /if \(!stillShown\(asked, S\)\) stale = true;/.test(SRC));
-ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
+// A1.4 (work order #16 §5): three colours: accent, ink/muted, red #F08C8C for "look at this".
+const A14_HEX = ['#E3B341', '#F0B48C', '#6FD39A', '#93C5FD', '#3A3116', '#1E3A2C', '#3D2A1C', '#1F2A3F', '#3D2222', '#B7A3F5', '#2B2440', '#2A0A0A'];
+ok('A1.4 no retired colour hex in the board', A14_HEX.every(h => SRC.toUpperCase().indexOf(h) === -1));
+ok('A1.4 no retired colour token', !/--(ok|ok-bg|warn-ink|warn-bg|hot-ink|hot-bg|free-ink|free-bg|no-bg|part-bg|part-ink)(?![\w-])/.test(SRC));
+ok('A1.4 the clock has two looks: normal muted, late red, no tint', /\.clock\.normal\{[^}]*color:var\(--ink-2\)/.test(SRC) && /\.clock\.late\{[^}]*color:var\(--danger\)/.test(SRC));
+ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
+ok('build v5.4', /var BUILD = 'pr-board v5\.4 · 2026-10-2\d · A1\.4';/.test(SRC));
+// A1.3 build v5.3 (retired by the v5.4 pin above):
+// ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);

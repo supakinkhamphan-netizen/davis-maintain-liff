@@ -22,13 +22,11 @@
   color-scheme:dark;
   --bg:#23272E; --card:#23272E; --panel:#262B33; --line:#2F353E;
   --ink:#E8EBF0; --ink-2:#9AA3B2; --ink-3:#E8EBF0; --muted:#9AA3B2; --faint:#6B7382;
-  --ok:#6FD39A; --ok-bg:#1E3A2C;
+  /* A1.4 (work order #16 §1.4, owner 20 Oct 2026: too many colours): three
+     colours. Accent for what is tapped or chosen, ink/muted for every word,
+     status and figure, --danger only for "look at this" (a day waiting, ไม่อนุมัติ). */
   --accent:#2FA39A; --accent-ink:#08201E;
-  --warn-bg:#3A3116; --warn-ink:#E3B341;
-  --hot-bg:#3D2A1C; --hot-ink:#F0B48C;
-  --free-bg:#1F2A3F; --free-ink:#93C5FD;
-  --danger:#F08C8C; --no-bg:#3D2222;
-  --part-bg:#2B2440; --part-ink:#B7A3F5;
+  --danger:#F08C8C;
   --hi:rgba(255,255,255,.055); --lo:rgba(0,0,0,.55);
   --raise:6px 6px 14px var(--lo), -4px -4px 12px var(--hi);
   --raise-sm:3px 3px 8px var(--lo), -2px -2px 6px var(--hi);
@@ -46,13 +44,13 @@ a{color:var(--accent)}
 button,input,textarea,select{font:inherit;color:inherit}
 /* below 16px iOS zooms the page on focus */
 input,select,textarea{font-size:16px}
-:focus-visible{outline:3px solid var(--free-ink);outline-offset:2px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 #app{min-height:100vh}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.demo{background:var(--part-bg);color:var(--part-ink);font-size:12px;padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.demo{background:var(--panel);color:var(--ink-2);font-size:12px;padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .demo b{margin-right:4px}
-.demo button{min-height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--part-ink);background:none;color:var(--part-ink);font-size:12px;font-weight:700;cursor:pointer}
-.demo button.on{background:var(--part-ink);color:var(--part-bg)}
+.demo button{min-height:32px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--ink-2);font-size:12px;font-weight:700;cursor:pointer}
+.demo button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 /* header + tabs */
 header{background:var(--bg);color:var(--ink);padding:0 16px;height:var(--head-h);display:flex;align-items:center;position:sticky;top:0;z-index:6;box-shadow:0 6px 14px var(--lo)}
 header .headRow{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
@@ -87,23 +85,15 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .items .it .unknown{color:var(--ink-2);font-weight:600;white-space:nowrap}
 .items .it.struck span:first-child,.items .it.struck b{text-decoration:line-through;color:var(--ink-2)}
 .items .from{font-size:13px;color:var(--ink-2);margin:-2px 0 4px;overflow-wrap:anywhere}
-.items .why{font-size:13px;color:var(--hot-ink);margin:-2px 0 4px}
+.items .why{font-size:13px;color:var(--danger);margin:-2px 0 4px}
 .clock{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;padding:10px 12px;border-radius:10px;margin:-4px -4px 12px;line-height:1.4;box-shadow:var(--sink)}
-.clock.calm{background:transparent;color:var(--ink-2);padding-left:0;box-shadow:none}
-.clock.warn{background:var(--warn-bg);color:var(--warn-ink)}
-.clock.hot{background:var(--hot-bg);color:var(--hot-ink)}
-.clock.free{background:var(--free-bg);color:var(--free-ink)}
-.clock.ok{background:var(--ok-bg);color:var(--ok)}
-.clock.no{background:var(--no-bg);color:var(--danger)}
-.promise{margin-top:8px;padding:7px 10px;border-radius:8px;font-size:13px;font-weight:700}
-.promise.ok{background:#1E3A2C;color:var(--ok)}
-.promise.soon{background:var(--warn-bg);color:var(--warn-ink)}
-.promise.late{background:#3D2222;color:var(--danger)}
-.promise.free{background:var(--free-bg);color:var(--free-ink)}
+.clock.normal{color:var(--ink-2)}
+.clock.late{color:var(--danger)}
+.promise{margin-top:8px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.promise.late{color:var(--danger)}
 .actionBtn{margin-top:16px;width:100%;min-height:var(--btn-h);border:none;border-radius:var(--btn-r);font-weight:700;font-size:17px;font-family:inherit;background:var(--accent);color:var(--accent-ink);box-shadow:var(--raise-sm);cursor:pointer}
 .actionBtn:active{box-shadow:var(--sink)}
 .actionBtn.busy{background:var(--panel);color:var(--ink);box-shadow:var(--sink)}
-.actionBtn.danger{background:var(--danger);color:#2A0A0A}
 .actionBtn[disabled]:not(.busy){background:var(--line);color:var(--ink-2)}
 /* ⋯ has its own row: Order's absolute corner sits on the action button's corner when nothing follows it */
 .moreRow{display:flex;justify-content:flex-end;margin:6px -6px -8px 0}
@@ -112,7 +102,6 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .moreMenu.open{display:block}
 .moreMenu .mid{font-size:12px;color:var(--ink-2);padding:2px 4px 6px}
 .moreMenu button{display:block;width:100%;text-align:left;padding:12px 4px;border:none;background:none;font-size:15px;color:var(--ink);font-family:inherit;cursor:pointer}
-.moreMenu button.danger{color:var(--danger)}
 .lnk{color:var(--accent);text-decoration:none;font-weight:600}
 /* forms */
 .miniform{margin-top:12px}
@@ -135,7 +124,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .stepper{display:flex;align-items:center;gap:8px;margin-top:4px}
 .stepper button{width:44px;height:44px;border:none;border-radius:10px;background:var(--card);box-shadow:var(--raise-sm);color:var(--accent);font-size:22px;font-weight:700;cursor:pointer;flex-shrink:0}
 .stepper input{width:64px;text-align:center;margin-top:0}
-.eq{font-size:15px;font-weight:700;color:var(--ok);margin-top:6px;text-align:right}
+.eq{font-size:15px;font-weight:700;color:var(--ink);margin-top:6px;text-align:right}
 .eq.unknown{color:var(--ink-2);font-weight:600}
 .same{border:none;background:none;color:var(--accent);font-size:14px;font-weight:700;padding:8px 0;min-height:44px;cursor:pointer}
 .addBtn{display:block;width:100%;min-height:52px;margin-top:10px;border:1px dashed var(--line);background:var(--card);color:var(--accent);border-radius:12px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer}
@@ -146,8 +135,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .photoPick{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;margin-top:10px;border-radius:12px;border:1px dashed var(--line);color:var(--ink-2);font-size:15px;cursor:pointer}
 .sumBar{position:sticky;bottom:0;background:var(--bg);box-shadow:0 -6px 14px var(--lo);padding:12px 16px calc(12px + env(safe-area-inset-bottom));z-index:6}
 .sumBar .sumRow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14px;color:var(--ink-2)}
-.sumBar .sumRow b{font-size:22px;color:var(--ok);font-weight:800}
-.sumBar .note{font-size:12px;color:var(--warn-ink);min-height:16px}
+.sumBar .sumRow b{font-size:22px;color:var(--ink);font-weight:800}
+.sumBar .note{font-size:12px;color:var(--ink-2);min-height:16px}
 .sumBar .actionBtn{margin-top:8px}
 /* detail */
 .dl{padding:12px;max-width:520px;margin:0 auto}
@@ -159,12 +148,12 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .lines .ln.off label{color:var(--ink-2);text-decoration:line-through}
 .lines .amt{font-weight:700;white-space:nowrap}
 .lines .amt.unknown{color:var(--ink-2);font-weight:600;font-size:13px}
-.hint{font-size:13px;color:var(--hot-ink);margin-top:8px}
+.hint{font-size:13px;color:var(--ink-2);margin-top:8px}
 .twoBtn{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .twoBtn .actionBtn,.twoBtn .sheetBtn{margin-top:12px}
 .progress{margin-top:14px}
 .progress .track{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
-.progress .fill{height:100%;background:var(--ok);border-radius:3px}
+.progress .fill{height:100%;background:var(--accent);border-radius:3px}
 .progress .label{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--ink-2);gap:4px;text-align:center}
 .progress .label b{color:var(--ink);font-weight:700}
 .sec{font-size:12px;color:var(--ink-2);font-weight:700;margin:2px 0 8px}
@@ -201,7 +190,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 #toast{position:fixed;left:16px;right:16px;top:calc(var(--head-h) + var(--tabs-h) + 8px);max-width:488px;margin:0 auto;background:var(--panel);color:var(--ink);border:none;box-shadow:var(--raise);padding:12px 16px;border-radius:10px;font-size:14px;text-align:center;z-index:60;opacity:0;visibility:hidden;transform:translateY(-12px);transition:opacity .2s,transform .2s,visibility .2s}
 #toast.show{opacity:1;visibility:visible;transform:translateY(0)}
-#toast.err{background:var(--danger);color:#2A0A0A}
+/* A1.4: an error is red words (like the forms, Q2), no red slab. */
+#toast.err{color:var(--danger)}
 #lastUpdated{text-align:center;font-size:12px;color:var(--ink-2);padding:10px}
 .notice{padding:60px 24px;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center;max-width:520px;margin:0 auto}
 .notice h2{margin:0;font-size:18px}
@@ -215,7 +205,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 <script>
 (function () {
   'use strict';
-  var BUILD = 'pr-board v5.3 · 2026-10-19 · A1.3';
+  var BUILD = 'pr-board v5.4 · 2026-10-20 · A1.4';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -266,7 +256,6 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     },
   };
   var MAX_PHOTOS = 3;
-  var CAT_COLORS = ['#2FA39A', '#93C5FD', '#B7A3F5', '#F0B48C', '#E3B341', '#6FD39A'];
   var TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   var TH_MONTH = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
@@ -481,11 +470,13 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     var m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(String(s || ''));
     return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], (+m[4] || 0) - 7, +m[5] || 0) : NaN;
   }
-  function ageTier(min) { return min >= 1440 ? 'hot' : (min >= 60 ? 'warn' : 'calm'); }
+  /** A1.4: a day or more waiting is the one red on the clock; anything sooner is muted. */
+  function ageTier(min) { return min >= 1440 ? 'late' : 'normal'; }
   function clip(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
   /**
    * The sunk strip on top of each card (Order's .clock), in place of a round
-   * status chip: the words carry the state, the tier repeats it in colour.
+   * status chip: the words carry the state. Two tiers (A1.4, #16 §5): normal
+   * (muted) and late (red: a day or more waiting, or ไม่อนุมัติ).
    */
   function clockFor(row, nowMs) {
     var s = row.status, f = row.fulfilment || '';
@@ -493,21 +484,21 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       var a = Number(row.ageMinutes) || 0;
       return { tier: ageTier(a), text: '⏳ รออนุมัติ · ' + ageText(a).text };
     }
-    if (s === 'cancelled') return { tier: 'calm', text: '✖️ ยกเลิก' };
+    if (s === 'cancelled') return { tier: 'normal', text: '✖️ ยกเลิก' };
     if (s === 'rejected') {
       var why = row.note || ((row.items || []).map(function (i) { return i.reasonShown || i.reason || ''; }).filter(Boolean)[0]) || '';
-      return { tier: 'no', text: '🚫 ไม่อนุมัติ' + (why ? ' · ' + clip(why, 50) : '') };
+      return { tier: 'late', text: '🚫 ไม่อนุมัติ' + (why ? ' · ' + clip(why, 50) : '') };
     }
     if (f === 'awaiting') {
       var since = bkkMs(row.decidedAt);
       var m = isNaN(since) ? 0 : Math.max(0, Math.floor(((nowMs || Date.now()) - since) / 60000));
       return { tier: ageTier(m), text: '🛒 รอจัดซื้อสั่ง · ' + ageText(m).text };
     }
-    if (f === 'ordered') return { tier: 'free', text: '🚚 สั่งแล้ว' + (row.eta ? ' · ถึงประมาณ ' + row.eta : '') };
-    if (f === 'delivered') return { tier: 'warn', text: '📦 ส่งถึงสาขาแล้ว · รอกดรับ' };
-    if (f === 'received') return { tier: 'ok', text: '✔️ รับของแล้ว' + (row.receivedAt ? ' · ' + thaiClock(String(row.receivedAt).slice(0, 10)) : '') };
+    if (f === 'ordered') return { tier: 'normal', text: '🚚 สั่งแล้ว' + (row.eta ? ' · ถึงประมาณ ' + row.eta : '') };
+    if (f === 'delivered') return { tier: 'normal', text: '📦 ส่งถึงสาขาแล้ว · รอกดรับ' };
+    if (f === 'received') return { tier: 'normal', text: '✔️ รับของแล้ว' + (row.receivedAt ? ' · ' + thaiClock(String(row.receivedAt).slice(0, 10)) : '') };
     var base = s === 'partial' ? '✅ อนุมัติบางส่วน ' + approvedCount(row) : '✅ อนุมัติแล้ว';
-    return { tier: 'ok', text: base + (row.decidedAt ? ' · ' + thaiClock(row.decidedAt) : '') + (row.decidedBy ? ' · ' + row.decidedBy : '') };
+    return { tier: 'normal', text: base + (row.decidedAt ? ' · ' + thaiClock(row.decidedAt) : '') + (row.decidedBy ? ' · ' + row.decidedBy : '') };
   }
   /** One muted line instead of three pills: venue · requester · who buys · category. */
   function subLine(row) {
@@ -528,18 +519,17 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     if (s === 'rejected' || s === 'cancelled') return null;
     if (s === 'pending') {
       var est = Number(row.estTotal) || 0;
-      if (est >= (highAmount || 5000)) return { tier: 'soon', text: 'ยอดสูง ' + fmtBaht(est) + ' บาท · ระบบจะถามยืนยันอีกครั้ง' };
+      if (est >= (highAmount || 5000)) return { tier: 'normal', text: 'ยอดสูง ' + fmtBaht(est) + ' บาท · ระบบจะถามยืนยันอีกครั้ง' };
       var unpriced = (Number(row.lineCount) || 0) - (Number(row.pricedLines) || 0);
-      return { tier: 'free', text: 'ประมาณ ' + fmtBaht(est) + ' บาท' + (unpriced > 0 ? ' · ' + unpriced + ' ชิ้นยังไม่มีราคา' : '') };
+      return { tier: 'normal', text: 'ประมาณ ' + fmtBaht(est) + ' บาท' + (unpriced > 0 ? ' · ' + unpriced + ' ชิ้นยังไม่มีราคา' : '') };
     }
     if ((f === 'ordered' || f === 'delivered' || f === 'received') && row.actualTotal !== null && row.actualTotal !== undefined) {
-      return { tier: 'ok', text: 'จ่ายจริง ' + fmtBaht(row.actualTotal) + ' บาท' };
+      return { tier: 'normal', text: 'จ่ายจริง ' + fmtBaht(row.actualTotal) + ' บาท' };
     }
     var refused = (row.items || []).filter(function (i) { return i.status === 'rejected'; }).length;
-    if (refused) return { tier: 'soon', text: 'อนุมัติ ' + fmtBaht(row.approvedTotal) + ' จาก ' + fmtBaht(row.estTotal) + ' บาท · ไม่ผ่าน ' + refused + ' ชิ้น' };
-    return { tier: 'ok', text: 'อนุมัติ ' + fmtBaht(row.approvedTotal) + ' บาท' };
+    if (refused) return { tier: 'normal', text: 'อนุมัติ ' + fmtBaht(row.approvedTotal) + ' จาก ' + fmtBaht(row.estTotal) + ' บาท · ไม่ผ่าน ' + refused + ' ชิ้น' };
+    return { tier: 'normal', text: 'อนุมัติ ' + fmtBaht(row.approvedTotal) + ' บาท' };
   }
-  var PROMISE_GLYPH = { ok: '🟢', soon: '🟡', late: '🔴', free: '🔵' };
   /** The ONE big button a card carries (Order: one action per card), or null. */
   function primaryActionFor(me, row) {
     var b = buttonsFor(me, row);
@@ -978,7 +968,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
   function clockHtml(r) { var c = clockFor(r, Date.now()); return '<div class="clock ' + c.tier + '">' + esc(c.text) + '</div>'; }
   function promiseHtml(r) {
     var p = promiseFor(r, S.me.highAmount);
-    return p ? '<div class="promise ' + p.tier + '">' + PROMISE_GLYPH[p.tier] + ' ' + esc(p.text) + '</div>' : '';
+    // A1.4: no coloured dot in front; the words say it (the dot was the old tint).
+    return p ? '<div class="promise ' + p.tier + '">' + esc(p.text) + '</div>' : '';
   }
   function itemsHtml(r) {
     return '<div class="items">' + (r.items || []).map(function (it) {

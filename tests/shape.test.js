@@ -25,23 +25,32 @@ const R = o => Object.assign({ id: 'PR_20261018_03', venue: 'HOS', requester: '�
   estTotal: 990, pricedLines: 2, lineCount: 3, approvedTotal: 0, actualTotal: null, photos: [], mine: true, ageMinutes: 30 }, o || {});
 
 // ---- (1) clockFor: status × age → {tier, text} ------------------------------
-eq('1.1 pending under an hour is calm', C.clockFor(R({ ageMinutes: 59 }), NOW), { tier: 'calm', text: '⏳ รออนุมัติ · รอมา 59 นาที' });
-eq('1.2 pending at exactly one hour turns warn', C.clockFor(R({ ageMinutes: 60 }), NOW).tier, 'warn');
-eq('1.3 pending one minute short of a day is still warn', C.clockFor(R({ ageMinutes: 1439 }), NOW), { tier: 'warn', text: '⏳ รออนุมัติ · รอมา 23 ชม.' });
-eq('1.4 pending at a day is hot', C.clockFor(R({ ageMinutes: 1440 }), NOW), { tier: 'hot', text: '⏳ รออนุมัติ · รอมา 1 วัน' });
+// A1.4 (work order #16 §5, owner 20 Oct 2026: too many colours): two tiers.
+// normal = muted words; late = red, for "look at this" only: waiting a day or
+// more (pending or to be ordered) and ไม่อนุมัติ. Was calm/warn/hot/free/ok/no.
+eq('1.1 pending under an hour is normal', C.clockFor(R({ ageMinutes: 59 }), NOW), { tier: 'normal', text: '⏳ รออนุมัติ · รอมา 59 นาที' });
+eq('1.2 pending at exactly one hour is still normal', C.clockFor(R({ ageMinutes: 60 }), NOW).tier, 'normal');
+eq('1.3 pending one minute short of a day is still normal', C.clockFor(R({ ageMinutes: 1439 }), NOW), { tier: 'normal', text: '⏳ รออนุมัติ · รอมา 23 ชม.' });
+eq('1.4 pending at a day is late (red)', C.clockFor(R({ ageMinutes: 1440 }), NOW), { tier: 'late', text: '⏳ รออนุมัติ · รอมา 1 วัน' });
 eq('1.5 approved (self-buy): when and who', C.clockFor(R({ buyer: 'self', status: 'approved', decidedAt: '2026-10-15 11:02', decidedBy: 'คุณบี', items: items3.slice(0, 2) }), NOW),
-  { tier: 'ok', text: '✅ อนุมัติแล้ว · 15 ต.ค. 11:02 · คุณบี' });
+  { tier: 'normal', text: '✅ อนุมัติแล้ว · 15 ต.ค. 11:02 · คุณบี' });
 eq('1.6 partial keeps its count', C.clockFor(R({ buyer: 'self', status: 'partial', decidedAt: '2026-10-15 11:02', decidedBy: 'คุณบี', items: items3 }), NOW).text,
   '✅ อนุมัติบางส่วน 2/3 · 15 ต.ค. 11:02 · คุณบี');
-eq('1.7 rejected: the reason, short', C.clockFor(R({ status: 'rejected', note: 'มีของในสต๊อกกลางแล้ว ขอเบิกจากคลังก่อน' }), NOW), { tier: 'no', text: '🚫 ไม่อนุมัติ · มีของในสต๊อกกลางแล้ว ขอเบิกจากคลังก่อน' });
+eq('1.7 rejected: the reason, short, late (red)', C.clockFor(R({ status: 'rejected', note: 'มีของในสต๊อกกลางแล้ว ขอเบิกจากคลังก่อน' }), NOW), { tier: 'late', text: '🚫 ไม่อนุมัติ · มีของในสต๊อกกลางแล้ว ขอเบิกจากคลังก่อน' });
 ok('1.8 a very long reason is clipped', C.clockFor(R({ status: 'rejected', note: 'ก'.repeat(200) }), NOW).text.length <= 70);
-eq('1.9 awaiting, decided 30 min ago: calm', C.clockFor(R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-18 11:30' }), NOW), { tier: 'calm', text: '🛒 รอจัดซื้อสั่ง · รอมา 30 นาที' });
-eq('1.10 awaiting 2 h: warn', C.clockFor(R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-18 10:00' }), NOW).tier, 'warn');
-eq('1.11 awaiting since yesterday: hot', C.clockFor(R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-17 11:00' }), NOW), { tier: 'hot', text: '🛒 รอจัดซื้อสั่ง · รอมา 1 วัน' });
-eq('1.12 ordered: the ETA, free', C.clockFor(R({ status: 'approved', fulfilment: 'ordered', eta: '20 ต.ค.' }), NOW), { tier: 'free', text: '🚚 สั่งแล้ว · ถึงประมาณ 20 ต.ค.' });
-eq('1.13 delivered: waiting for the branch, warn', C.clockFor(R({ status: 'approved', fulfilment: 'delivered' }), NOW), { tier: 'warn', text: '📦 ส่งถึงสาขาแล้ว · รอกดรับ' });
-eq('1.14 received: the day, ok', C.clockFor(R({ status: 'approved', fulfilment: 'received', receivedAt: '2026-10-17 15:20' }), NOW), { tier: 'ok', text: '✔️ รับของแล้ว · 17 ต.ค.' });
-eq('1.15 cancelled: muted', C.clockFor(R({ status: 'cancelled' }), NOW), { tier: 'calm', text: '✖️ ยกเลิก' });
+eq('1.9 awaiting, decided 30 min ago: normal', C.clockFor(R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-18 11:30' }), NOW), { tier: 'normal', text: '🛒 รอจัดซื้อสั่ง · รอมา 30 นาที' });
+eq('1.10 awaiting 2 h: normal', C.clockFor(R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-18 10:00' }), NOW).tier, 'normal');
+eq('1.11 awaiting since yesterday: late (red)', C.clockFor(R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-17 11:00' }), NOW), { tier: 'late', text: '🛒 รอจัดซื้อสั่ง · รอมา 1 วัน' });
+eq('1.12 ordered: the ETA, normal', C.clockFor(R({ status: 'approved', fulfilment: 'ordered', eta: '20 ต.ค.' }), NOW), { tier: 'normal', text: '🚚 สั่งแล้ว · ถึงประมาณ 20 ต.ค.' });
+eq('1.13 delivered: waiting for the branch, normal', C.clockFor(R({ status: 'approved', fulfilment: 'delivered' }), NOW), { tier: 'normal', text: '📦 ส่งถึงสาขาแล้ว · รอกดรับ' });
+eq('1.14 received: the day, normal', C.clockFor(R({ status: 'approved', fulfilment: 'received', receivedAt: '2026-10-17 15:20' }), NOW), { tier: 'normal', text: '✔️ รับของแล้ว · 17 ต.ค.' });
+eq('1.15 cancelled: normal', C.clockFor(R({ status: 'cancelled' }), NOW), { tier: 'normal', text: '✖️ ยกเลิก' });
+
+const CLOCK_ROWS = [R({ ageMinutes: 5 }), R({ ageMinutes: 600 }), R({ ageMinutes: 3000 }), R({ status: 'rejected' }), R({ status: 'cancelled' }),
+  R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-18 11:30' }), R({ status: 'approved', fulfilment: 'awaiting', decidedAt: '2026-10-10 11:30' }),
+  R({ status: 'approved', fulfilment: 'ordered' }), R({ status: 'approved', fulfilment: 'delivered' }), R({ status: 'approved', fulfilment: 'received' }),
+  R({ status: 'approved' }), R({ status: 'partial', items: items3 })];
+eq('1.16 every clock tier is normal or late, nothing else', Array.from(new Set(CLOCK_ROWS.map(r => C.clockFor(r, NOW).tier))).sort(), ['late', 'normal']);
 
 // ---- (2) subLine ---------------------------------------------------------------
 eq('2.1 venue · requester · buyer · category', C.subLine(R()), 'HOS · สมหญิง · ให้จัดซื้อซื้อให้ · ของใช้สิ้นเปลือง');
@@ -54,13 +63,14 @@ eq('3.3 a refused line is struck', C.itemLine(items3[2]).struck, true);
 eq('3.4 thousands', C.itemLine({ name: 'พัดลม', qty: 2, unit: 'ตัว', unitPrice: 3200, lineTotal: 6400 }).right, '6,400');
 
 // ---- (4) promiseFor ------------------------------------------------------------
-eq('4.1 pending with an unpriced line', C.promiseFor(R(), 5000), { tier: 'free', text: 'ประมาณ 990 บาท · 1 ชิ้นยังไม่มีราคา' });
-eq('4.2 pending, all priced', C.promiseFor(R({ pricedLines: 3 }), 5000), { tier: 'free', text: 'ประมาณ 990 บาท' });
-eq('4.3 pending at the high line', C.promiseFor(R({ estTotal: 6400, pricedLines: 3 }), 5000), { tier: 'soon', text: 'ยอดสูง 6,400 บาท · ระบบจะถามยืนยันอีกครั้ง' });
-eq('4.4 approved in full', C.promiseFor(R({ status: 'approved', approvedTotal: 990, items: items3.slice(0, 2), estTotal: 990 }), 5000), { tier: 'ok', text: 'อนุมัติ 990 บาท' });
+// A1.4: nothing a money line says is on the red list, so every tier is normal (was ok/soon/free).
+eq('4.1 pending with an unpriced line', C.promiseFor(R(), 5000), { tier: 'normal', text: 'ประมาณ 990 บาท · 1 ชิ้นยังไม่มีราคา' });
+eq('4.2 pending, all priced', C.promiseFor(R({ pricedLines: 3 }), 5000), { tier: 'normal', text: 'ประมาณ 990 บาท' });
+eq('4.3 pending at the high line', C.promiseFor(R({ estTotal: 6400, pricedLines: 3 }), 5000), { tier: 'normal', text: 'ยอดสูง 6,400 บาท · ระบบจะถามยืนยันอีกครั้ง' });
+eq('4.4 approved in full', C.promiseFor(R({ status: 'approved', approvedTotal: 990, items: items3.slice(0, 2), estTotal: 990 }), 5000), { tier: 'normal', text: 'อนุมัติ 990 บาท' });
 eq('4.5 partial', C.promiseFor(R({ status: 'partial', approvedTotal: 540, estTotal: 990, items: [items3[0], Object.assign({}, items3[1], { status: 'rejected' }), items3[2]] }), 5000),
-  { tier: 'soon', text: 'อนุมัติ 540 จาก 990 บาท · ไม่ผ่าน 2 ชิ้น' });
-eq('4.6 ordered: what was really paid', C.promiseFor(R({ status: 'approved', fulfilment: 'ordered', actualTotal: 1020, approvedTotal: 990 }), 5000), { tier: 'ok', text: 'จ่ายจริง 1,020 บาท' });
+  { tier: 'normal', text: 'อนุมัติ 540 จาก 990 บาท · ไม่ผ่าน 2 ชิ้น' });
+eq('4.6 ordered: what was really paid', C.promiseFor(R({ status: 'approved', fulfilment: 'ordered', actualTotal: 1020, approvedTotal: 990 }), 5000), { tier: 'normal', text: 'จ่ายจริง 1,020 บาท' });
 eq('4.7 rejected / cancelled: nothing', [C.promiseFor(R({ status: 'rejected' }), 5000), C.promiseFor(R({ status: 'cancelled' }), 5000)], [null, null]);
 
 // ---- (5) primaryActionFor: role × status ---------------------------------------
@@ -104,7 +114,7 @@ ok('7.9 tokens: raise, raise-sm, sink, btn-h, head-h exactly as Order', [/--rais
   /--sink:inset 4px 4px 10px var\(--lo\), inset -3px -3px 8px var\(--hi\)/, /--btn-h:56px/, /--head-h:64px/, /--tabs-h:48px/].every(re => re.test(SRC)));
 ok('7.10 one action button per list card (primaryActionFor), never a pair', /primaryActionFor\(S\.me, r\)/.test(SRC) && !/class="acts"/.test(listCardSrc()));
 ok('7.11 #lastUpdated at the foot', /id="lastUpdated"/.test(SRC));
-ok('7.12 build v5 or later (A1.1 pins v5.1 in page.test)', /var BUILD = 'pr-board v5(\.\d+)? · 2026-10-19 · /.test(SRC));
+ok('7.12 build v5 or later (page.test pins the exact tag)', /var BUILD = 'pr-board v5(\.\d+)? · 2026-10-\d\d · /.test(SRC));
 function listCardSrc() { const a = SRC.indexOf('function listCard('); return a < 0 ? '' : SRC.slice(a, SRC.indexOf('\n  }\n', a)); }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
