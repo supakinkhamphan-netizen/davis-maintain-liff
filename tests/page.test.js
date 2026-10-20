@@ -54,7 +54,19 @@ ok('A1.4 no retired colour token', !/--(ok|ok-bg|warn-ink|warn-bg|hot-ink|hot-bg
 ok('A1.4 the clock has two looks: normal muted, late red, no tint', /\.clock\.normal\{[^}]*color:var\(--ink-2\)/.test(SRC) && /\.clock\.late\{[^}]*color:var\(--danger\)/.test(SRC));
 ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
 // v5.5 (e4b4855) left this pin at v5.4 (it failed there); #17 moves it to the combined board.
-ok('build v6.1', /var BUILD = 'care-board v6\.1 · 2026-10-2\d · Davis Care';/.test(SRC));
+// v6.1 (f884fe5) pin retired by work order #18:
+// ok('build v6.1', /var BUILD = 'care-board v6\.1 · 2026-10-2\d · Davis Care';/.test(SRC));
+ok('build v7.0', /var BUILD = 'care-board v7\.0 · 2026-10-2\d · ติดตั้งเป็นแอป';/.test(SRC));
+// Work order #18 §2.1: an installable app.
+const HEAD = SRC.slice(0, SRC.indexOf('</head>'));
+ok('#18 title is Davis Care (the LIFF header and the app name)', /<title>Davis Care<\/title>/.test(HEAD));
+ok('#18 manifest link', HEAD.indexOf('<link rel="manifest" href="manifest.webmanifest">') >= 0);
+ok('#18 theme-color #1E2228', HEAD.indexOf('<meta name="theme-color" content="#1E2228">') >= 0);
+ok('#18 apple touch icon 180', HEAD.indexOf('<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">') >= 0);
+ok('#18 apple web app capable', HEAD.indexOf('<meta name="apple-mobile-web-app-capable" content="yes">') >= 0);
+ok('#18 apple status bar black-translucent', HEAD.indexOf('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">') >= 0);
+ok('#18 apple title Davis Care', HEAD.indexOf('<meta name="apple-mobile-web-app-title" content="Davis Care">') >= 0);
+ok('#18 sw.js registered only where there are service workers', /if \('serviceWorker' in navigator\) \{[\s\S]{0,200}navigator\.serviceWorker\.register\('sw\.js'\)/.test(SRC));
 // A1.3 build v5.3 (retired by the v5.4 pin above):
 // ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');

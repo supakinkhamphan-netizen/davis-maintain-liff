@@ -13,6 +13,7 @@ const ctx = { console, Date, Math, JSON, Object, Array, String, Number, isFinite
 vm.createContext(ctx);
 vm.runInContext(slice('/* LOGIC START */', '/* LOGIC END */'), ctx);
 vm.runInContext(slice('/* CARE START */', '/* CARE END */'), ctx);
+vm.runInContext(slice('/* PWA START */', '/* PWA END */'), ctx);
 const C = ctx;
 let fails = 0, n = 0;
 function eq(label, got, want) {
@@ -157,7 +158,54 @@ safe('7', () => {
   // A1.4's lesson: a class that colours its children (.slaRow span) beats .late at equal weight.
   ok('7.5 red wins over every descendant colour rule: #app .late is the last colour word', /#app \.late\{color:var\(--danger\)\}/.test(SRC) &&
     SRC.lastIndexOf('#app .late{color:var(--danger)}') > SRC.lastIndexOf('.slaRow span{'));
-  ok('7.4 build v6', /var BUILD = 'care-board v6(\.\d+)? · 2026-10-2\d/.test(SRC));
+  ok('7.4 build v6 or later', /var BUILD = 'care-board v[6-9](\.\d+)? · 2026-10-2\d/.test(SRC));
+});
+
+// ---- 8. work order #18 §2.6: the last data first, every role; offline; a new build ----------------
+safe('8', () => {
+  ok('8.0 the PWA block has the paint functions', ['cacheZone', 'cachedPaint', 'staleLineHtml', 'bootFailView', 'updateLineHtml'].every(has));
+  const T0 = Date.UTC(2026, 9, 20, 2, 5);   // 09:05 Bangkok
+  const firstTab = me => me.role === 'venue_manager' ? 'active' : 'pending';
+  const first = { manager: ['repair', 'bdRepairLive', {}], account: ['approvals', 'bdApprovals', {}], venue_manager: ['repair', 'bdRepairLive', {}] };
+  Object.keys(first).forEach(role => {
+    const [zone, fn, p] = first[role], me = R(role).bdWhoAmI, res = callOf(role, fn, p);
+    const cache = C.cacheZone(C.cacheZone({}, me, 'overview', '', { ok: true, x: 1 }, T0 - 60000), me, zone, '', res, T0);
+    const paint = C.cachedPaint(cache, firstTab);
+    eq('8.1 ' + role + ': the cache paints me, the first zone (' + zone + ') and its last answer', paint && [paint.me.role, paint.zone, paint.data === res, paint.at], [role, zone, true, T0]);
+    const html = zone === 'repair' ? C.renderRepair(paint.data, {}, NOW, paint.me) : C.renderApprovals(paint.data, paint.me, {});
+    ok('8.2 ' + role + ': the painted zone draws (not the loading line)', html.length > 200 && html.indexOf('กำลังโหลด') < 0);
+  });
+  const mgr = R('manager').bdWhoAmI;
+  const c2 = C.cacheZone(C.cacheZone({}, mgr, 'repair', '', { a: 1 }, T0), mgr, 'techs', '', { b: 2 }, T0 + 5);
+  c2.zone = 'techs';
+  eq('8.3 the saved zone wins when it is still the person\'s', [C.cachedPaint(c2, firstTab).zone, C.cachedPaint(c2, firstTab).data], ['techs', { b: 2 }]);
+  c2.zone = 'bills';
+  eq('8.4 … and falls back to the first zone when it is not', C.cachedPaint(c2, firstTab).zone, 'repair');
+  const pur = R('purchasing') ? R('purchasing').bdWhoAmI : { role: 'purchasing', known: true, zones: ['purchase'] };
+  const c3 = C.cacheZone({}, pur, 'pending', '', { rows: [] }, T0);
+  eq('8.5 purchasing: the purchase zone, its first tab\'s board', (p => p && [p.zone, p.tab, p.data])(C.cachedPaint(c3, firstTab)), ['purchase', 'pending', { rows: [] }]);
+  eq('8.6 nothing cached, or no me: no paint', [C.cachedPaint(null, firstTab), C.cachedPaint({}, firstTab), C.cachedPaint({ me: mgr }, firstTab)], [null, null, null]);
+  eq('8.7 cacheZone keeps me and stamps the answer', (c => [c.me.role, c.at['repair|24BLVD'], !!c.boards['repair|24BLVD']])(C.cacheZone({}, mgr, 'repair', '24BLVD', { z: 1 }, T0)), ['manager', T0, true]);
+  const stale = C.staleLineHtml(T0, false), off = C.staleLineHtml(T0, true);
+  ok('8.8 painted from the cache: "ข้อมูลเมื่อ 09:05" in muted', textOf(stale).trim() === 'ข้อมูลเมื่อ 09:05' && /class="topLine muted"/.test(stale));
+  ok('8.9 offline: "ไม่มีเน็ต · แสดงข้อมูลเมื่อ 09:05", muted, no red', textOf(off).trim() === 'ไม่มีเน็ต · แสดงข้อมูลเมื่อ 09:05' && /class="topLine muted"/.test(off) && !/late|over|danger/.test(off));
+  eq('8.10 no time, no line', [C.staleLineHtml(0, false), C.staleLineHtml(0, true)], ['', '']);
+  const NET = C.L.err.network;
+  const V = o => C.bootFailView(Object.assign({ painted: true, msg: NET, online: true, network: NET }, o));
+  eq('8.11 when the first call fails: painted + no network → offline line; painted + a server refusal → toast; nothing painted → notice', [
+    V({}), V({ online: false, msg: 'x' }), V({ msg: 'คุณไม่มีสิทธิ์' }), V({ painted: false }), V({ painted: false, online: false }),
+  ], ['offline', 'offline', 'toast', 'notice', 'notice']);
+  const up = C.updateLineHtml();
+  ok('8.12 a new build: one line "มีรุ่นใหม่ · แตะเพื่อโหลด", ink, a tap (reloadNew)', textOf(up).trim() === 'มีรุ่นใหม่ · แตะเพื่อโหลด' && /data-act="reloadNew"/.test(up) && /class="topLine"/.test(up) && !/accent|late|muted/.test(up));
+  // The page itself: the new worker only sets a flag; the reload is the tap's alone.
+  const onChange = (/controllerchange', function \(\) \{([\s\S]*?)\n\s*\}\);/.exec(SRC) || [])[1] || '';
+  ok('8.13 the "มีรุ่นใหม่" line never reloads by itself', onChange.indexOf('S.updateReady = true') >= 0 && !/reload/.test(onChange));
+  ok('8.14 location.reload() appears once, in the reloadNew tap', (SRC.match(/location\.reload\(/g) || []).length === 1 && /case 'reloadNew': location\.reload\(\);/.test(SRC));
+  ok('8.15 boot paints the cache for every role before LINE loads', SRC.indexOf('cachedPaint(store(true)') >= 0 && SRC.indexOf('cachedPaint(store(true)') < SRC.indexOf('document.head.appendChild(sdk)') &&
+    SRC.indexOf("zonesOf(cached.me)[0] === 'purchase'") < 0);
+  ok('8.16 every zone answer and every purchase board is cached', /store\(false, cacheZone\(store\(true\) \|\| \{\}, S\.me, z, u\.venue \|\| '', res, Date\.now\(\)\)\)/.test(SRC) &&
+    /store\(false, cacheZone\(store\(true\) \|\| \{\}, S\.me, tab, asked\.venue, res, Date\.now\(\)\)\)/.test(SRC));
+  ok('8.17 offline also when the LINE SDK cannot load and data is painted', /sdk\.onerror = function \(\) \{\s*if \(S\.me && S\.cachedAt\) \{ S\.offline = true; render\(\); return; \}/.test(SRC));
 });
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
