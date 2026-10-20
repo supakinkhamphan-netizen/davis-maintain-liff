@@ -400,6 +400,21 @@ async function section10() {
     textOf(ia.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0);
   ia.tap('installClose');
   ok('10.12 closing the sheet (the dim) logs in too, without install=1', ia.log.logins.length === 1 && ia.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/');
+  const held = ok2 => ({ preventDefault() {}, prompt() {}, userChoice: Promise.resolve({ outcome: ok2 ? 'accepted' : 'dismissed' }) });
+  const ig = bootPage(SRC, { href: HREF, ua: AND, fetch: answerOf('manager') });
+  ig.win.beforeinstallprompt(held(true));
+  ig.lineLoads({ isLoggedIn: () => false });
+  await tick(50);
+  ig.tap('installGo');
+  await tick(50);
+  ok('10.23 Android "ติดตั้ง" accepted: no LINE Login in the browser (the app logs in itself)', ig.log.logins.length === 0 && textOf(ig.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') < 0);
+  const id2 = bootPage(SRC, { href: HREF, ua: AND, fetch: answerOf('manager') });
+  id2.win.beforeinstallprompt(held(false));
+  id2.lineLoads({ isLoggedIn: () => false });
+  await tick(50);
+  id2.tap('installGo');
+  await tick(50);
+  ok('10.24 … dismissed in Chrome\'s dialog: the browser logs in and opens the board', id2.log.logins.length === 1);
   const st = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?src=pwa', ua: IOS, standalone: true, fetch: answerOf('manager') });
   st.lineLoads({ isLoggedIn: () => false });
   await tick(50);
@@ -441,6 +456,14 @@ async function section10() {
   await tick(50);
   eq('10.19 online while not offline: nothing asked', fine.log.fns.length, nf);
 
+  // bdBoot's first zone is asked with the default chips; a painted repair zone with more cards is asked again with them.
+  const more = JSON.parse(cache['davisPurchase.v1']);
+  more.ui = { 'repair|': { limit: 400 } };
+  const mp = bootPage(SRC, { local: { 'davisPurchase.v1': JSON.stringify(more) }, fetch: answerOf('manager') });
+  mp.lineLoads();
+  await tick(200);
+  const live2 = mp.log.calls.filter(c => c.fn === 'bdRepairLive')[0];
+  eq('10.25 the painted zone has 400 cards asked: bdBoot\'s 200 are not drawn in their place, the zone is asked with 400', [mp.log.fns[0], live2 && live2.payload.limit], ['bdBoot', 400]);
   // Follow-up 3: the overview painted with its chips, asked again with them.
   const ov = JSON.parse(cache['davisPurchase.v1']);
   const ovRes = R('manager').calls['bdOverview{"window":30,"venue":"","tech":""}'];
