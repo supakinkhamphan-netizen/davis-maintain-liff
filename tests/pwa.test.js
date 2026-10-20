@@ -139,6 +139,15 @@ safe('5', () => {
   ok('5.11 the sheet never promises speed', [a1, a0, ios, oth].every(h => !/เร็ว/.test(h)));
 });
 
+safe('6b', () => {
+  ok('6b.0 installBeforeLogin exists', typeof P.installBeforeLogin === 'function');
+  const B = o => P.installBeforeLogin(Object.assign({ hint: 'ios', asked: true, loggedIn: false }, o));
+  // #18 §6: an installed app has its own storage on iOS, so a login in the browser is wasted: install first.
+  eq('6b.1 the sheet before LINE Login: a browser that can install, asked by ?install=1, not logged in', [
+    B({}), B({ hint: 'android' }), B({ hint: 'other' }), B({ hint: 'line' }), B({ hint: 'none' }), B({ asked: false }), B({ loggedIn: true }),
+  ], [true, true, true, false, false, false, false]);
+});
+
 safe('6', () => {
   const base = 'https://davis.github.io/davis-maintain-liff/';
   eq('6.1 the external-browser url: the page + ?install=1, nothing of LINE or a bind code', [

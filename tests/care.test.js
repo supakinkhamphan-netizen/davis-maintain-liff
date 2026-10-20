@@ -203,8 +203,19 @@ safe('8', () => {
   ok('8.14 location.reload() appears once, in the reloadNew tap', (SRC.match(/location\.reload\(/g) || []).length === 1 && /case 'reloadNew': location\.reload\(\);/.test(SRC));
   ok('8.15 boot paints the cache for every role before LINE loads', SRC.indexOf('cachedPaint(store(true)') >= 0 && SRC.indexOf('cachedPaint(store(true)') < SRC.indexOf('document.head.appendChild(sdk)') &&
     SRC.indexOf("zonesOf(cached.me)[0] === 'purchase'") < 0);
-  ok('8.16 every zone answer and every purchase board is cached', /store\(false, cacheZone\(store\(true\) \|\| \{\}, S\.me, z, u\.venue \|\| '', res, Date\.now\(\)\)\)/.test(SRC) &&
+  ok('8.16 every zone answer and every purchase board is cached', /store\(false, cacheZone\(store\(true\) \|\| \{\}, S\.me, z, u\.venue \|\| '', res, Date\.now\(\), u\)\)/.test(SRC) &&
     /store\(false, cacheZone\(store\(true\) \|\| \{\}, S\.me, tab, asked\.venue, res, Date\.now\(\)\)\)/.test(SRC));
+  // v7.1 (WO#19 B3): the age of the data is the server's clock, not the phone's.
+  eq('8.18 cacheZone stamps serverNow when the answer has it', C.cacheZone({}, mgr, 'repair', '', { serverNow: '2026-10-20 09:05:00' }, T0 + 3600000).at['repair|'], C.bkkMs('2026-10-20 09:05:00'));
+  eq('8.19 … and the phone\'s time only without it', C.cacheZone({}, mgr, 'repair', '', { x: 1 }, T0).at['repair|'], T0);
+  // #18 §6 follow-up 3: the chips are stored with the answer, so painted numbers match them.
+  const c4 = C.cacheZone({}, mgr, 'overview', '', { o: 1 }, T0, { window: 30, tech: 'นัท', venue: '' });
+  c4.zone = 'overview';
+  eq('8.20 the painted overview brings its chips (window 30, tech นัท)', (p => p && p.ui)(C.cachedPaint(c4, firstTab)), { window: 30, tech: 'นัท', venue: '' });
+  eq('8.21 no chips stored: an empty set', (p => p && p.ui)(C.cachedPaint(C.cacheZone({}, mgr, 'repair', '', { a: 1 }, T0), firstTab)), {});
+  eq('8.22 the owner check: same LINE id keeps, another wipes, unknown keeps', [
+    C.cacheOwner({ sub: 'U1', me: mgr }, 'U1'), C.cacheOwner({ sub: 'U1', me: mgr }, 'U2'), C.cacheOwner({ me: mgr }, 'U2'), C.cacheOwner({ sub: 'U1' }, ''), C.cacheOwner(null, 'U2'), C.cacheOwner({}, 'U2'),
+  ], ['keep', 'wipe', 'wipe', 'keep', 'keep', 'keep']);
   ok('8.17 offline also when the LINE SDK cannot load and data is painted', /sdk\.onerror = function \(\) \{\s*if \(S\.me && S\.cachedAt\) \{ S\.offline = true; render\(\); return; \}/.test(SRC));
 });
 
@@ -214,7 +225,16 @@ const tick = ms => new Promise(r => setTimeout(r, ms));
 const firstOf = { manager: ['repair', 'bdRepairLive'], account: ['approvals', 'bdApprovals'], venue_manager: ['repair', 'bdRepairLive'] };
 const T9 = Date.now() - 3 * 3600000;
 const hhmm9 = (t => ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2))(new Date(T9 + 7 * 3600000));
+const firstKey = role => Object.keys(R(role).calls).filter(x => x.indexOf(firstOf[role][1] + '{') === 0)[0];
+const UNKNOWN_FN = 'บอร์ดขอคำสั่งที่ระบบไม่รู้จัก ปิดแล้วเปิดบอร์ดใหม่';
+/** @77: bdBoot answers {me, first:{zone, params, data}} with serverNow on the envelope only. */
+const bootAnswer = role => {
+  const data = Object.assign({}, R(role).calls[firstKey(role)]); delete data.serverNow;
+  const me = Object.assign({}, R(role).bdWhoAmI); delete me.serverNow;
+  return { ok: true, me, first: { zone: firstOf[role][0], params: firstOf[role][0] === 'repair' ? { venue: '', limit: 200 } : {}, data }, serverNow: '2026-10-20 12:00:00' };
+};
 const answerOf = role => fn => {
+  if (fn === 'bdBoot') return answer(bootAnswer(role));
   if (fn === 'bdWhoAmI') return answer(R(role).bdWhoAmI);
   const k = Object.keys(R(role).calls).filter(x => x.indexOf(fn + '{') === 0)[0];
   return k ? answer(R(role).calls[k]) : answer({ ok: false, error: 'ไม่มี' });
@@ -224,6 +244,8 @@ function cacheFor(role) {
   const c = C.cacheZone({}, R(role).bdWhoAmI, zone, '', R(role).calls[k], T9);
   return { 'davisPurchase.v1': JSON.stringify(c), _id: (JSON.stringify(R(role).calls[k]).match(/"id":"([^"]+)"/) || [])[1] };
 }
+/** @76: no bdBoot yet; every other fn as answerOf. */
+const answerOld = role => fn => fn === 'bdBoot' ? answer({ ok: false, error: UNKNOWN_FN }) : answerOf(role)(fn);
 async function section9() {
   for (const role of Object.keys(firstOf)) {
     const cache = cacheFor(role);
@@ -269,7 +291,10 @@ async function section9() {
   const gone = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?install=1', ua: IOS, fetch: answerOf('manager') });
   gone.lineLoads({ isLoggedIn: () => false });
   await tick(50);
-  ok('9.10 not logged in: LINE Login comes back without install=1', gone.log.logins.length === 1 && gone.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/' && gone.session.get('davisCare.install') === '1');
+  // v7.1 (#18 §6): the sheet first, LINE Login only after "ไว้ก่อน" (the installed app logs in itself).
+  ok('9.10 not logged in with ?install=1: the sheet at once, no LINE Login', gone.log.logins.length === 0 && textOf(gone.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0);
+  gone.tap('installLater');
+  ok('9.10b "ไว้ก่อน": now LINE Login, back without install=1', gone.log.logins.length === 1 && gone.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/');
   const plain = bootPage(SRC, { ua: IOS, fetch: answerOf('manager') });
   plain.lineLoads();
   await tick(150);
@@ -302,7 +327,126 @@ async function section9() {
   ok('9.15 the very first worker is not a new build: no line', textOf(first.app.innerHTML).indexOf('มีรุ่นใหม่') < 0 && first.log.reloads === 0);
 }
 
-section9().catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 10. v7.1: one call at boot (WO#19 part B), the poll, and #18 §6 -------------------------------
+async function section10() {
+  for (const role of Object.keys(firstOf)) {
+    const pg = bootPage(SRC, { fetch: answerOf(role) });
+    pg.lineLoads();
+    await tick(150);
+    const id = (JSON.stringify(R(role).calls[firstKey(role)]).match(/"id":"([^"]+)"/) || [])[1];
+    eq('10.1 ' + role + ': one call at boot (bdBoot), and its first zone is drawn', [pg.log.fns, textOf(pg.app.innerHTML).indexOf(id) >= 0], [['bdBoot'], true]);
+    const c = JSON.parse(pg.local.get('davisPurchase.v1') || '{}');
+    eq('10.2 ' + role + ': the boot answer is cached under its zone, stamped with serverNow', [!!(c.boards || {})[firstOf[role][0] + '|'], (c.at || {})[firstOf[role][0] + '|']], [true, C.bkkMs('2026-10-20 12:00:00')]);
+  }
+  const old = bootPage(SRC, { fetch: answerOld('manager') });
+  old.lineLoads();
+  await tick(200);
+  eq('10.3 an engine without bdBoot (@76): the pair, bdWhoAmI then the zone, and the board shows',
+    [old.log.fns, textOf(old.app.innerHTML).indexOf('ต้องดู') >= 0], [['bdBoot', 'bdWhoAmI', 'bdRepairLive'], true]);
+  const cache = cacheFor('manager');
+  const down = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: offline });
+  down.lineLoads();
+  await tick(150);
+  ok('10.4 bdBoot fails for want of a network: no fallback pair, the offline line', down.log.fns.indexOf('bdWhoAmI') < 0 && textOf(down.app.innerHTML).indexOf('ไม่มีเน็ต') >= 0);
+
+  const pl = bootPage(SRC, { fetch: answerOf('manager') });
+  pl.lineLoads();
+  await tick(150);
+  eq('10.5 one poll timer, every 30 s', pl.intervals.map(i => i.ms), [30000]);
+  const n0 = pl.log.fns.length;
+  pl.doc.visibilityState = 'hidden';
+  pl.intervals[0].f();
+  await tick(50);
+  eq('10.6 hidden: the poll does not call', pl.log.fns.length, n0);
+  pl.doc.visibilityState = 'visible';
+  pl.intervals[0].f();
+  await tick(80);
+  eq('10.7 visible: the poll reloads the live zone', pl.log.fns.slice(n0), ['bdRepairLive']);
+  const n1 = pl.log.fns.length;
+  pl.doc.visibilityState = 'hidden'; pl.docL.visibilitychange && pl.docL.visibilitychange();
+  pl.clock.skew = 5000;
+  pl.doc.visibilityState = 'visible'; pl.docL.visibilitychange && pl.docL.visibilitychange();
+  await tick(80);
+  eq('10.8 back in view within 30 s: nothing asked', pl.log.fns.length, n1);
+  pl.doc.visibilityState = 'hidden'; pl.docL.visibilitychange && pl.docL.visibilitychange();
+  pl.clock.skew = 31000;
+  pl.doc.visibilityState = 'visible'; pl.docL.visibilitychange && pl.docL.visibilitychange();
+  await tick(80);
+  eq('10.9 back in view after more than 30 s: refreshed at once', pl.log.fns.slice(n1), ['bdRepairLive']);
+  const acc = bootPage(SRC, { fetch: answerOf('account') });
+  acc.lineLoads();
+  await tick(150);
+  acc.clock.skew = 31000;
+  acc.doc.visibilityState = 'visible'; acc.docL.visibilitychange && acc.docL.visibilitychange();
+  await tick(80);
+  eq('10.10 back in view on a zone that does not poll (account รออนุมัติ): refreshed too', acc.log.fns.slice(1), ['bdApprovals']);
+
+  // #18 §6: install before login.
+  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  const AND = 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.71 Mobile Safari/537.36';
+  const HREF = 'https://davis.example/davis-maintain-liff/?install=1';
+  const ia = bootPage(SRC, { href: HREF, ua: AND, fetch: answerOf('manager') });
+  ia.lineLoads({ isLoggedIn: () => false });
+  await tick(50);
+  ok('10.11 Android browser, ?install=1, not logged in: the sheet, no LINE Login, no call', ia.log.logins.length === 0 && ia.log.fns.length === 0 &&
+    textOf(ia.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0);
+  ia.tap('installClose');
+  ok('10.12 closing the sheet (the dim) logs in too, without install=1', ia.log.logins.length === 1 && ia.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/');
+  const st = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?src=pwa', ua: IOS, standalone: true, fetch: answerOf('manager') });
+  st.lineLoads({ isLoggedIn: () => false });
+  await tick(50);
+  ok('10.13 inside the installed app: LINE Login as before, no sheet', st.log.logins.length === 1 && st.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/?src=pwa' &&
+    textOf(st.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') < 0);
+  const plainB = bootPage(SRC, { ua: IOS, fetch: answerOf('manager') });
+  plainB.lineLoads({ isLoggedIn: () => false });
+  await tick(50);
+  ok('10.14 a browser without ?install=1: LINE Login as before', plainB.log.logins.length === 1);
+
+  // Follow-up 1: a different LINE person on the same phone.
+  const never = () => new Promise(() => {});
+  const withSub = sub => JSON.stringify(Object.assign(JSON.parse(cache['davisPurchase.v1']), { sub }));
+  const other = bootPage(SRC, { local: { 'davisPurchase.v1': withSub('U1') }, fetch: never });
+  ok('10.15 before LINE answers, the last data is painted', textOf(other.app.innerHTML).indexOf(cache._id) >= 0);
+  other.lineLoads({ getDecodedIDToken: () => ({ sub: 'U2', exp: Date.now() / 1000 + 3600 }) });
+  await tick(50);
+  const oc = JSON.parse(other.local.get('davisPurchase.v1') || '{}');
+  ok('10.16 another LINE person: the painted data and the cache are wiped, the new id kept', textOf(other.app.innerHTML).indexOf(cache._id) < 0 && !oc.boards && !oc.me && oc.sub === 'U2');
+  const same = bootPage(SRC, { local: { 'davisPurchase.v1': withSub('U1') }, fetch: never });
+  same.lineLoads({ getDecodedIDToken: () => ({ sub: 'U1', exp: Date.now() / 1000 + 3600 }) });
+  await tick(50);
+  ok('10.17 the same person: the painted data stays', textOf(same.app.innerHTML).indexOf(cache._id) >= 0 && JSON.parse(same.local.get('davisPurchase.v1')).sub === 'U1');
+
+  // Follow-up 2: the network comes back.
+  const back = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: offline });
+  back.lineLoads();
+  await tick(150);
+  const nb = back.log.fns.length;
+  back.fetch = answerOf('manager');
+  back.win.online();
+  await tick(150);
+  ok('10.18 online again: the zone reloads by itself, the offline line goes', back.log.fns.slice(nb).indexOf('bdRepairLive') >= 0 && textOf(back.app.innerHTML).indexOf('ไม่มีเน็ต') < 0);
+  const fine = bootPage(SRC, { fetch: answerOf('manager') });
+  fine.lineLoads();
+  await tick(150);
+  const nf = fine.log.fns.length;
+  fine.win.online && fine.win.online();
+  await tick(50);
+  eq('10.19 online while not offline: nothing asked', fine.log.fns.length, nf);
+
+  // Follow-up 3: the overview painted with its chips, asked again with them.
+  const ov = JSON.parse(cache['davisPurchase.v1']);
+  const ovRes = R('manager').calls['bdOverview{"window":30,"venue":"","tech":""}'];
+  C.cacheZone(ov, R('manager').bdWhoAmI, 'overview', '', ovRes, T9, { window: 30, venue: '', tech: '' });
+  ov.zone = 'overview';
+  const ovp = bootPage(SRC, { local: { 'davisPurchase.v1': JSON.stringify(ov) }, fetch: answerOf('manager') });
+  ok('10.20 the painted overview shows its own window chip (30 วัน chosen)', /class="[^"]*active[^"]*"[^>]*data-act="ovWin" data-k="30"|data-act="ovWin" data-k="30"[^>]*class="[^"]*active/.test(ovp.app.innerHTML));
+  ovp.lineLoads();
+  await tick(200);
+  const ask = ovp.log.calls.filter(c => c.fn === 'bdOverview')[0];
+  eq('10.21 … and the fresh answer is asked for the same chips', ask && ask.payload.window, 30);
+}
+
+section9().then(section10).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });

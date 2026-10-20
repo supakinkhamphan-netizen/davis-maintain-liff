@@ -21,7 +21,8 @@ ok('the backend URL is the Maintain prod deployment, on one line',
 ok('LIFF id is the purchase board\'s own app (2012115315-ab7oUBTb), on one line', (SRC.match(/var LIFF_ID = '[^']*';/g) || []).join() === "var LIFF_ID = '2012115315-ab7oUBTb';");
 ok('… and never the Order board\'s LIFF id', SRC.indexOf('2011319750-tMh303eW') < 0);
 ok('localStorage key davisPurchase.v1', /'davisPurchase\.v1'/.test(SRC));
-ok('polls every 10 s', /POLL_MS = 10000/.test(SRC));
+// WO#19 B2: 10 s → 30 s (the reads are cached now; a hidden page does not poll).
+ok('polls every 30 s', /POLL_MS = 30000/.test(SRC));
 ok('a build tag', /var BUILD = '/.test(SRC));
 // #18: ask.prompt() is Chrome's held install prompt (beforeinstallprompt), on the ติดตั้ง tap; not window.prompt.
 ok('no alert / confirm / prompt anywhere', !/\b(alert|confirm|prompt)\s*\(/.test(SRC.replace(/confirmReject|confirmApprove|confirmCancel|ask\.prompt\(\)/g, '')));
@@ -57,7 +58,9 @@ ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
 // v5.5 (e4b4855) left this pin at v5.4 (it failed there); #17 moves it to the combined board.
 // v6.1 (f884fe5) pin retired by work order #18:
 // ok('build v6.1', /var BUILD = 'care-board v6\.1 · 2026-10-2\d · Davis Care';/.test(SRC));
-ok('build v7.0', /var BUILD = 'care-board v7\.0 · 2026-10-2\d · ติดตั้งเป็นแอป';/.test(SRC));
+// v7.0 (4fe94fb) pin retired by v7.1:
+// ok('build v7.0', /var BUILD = 'care-board v7\.0 · 2026-10-2\d · ติดตั้งเป็นแอป';/.test(SRC));
+ok('build v7.1', /var BUILD = 'care-board v7\.1 · 2026-10-2\d · เปิดครั้งเดียว';/.test(SRC));
 // Work order #18 §2.1: an installable app.
 const HEAD = SRC.slice(0, SRC.indexOf('</head>'));
 ok('#18 title is Davis Care (the LIFF header and the app name)', /<title>Davis Care<\/title>/.test(HEAD));
@@ -67,6 +70,7 @@ ok('#18 apple touch icon 180', HEAD.indexOf('<link rel="apple-touch-icon" sizes=
 ok('#18 apple web app capable', HEAD.indexOf('<meta name="apple-mobile-web-app-capable" content="yes">') >= 0);
 ok('#18 apple status bar black-translucent', HEAD.indexOf('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">') >= 0);
 ok('#18 apple title Davis Care', HEAD.indexOf('<meta name="apple-mobile-web-app-title" content="Davis Care">') >= 0);
+ok('WO#19 B1 the engine\'s unknownFn words, to tell an engine without bdBoot', SRC.indexOf("unknownFn: 'บอร์ดขอคำสั่งที่ระบบไม่รู้จัก ปิดแล้วเปิดบอร์ดใหม่'") >= 0);
 ok('#18 sw.js registered only where there are service workers', /if \('serviceWorker' in navigator\) \{[\s\S]{0,200}navigator\.serviceWorker\.register\('sw\.js'\)/.test(SRC));
 // A1.3 build v5.3 (retired by the v5.4 pin above):
 // ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
