@@ -18,7 +18,7 @@ ok('main buttons are 56px tall', /--btn-h:56px/.test(SRC) && /\.actionBtn\{[^}]*
 ok('IBM Plex Sans Thai', /family=IBM\+Plex\+Sans\+Thai/.test(SRC));
 ok('the backend URL is the Maintain prod deployment, on one line',
   (SRC.match(/var API_URL = '[^']+';/g) || []).length === 1 && /AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA\/exec/.test(SRC));
-ok('LIFF id is the purchase board\'s own app (2011319750-Cxl4gMue), on one line', (SRC.match(/var LIFF_ID = '[^']*';/g) || []).join() === "var LIFF_ID = '2011319750-Cxl4gMue';");
+ok('LIFF id is the purchase board\'s own app (2012115315-ab7oUBTb), on one line', (SRC.match(/var LIFF_ID = '[^']*';/g) || []).join() === "var LIFF_ID = '2012115315-ab7oUBTb';");
 ok('… and never the Order board\'s LIFF id', SRC.indexOf('2011319750-tMh303eW') < 0);
 ok('localStorage key davisPurchase.v1', /'davisPurchase\.v1'/.test(SRC));
 ok('polls every 10 s', /POLL_MS = 10000/.test(SRC));
