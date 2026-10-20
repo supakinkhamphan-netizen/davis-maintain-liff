@@ -633,6 +633,416 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
   }
 /* LOGIC END */
 
+/* CARE START */
+  // ======================================================================
+  // Davis Care, the combined board (work order #17, v6). Zones above the v5
+  // purchase board; every screen here is a pure function of the engine's
+  // answer (board-api.js), so tests/care.test.js draws them from demo-bd.json.
+  // Three colours: accent for what is tapped or chosen and for bars; ink and
+  // muted for words and figures; red (class late) only for "look at this".
+  // ======================================================================
+  var ZONE_LABEL = { approvals: 'รออนุมัติ', bills: 'บิล', tickets: 'งานทั้งหมด', overview: 'ภาพรวม',
+    repair: 'งานซ่อม', purchase: 'ขอซื้อ', techs: 'ช่าง' };
+  var SLA = { claimGoodMin: 60, claimWarnMin: 240, closeGoodMin: 1440, closeWarnMin: 10080 };   // TICKET_SLA_ (cards.js)
+  var ST = { open: 'รอดำเนินการ', approval: 'รออนุมัติ', working: 'กำลังดำเนินการ', buy: 'รออนุมัติซื้อของ', contractor: 'ส่งผู้รับเหมา', closed: 'เสร็จสิ้น' };
+  var SEV_LABEL = { crit: 'วิกฤต', warn: 'เตือน', info: 'ข้อมูล' };
+
+  /** The zones this person sees; an engine without bd* (no zones) opens the purchase board as before. */
+  function zonesOf(me) {
+    if (!me || !me.known) return [];
+    if (Array.isArray(me.zones)) return me.zones.slice();
+    return me.allowed === false ? [] : ['purchase'];
+  }
+  function zoneBarHtml(zones, current, counts) {
+    if (!zones || zones.length <= 1) return '';
+    counts = counts || {};
+    return '<nav class="zones" aria-label="โซน">' + zones.map(function (z) {
+      var on = z === current;
+      return '<button type="button" class="zone' + (on ? ' active' : '') + '" data-act="zone" data-k="' + z + '"' + (on ? ' aria-current="page"' : '') + '>' +
+        esc(ZONE_LABEL[z] || z) + (counts[z] ? ' <b>' + counts[z] + '</b>' : '') + '</button>';
+    }).join('') + '</nav>';
+  }
+  /** The page instead of a board: not known yet, or a role with no zone (tech, staff). */
+  function noticeFor(me) {
+    if (!me || !me.known) return unknownNotice(me);
+    if (!zonesOf(me).length) return { title: 'บอร์ดนี้ยังไม่ได้เปิดให้คุณ', text: L.notForYou };
+    return null;
+  }
+
+  // ---- words for time and comparison --------------------------------------------
+  function durText(min) {
+    min = Math.max(0, Math.floor(Number(min) || 0));
+    if (min < 60) return min + ' นาที';
+    if (min < 1440) { var h = Math.floor(min / 60), m = min % 60; return h + ' ชม.' + (m ? ' ' + m + ' นาที' : ''); }
+    var d = Math.floor(min / 1440), hh = Math.floor((min % 1440) / 60);
+    return d + ' วัน' + (hh ? ' ' + hh + ' ชม.' : '');
+  }
+  function hhmm(ms) {
+    if (ms === null || ms === undefined || isNaN(ms)) return '';
+    var t = new Date(ms + 7 * 3600000);
+    return ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2);
+  }
+  function minsBetween(a, b) { return a === null || a === undefined || isNaN(a) ? 0 : Math.max(0, Math.floor((b - a) / 60000)); }
+  /**
+   * The running line on a live card, computed here from serverNow like v5's
+   * clock: "รอมา 1 ชม. 12 นาที" / "ช่าง นัท · ซ่อมมา 2 ชม. 10 นาที". Red past
+   * TICKET_SLA_.claimWarnMin unclaimed, or past closeWarnMin open.
+   */
+  function liveLine(c, nowMs) {
+    var age = minsBetween(c.createdMs, nowMs);
+    var long = age > SLA.closeWarnMin;
+    if (c.status === ST.closed) return { text: 'ปิดแล้ว ' + hhmm(c.closeMs) + (c.closeBy ? ' · ' + c.closeBy : ''), late: false };
+    if (c.status === ST.open && !c.claimMs) return { text: 'รอมา ' + durText(age), late: age > SLA.claimWarnMin || long };
+    if (c.status === ST.buy) {
+      var since = c.purchase && c.purchase.at ? bkkMs(c.purchase.at) : c.createdMs;
+      return { text: 'รออนุมัติซื้อ · ' + durText(minsBetween(since, nowMs)) + (c.assignee ? ' · ช่าง ' + c.assignee : ''), late: long };
+    }
+    if (c.status === ST.approval) return { text: 'รออนุมัติซ่อมใหญ่ · รอมา ' + durText(age), late: long };
+    if (c.status === ST.contractor) return { text: 'ผู้รับเหมา' + (c.contractor ? ' ' + c.contractor : '') + ' · ' + durText(age), late: long };
+    return { text: (c.assignee ? 'ช่าง ' + c.assignee + ' · ' : '') + 'ซ่อมมา ' + durText(minsBetween(c.claimMs || c.createdMs, nowMs)), late: long };
+  }
+  /** One comparison line of the exec page (execDelta_), in the page's own words. */
+  function deltaLine(x) {
+    if (!x || x.state === 'missing') return { text: 'ยังเทียบไม่ได้ · ไม่มีข้อมูลช่วงก่อนหน้า', red: false };
+    if (x.state === 'flat') return { text: 'เท่าเดิม · ช่วงก่อนหน้า ' + x.prevText, red: false };
+    return { text: (x.up ? '▲' : '▼') + ' ' + x.pct + '% ' + (x.good ? 'ดีขึ้น' : 'แย่ลง') + ' · ช่วงก่อนหน้า ' + x.prevText, red: !!x.red };
+  }
+  /** A technician against the team: ▲ muted when better or equal, ▼ red when worse. No score, no rank. */
+  function compareLine(mine, team, higherIsBetter, unit) {
+    unit = unit || '';
+    if (mine === null || mine === undefined || team === null || team === undefined) return { text: 'ทีม —', red: false };
+    if (mine === team) return { text: 'ทีม ' + team + unit + ' · เท่าทีม', red: false };
+    var better = higherIsBetter ? mine > team : mine < team;
+    return { text: 'ทีม ' + team + unit + ' · ' + (better ? '▲ ดีกว่า' : '▼ แย่กว่า'), red: !better };
+  }
+
+  // ---- charts: every bar carries its number (9px under the 10px labels) ------------
+  function barChart(items, opts) {
+    opts = opts || {};
+    if (!items || !items.length) return '<div class="empty small">' + esc(opts.empty || 'ยังไม่มีข้อมูลในช่วงนี้') + '</div>';
+    var max = Math.max.apply(null, items.map(function (i) { return Number(i.n) || 0; }).concat([1]));
+    return '<div class="bars">' + items.map(function (i) {
+      var n = Number(i.n) || 0;
+      return '<div class="brow"><span class="bl">' + esc(i.label) + (i.sub ? '<small>' + esc(i.sub) + '</small>' : '') + '</span>' +
+        '<span class="track"><span class="bar" style="width:' + Math.round(n / max * 100) + '%"></span></span>' +
+        '<span class="bn">' + esc(i.text !== undefined ? i.text : fmtBaht(n)) + '</span></div>';
+    }).join('') + '</div>';
+  }
+  function colChart(items) {
+    var max = Math.max.apply(null, items.map(function (i) { return Number(i.n) || 0; }).concat([1]));
+    return '<div class="cols">' + items.map(function (i) {
+      var n = Number(i.n) || 0;
+      return '<div class="col"><span class="cn">' + n + '</span><span class="cb" style="height:' + Math.round(n / max * 100) + '%"></span>' +
+        '<span class="cl">' + esc(i.label) + '</span></div>';
+    }).join('') + '</div>';
+  }
+  function dayLabel(ymd) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || '')); return m ? Number(m[3]) + '/' + Number(m[2]) : ''; }
+  /** 7 or 30 days are drawn a column a day; 90 days a column a week, so 390 px still reads. */
+  function dailyCols(daily, key) {
+    var rows = (daily || []).map(function (d) { return { label: dayLabel(d.date || d.day), n: Number(d[key]) || 0 }; });
+    if (rows.length <= 31) return rows;
+    var out = [];
+    for (var i = 0; i < rows.length; i += 7) {
+      var w = rows.slice(i, i + 7);
+      out.push({ label: w[0].label, n: w.reduce(function (s, r) { return s + r.n; }, 0) });
+    }
+    return out;
+  }
+  function stat(label, value, under) {
+    return '<div class="statBox"><div class="k">' + esc(label) + '</div><div class="v">' + value + '</div>' + (under || '') + '</div>';
+  }
+  function deltaHtml(x) { var d = deltaLine(x); return '<div class="delta' + (d.red ? ' late' : '') + '">' + esc(d.text) + '</div>'; }
+  function noteHtml(t) { return '<div class="note">' + esc(t) + '</div>'; }
+  function hrs(min) { return min === null || min === undefined ? '—' : (min / 60).toFixed(1); }
+  function chipRow(act, items, current) {
+    return '<div class="shopChipRow">' + items.map(function (it) {
+      var on = String(it.k) === String(current);
+      return '<button type="button" class="shopChip' + (on ? ' active' : '') + '" data-act="' + act + '" data-k="' + esc(it.k) + '" aria-pressed="' + on + '">' +
+        (on ? '✓ ' : '') + esc(it.label) + '</button>';
+    }).join('') + '</div>';
+  }
+  function section(title, inner) { return '<h3 class="secHead">' + esc(title) + '</h3>' + inner; }
+
+  // ---- ภาพรวม = ?page=exec (#17 §4) ---------------------------------------------------
+  function renderOverview(o, ui) {
+    var r = o.report, alerts = o.alerts || [], d = o.deltas || {};
+    var scope = [o.venue, o.tech].filter(Boolean).join(' · ');
+    var lead = alerts[0], rest = alerts.slice(1);
+    var venues = o.venues && o.venues.length && !(r.allVenues || []).length ? o.venues : (r.allVenues || []);
+    var h = '<section class="hero">' +
+      '<div class="eyebrow">ภาพรวมผู้บริหาร · ' + esc(r.windowLabel) + (scope ? ' · ' + esc(scope) : '') + '</div>' +
+      '<h2 class="big">' + r.ticketsThisWindow + ' ใบแจ้งซ่อม</h2>' +
+      '<p class="lede">งานซ่อมจริง <b>' + r.repairThisWindow + ' ใบ</b> · งานประจำและรอบตรวจ <b>' + r.routineThisWindow + ' ใบ</b> · ปิดได้ภายใน 24 ชม. <b>' +
+      (r.closedWithin24hPct === null ? '—' : r.closedWithin24hPct + '%') + '</b> จากงานที่ปิดไป ' + r.closedTotal + ' ใบ</p>' +
+      (lead ? '<blockquote class="quote' + (lead.red ? ' late' : '') + '">' + lead.html + '</blockquote>' : '') + '</section>';
+    h += '<div class="chips3"><span class="fl">ช่วงเวลา</span>' + chipRow('ovWin', [7, 30, 90].map(function (w) { return { k: w, label: w + ' วัน' }; }), o.window) +
+      '<span class="fl">ร้าน</span>' + chipRow('ovVenue', (o.venues && o.venues.length === 1 ? [] : [{ k: '', label: 'ทั้งหมด' }]).concat((o.venues && o.venues.length < (r.allVenues || []).length ? o.venues : venues).map(function (v) { return { k: v, label: v }; })), o.venue) +
+      '<span class="fl">ช่าง</span>' + chipRow('ovTech', [{ k: '', label: 'ทั้งหมด' }].concat((r.allTechs || []).map(function (t) { return { k: t, label: t }; })), o.tech || '') + '</div>';
+    if (o.pending && o.pending.total) h += '<p class="pendLine">🧾 รออนุมัติ <b>' + o.pending.total + '</b> · ซื้อในงานซ่อม ' + o.pending.repair + ' · ขอซื้อสาขา ' + o.pending.branch + '</p>';
+    if (rest.length) {
+      h += section('เรื่องที่ควรดู', rest.map(function (a) {
+        return '<div class="alert card"><span class="sev' + (a.red ? ' late' : '') + '">' + SEV_LABEL[a.sev] + '</span><p>' + a.html + '</p></div>';
+      }).join(''));
+    }
+    h += section('ปริมาณงาน', '<div class="statGrid">' +
+      stat('ใบแจ้งซ่อมทั้งหมด (' + r.windowLabel + ')', r.ticketsThisWindow + '<small> ใบ</small>', deltaHtml(d.tickets)) +
+      stat('งานซ่อมจริง / งานประจำ-รอบตรวจ', r.repairThisWindow + ' / ' + r.routineThisWindow, noteHtml('งานประจำเปิดเองโดยตัวจับเวลา ไม่ใช่คนแจ้ง')) +
+      stat('ค้างเกิน 7 วัน', r.overdueCount + '<small> ใบ</small>', noteHtml('จากงานที่ยังเปิดอยู่ทั้งหมด ' + r.totalOpenLike + ' ใบ')) + '</div>');
+    h += section('ความเร็วในการทำงาน', '<div class="statGrid">' +
+      stat('เฉลี่ยกว่าจะมีคนรับงาน', hrs(r.avgResponseMins) + '<small> ชม.</small>', deltaHtml(d.response)) +
+      stat('เฉลี่ยกว่าจะปิดงาน', hrs(r.avgResolutionMins) + '<small> ชม.</small>', deltaHtml(d.resolution)) +
+      stat('ปิดงานได้ภายใน 24 ชม.', (r.closedWithin24hPct === null ? '—' : r.closedWithin24hPct + '<small>%</small>'), deltaHtml(d.within24h) + noteHtml('จากงานที่ปิดในช่วงนี้ ' + r.closedTotal + ' ใบ')) + '</div>');
+    h += section('เงิน', '<div class="statGrid">' +
+      stat('ค่าซื้อของในงานซ่อมที่อนุมัติ (' + r.windowLabel + ')', fmtBaht(r.purchaseApprovedCost) + '<small> บาท</small>',
+        noteHtml('คำขอซื้อของที่อนุมัติ ' + r.purchaseApproved + ' / ' + r.purchaseRequested + (r.purchaseRejected > 0 ? ' · ไม่อนุมัติ ' + r.purchaseRejected + ' คำขอ' : ''))) +
+      stat('ค่าซ่อมสะสมทั้งเครือ', fmtBaht(r.totalCost) + '<small> บาท</small>',
+        noteHtml(r.totalCost === 0 ? 'ยังไม่มีการบันทึก Cost — ตัวเลขนี้ยังไม่ใช่งบจริง' : 'นับเฉพาะที่กรอก Cost ตอนอนุมัติซื้อของ')) + '</div>');
+    h += '<h3 class="secHead big">งานซ่อม</h3><p class="secSub">' + r.repairThisWindow + ' ใบใน' + esc(r.windowLabel) + ' — ไม่รวมงานประจำและรอบตรวจ</p>';
+    h += section('แนวโน้มใบแจ้งรายวัน', '<div class="card">' + colChart(dailyCols(r.dailyCounts, 'repair')) + '</div>');
+    h += section('ค่าซ่อมแยกร้าน (สะสม)', '<div class="card">' + barChart(Object.keys(r.costByHotel || {}).sort(function (a, b) { return r.costByHotel[b] - r.costByHotel[a]; })
+      .map(function (k) { return { label: k, n: r.costByHotel[k], text: fmtBaht(r.costByHotel[k]) + ' บาท' }; }), { empty: 'ยังไม่มีการบันทึกค่าซ่อม' }) + '</div>');
+    h += section('จุดที่ซ่อมซ้ำบ่อยที่สุด', '<div class="card">' + barChart((r.topSpots || []).map(function (s) {
+      return { label: s.spot, n: s.count, text: s.count + ' ครั้ง', sub: (s.cost ? fmtBaht(s.cost) + ' บาท · ' : '') + 'ล่าสุด ' + thaiClock(String(s.lastAt).slice(0, 16)) };
+    }), { empty: 'ยังไม่มีจุดที่ซ่อมซ้ำ' }) + '</div>');
+    h += section('หมวดปัญหาที่พบบ่อยสุด', '<div class="card">' + barChart((r.topCategories || []).map(function (c) { return { label: c.category, n: c.count, text: c.count + ' ใบ' }; })) + '</div>');
+    function slaRows(rows, extra) {
+      if (!rows || !rows.length) return '<div class="card"><div class="empty small">ยังไม่มีงานที่ปิดในช่วงนี้</div></div>';
+      return '<div class="card">' + rows.map(function (s) {
+        return '<div class="slaRow"><b>' + esc(s.name) + '</b><span>ปิดงาน ' + s.closed + ' ใบ · รับงานเฉลี่ย ' + esc(s.responseHrs) + ' · ปิดงานเฉลี่ย ' + esc(s.resolutionHrs) +
+          ' · ปิดใน 24 ชม. ' + (s.within24hPct === null ? '—' : s.within24hPct + '%') + (extra ? ' · ' + extra(s) : '') + '</span></div>';
+      }).join('') + '</div>';
+    }
+    h += '<h3 class="secHead big">เวลาทำงานแยกตามร้าน</h3>' + slaRows(r.slaByVenue, function (s) { return 'ด่วน/ฉุกเฉิน ' + (s.urgentPct === null || s.urgentPct === undefined ? '—' : s.urgentPct + '%'); });
+    h += '<h3 class="secHead big">เวลาทำงานแยกตามช่าง</h3>' + slaRows(r.slaByTech);
+    h += '<h3 class="secHead big">เวลาทำงานแยกตามระดับความสำคัญ</h3>' + slaRows(r.slaByPriority);
+    h += '<h3 class="secHead big">งานประจำและรอบตรวจ</h3><p class="secSub">' + r.routineThisWindow + ' ใบใน' + esc(r.windowLabel) + '</p><div class="card">' +
+      barChart((r.roundsCompliance || []).map(function (x) {
+        return { label: (x.icon ? x.icon + ' ' : '') + x.roundName, sub: x.area + ' · ทำแล้ว ' + x.done + ' / ' + x.expected, n: x.pct, text: x.pct + '%' };
+      }), { empty: 'ยังไม่มีรอบตรวจที่เปิดใช้งาน' }) + '</div>';
+    if (o.pageUrl) h += '<a class="sheetBtn linkBtn" href="' + esc(o.pageUrl) + '" target="_blank" rel="noopener">เปิดหน้าเว็บเดิม (PDF/CSV) ↗</a>';
+    return h;
+  }
+
+  // ---- งานซ่อม: live, read only (design §2.3) --------------------------------------------
+  var LIVE_GROUPS = [['open', '🚨 รอช่างรับ'], ['approval', '🧾 รออนุมัติ'], ['inProgress', '🔧 กำลังซ่อม'], ['contractor', '⏸ ผู้รับเหมา'], ['other', 'อื่น ๆ']];
+  function mustSeeText(m, nowMs) {
+    var c = m.card || {};
+    var where = String(c.venue || '').toUpperCase() + ' · ' + (c.location || '');
+    if (m.kind === 'emergency') return 'ฉุกเฉิน ยังไม่มีคนรับ · ' + where;
+    if (m.kind === 'claimLate') return 'รอช่างรับ ' + durText(m.minutes) + ' · ' + where;
+    if (m.kind === 'openLong') return 'เปิดมา ' + durText(m.minutes) + ' · ' + where;
+    if (m.kind === 'repeat') return 'ซ่อมซ้ำครั้งที่ ' + m.nth + ' · ' + where;
+    if (m.kind === 'overCap') return 'บิลเกินวงเงิน ' + fmtBaht(m.baht) + ' บาท · ' + where;
+    return where;
+  }
+  function canApprove(me) { return !!me && (me.role === 'account' || me.role === 'manager'); }
+  function approveButtons(c, me) {
+    if (c.status !== ST.buy || !canApprove(me)) return '';
+    var amt = c.purchase && c.purchase.amount ? ' ' + fmtBaht(c.purchase.amount) + ' บาท' : '';
+    return '<button type="button" class="actionBtn" data-act="bdApprove" data-k="' + esc(c.id) + '">✓ อนุมัติ' + amt + '</button>' +
+      '<button type="button" class="moreBtn" data-act="bdMore" data-k="' + esc(c.id) + '" aria-label="เพิ่มเติม">⋯</button>' +
+      '<div class="moreMenu" data-menu="' + esc(c.id) + '">' +
+      '<button type="button" data-act="bdCap" data-k="' + esc(c.id) + '">💰 กำหนดวงเงิน</button>' +
+      '<button type="button" data-act="bdReject" data-k="' + esc(c.id) + '">🚫 ไม่อนุมัติ</button>' +
+      '<button type="button" data-act="openTicket" data-k="' + esc(c.id) + '">ℹ️ ดูใบงาน</button></div>';
+  }
+  function liveCard(c, nowMs, me) {
+    var l = liveLine(c, nowMs);
+    var extras = '';
+    if (c.repeat >= 1) extras += '<div class="xline' + (c.repeat + 1 >= 3 ? ' late' : '') + '">🔁 ซ่อมซ้ำครั้งที่ ' + (c.repeat + 1) + '</div>';
+    if (c.purchase) extras += '<div class="xline">🧾 ขอซื้อ ' + esc(c.purchase.item) + ' · ' + fmtBaht(c.purchase.amount) + ' บาท · ' +
+      (c.purchase.pending ? 'รออนุมัติ' : 'อนุมัติแล้ว' + (c.purchase.cap ? ' วงเงิน ' + fmtBaht(c.purchase.cap) + ' บาท' : '')) + '</div>';
+    return '<article class="card rcard">' +
+      '<button type="button" class="tap" data-act="openTicket" data-k="' + esc(c.id) + '">' +
+      (c.photo ? '<img class="thumb" src="' + esc(c.photo) + '" alt="" loading="lazy">' : '') +
+      '<div class="rbody"><div class="title">' + (c.emergency ? '<span class="late">ฉุกเฉิน</span> · ' : '') + esc(String(c.venue || '').toUpperCase()) + ' · ' + esc(c.location) + '</div>' +
+      '<div class="sub">' + esc([c.category, c.requester ? 'แจ้งโดย ' + c.requester : '', thaiClock(String(c.createdAt).slice(0, 16)), c.id].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="prob">' + esc(c.problem) + '</div></div></button>' +
+      '<div class="clock ' + (l.late ? 'late' : 'normal') + '">' + esc(l.text) + '</div>' + extras + approveButtons(c, me) + '</article>';
+  }
+  function oldestText(cards, nowMs) {
+    var oldest = Math.min.apply(null, cards.map(function (c) { return c.createdMs || nowMs; }));
+    return cards.length ? 'นานสุด ' + durText(minsBetween(oldest, nowMs)) : '';
+  }
+  function renderRepair(r, ui, nowMs, me) {
+    ui = ui || {};
+    var c = r.counts || {};
+    var h = '<div class="liveClock">' + [['รอช่างรับ', c.open], ['กำลังซ่อม', c.inProgress], ['รออนุมัติ', c.awaitingApproval], ['ผู้รับเหมา', c.contractor], ['ปิดวันนี้', c.closedToday]]
+      .map(function (x) { return '<div class="lc"><span>' + x[0] + '</span><b>' + (x[1] || 0) + '</b></div>'; }).join('') +
+      '<div class="lcNow">' + hhmm(nowMs) + ' · ' + thaiClock(new Date(nowMs + 7 * 3600000).toISOString().slice(0, 10)) + '</div></div>';
+    var venues = Object.keys(r.venues || {});
+    if (venues.length > 1 || r.venue) h += chipRow('liveVenue', [{ k: '', label: 'ทุกร้าน' }].concat(venues.map(function (v) { return { k: v, label: v + ' ' + r.venues[v] }; })), r.venue || '');
+    if ((r.mustSee || []).length) {
+      h += '<section class="mustSee"><div class="msHead late">⚠️ ต้องดู ' + r.mustSee.length + '</div>' + r.mustSee.map(function (m) {
+        return '<button type="button" class="msItem late" data-act="openTicket" data-k="' + esc(m.id) + '">' + esc(mustSeeText(m, nowMs)) + ' · ' + esc(m.id) + '</button>';
+      }).join('') + '</section>';
+    }
+    var g = r.groups || {};
+    LIVE_GROUPS.forEach(function (x) {
+      var cards = g[x[0]] || [];
+      if (!cards.length) return;
+      h += '<div class="groupHead"><span>' + x[1] + ' (' + cards.length + ')</span><b>' + oldestText(cards, nowMs) + '</b></div>' +
+        cards.map(function (cd) { return liveCard(cd, nowMs, me); }).join('');
+    });
+    [['closedToday', '✅ ปิดวันนี้'], ['routine', '🗓 งานประจำ']].forEach(function (x) {
+      var cards = g[x[0]] || [];
+      if (!cards.length) return;
+      h += '<details class="fold"><summary class="groupHead">' + x[1] + ' (' + cards.length + ')</summary>' +
+        cards.map(function (cd) { return liveCard(cd, nowMs, me); }).join('') + '</details>';
+    });
+    if (!LIVE_GROUPS.some(function (x) { return (g[x[0]] || []).length; })) h += '<div class="empty">ไม่มีงานค้าง</div>';
+    if (r.more) h += '<button type="button" class="sheetBtn" data-act="liveMore">โหลดเพิ่ม</button>';
+    return h;
+  }
+
+  // ---- one job (design §2.4) ---------------------------------------------------------------
+  function slaWords(sla) {
+    if (!sla) return '';
+    var a = sla.claimMin === null ? 'ยังไม่มีเวลารับงาน' : (sla.claimLate ? 'รับช้ากว่าเกณฑ์ +' + durText(sla.claimOver) : 'รับทันใน 1 ชม.');
+    var b = sla.closeLate ? 'ปิดช้ากว่าเกณฑ์ +' + durText(sla.closeOver) : 'ปิดใน 24 ชม.';
+    return '<div class="xline' + (sla.late ? ' late' : '') + '">⏱ ' + esc(a) + ' · ' + esc(b) + '</div>';
+  }
+  function renderTicket(t, nowMs) {
+    var c = t.ticket;
+    var h = '<section class="card">' +
+      '<div class="title">' + (c.emergency ? '<span class="late">ฉุกเฉิน</span> · ' : '') + esc(String(c.venue).toUpperCase()) + ' · ' + esc(c.location) + '</div>' +
+      '<div class="sub">' + esc([c.id, c.status, c.category, c.requester ? 'แจ้งโดย ' + c.requester : '', thaiClock(String(c.createdAt).slice(0, 16))].filter(Boolean).join(' · ')) + '</div>' +
+      (t.photos && t.photos.length ? '<div class="photos">' + t.photos.map(function (p) {
+        return '<a href="' + esc(p.full) + '" target="_blank" rel="noopener"><img src="' + esc(p.thumb) + '" alt="" loading="lazy"></a>';
+      }).join('') + '</div>' : '') +
+      '<div class="prob">' + esc(c.problem) + '</div>' +
+      (t.fix ? '<div class="xline">🔧 ' + esc(t.fix) + '</div>' : '') +
+      (c.techNote ? '<div class="xline">📝 ' + esc(c.techNote) + '</div>' : '') +
+      (t.cost && (t.cost.cost || t.cost.cap) ? '<div class="xline">🧾 ค่าใช้จ่าย ' + fmtBaht(t.cost.cost) + ' บาท' + (t.cost.cap ? ' · วงเงิน ' + fmtBaht(t.cost.cap) + ' บาท' : '') +
+        (t.cost.capBy ? ' · อนุมัติโดย ' + esc(t.cost.capBy) + ' ' + esc(thaiClock(String(t.cost.capAt).slice(0, 16))) : '') + '</div>' : '') +
+      (c.status === ST.closed ? slaWords(t.sla) : '<div class="clock ' + (liveLine(c, nowMs).late ? 'late' : 'normal') + '">' + esc(liveLine(c, nowMs).text) + '</div>') +
+      '</section>';
+    h += section('เส้นเวลา', '<ol class="timeline card">' + (t.timeline || []).map(function (e) {
+      return '<li><b>' + esc(e.label) + '</b> · ' + esc(e.actor || '—') + ' · ' + esc(thaiClock(String(e.at).slice(0, 16))) +
+        (e.gapMin !== null && e.gapMin !== undefined ? ' <span class="gap">+' + esc(durText(e.gapMin)) + '</span>' : '') +
+        (e.detail && e.action !== 'ATTACH' ? '<div class="sub">' + esc(e.detail) + '</div>' : '') + '</li>';
+    }).join('') + '</ol>');
+    var s = t.spot || { history: [] };
+    h += section('จุดนี้ย้อนหลัง', '<div class="card">' + (s.history.length ? s.history.map(function (x) {
+      return '<div class="slaRow"><b>' + esc(thaiClock(String(x.at).slice(0, 10))) + ' · ' + esc(x.id) + '</b><span>' +
+        esc([x.problem, x.assignee ? 'ช่าง ' + x.assignee : '', x.cost ? fmtBaht(x.cost) + ' บาท' : ''].filter(Boolean).join(' · ')) + '</span></div>';
+    }).join('') : '<div class="empty small">ไม่เคยแจ้งที่จุดนี้มาก่อน</div>') +
+      '<div class="xline' + (s.replace ? ' late' : '') + '">ซ่อม ' + s.times + ' ครั้ง · รวม ' + fmtBaht(s.total) + ' บาท' + (s.replace ? ' · พิจารณาเปลี่ยนเครื่อง' : '') + '</div></div>');
+    h += '<a class="actionBtn linkBtn" href="' + esc(t.lineUrl) + '">เปิดใบงานนี้ในไลน์</a>';
+    return h;
+  }
+
+  // ---- ช่าง (design §2.5) -------------------------------------------------------------------
+  var TECH_WINDOWS = [{ k: 1, label: 'วันนี้' }, { k: 7, label: '7 วัน' }, { k: 30, label: '30 วัน' }];
+  function renderTechs(ts, ui) {
+    var h = chipRow('techWin', TECH_WINDOWS, ts.window);
+    h += section('ช่างตอนนี้', (ts.techs || []).map(function (t) {
+      var now = t.current ? '🔧 ' + String(t.current.venue).toUpperCase() + ' · ' + t.current.location + ' · ' + t.current.id
+        : '● ว่าง' + (t.lastCloseAt ? ' · ปิดล่าสุด ' + thaiClock(String(t.lastCloseAt).slice(0, 16)) : '');
+      return '<button type="button" class="card trow" data-act="openTech" data-k="' + esc(t.name) + '">' +
+        '<div class="title">' + esc(t.name) + '</div><div class="sub">' + esc(now) + '</div>' +
+        '<div class="xline">ปิด ' + t.closes + ' งาน · รับเฉลี่ย ' + (t.avgClaimMin === null ? '—' : durText(t.avgClaimMin)) +
+        ' · เวลาต่องาน ' + (t.medianFixMin === null ? '—' : durText(t.medianFixMin)) + '</div>' +
+        barChart([{ label: 'งานในมือ', n: t.load, text: t.inHand + ' งาน' }]) + '</button>';
+    }).join('') + (ts.others && ts.others.closes ? '<div class="card"><div class="title">อื่น ๆ</div><div class="sub">ปิด ' + ts.others.closes + ' งาน · ' + esc(ts.others.names.join(', ')) + '</div></div>' : ''));
+    h += section('ตามร้าน', '<div class="card">' + ((ts.venues || []).length ? ts.venues.map(function (v) {
+      return '<div class="slaRow"><b>' + esc(v.venue) + '</b><span>ค้าง ' + v.live + ' · นานสุด ' + esc(thaiClock(String(v.oldestAt).slice(0, 16))) +
+        ' · ซ่อมซ้ำ ' + v.repeats + (v.pendingBaht ? ' · รออนุมัติ ' + fmtBaht(v.pendingBaht) + ' บาท' : '') + '</span></div>';
+    }).join('') : '<div class="empty small">ไม่มีงานค้าง</div>') + '</div>');
+    if ((ts.waiting || []).length) h += section('รออะไหล่/ผู้รับเหมา', ts.waiting.map(function (c) {
+      return '<button type="button" class="card trow" data-act="openTicket" data-k="' + esc(c.id) + '"><div class="title">' + esc(String(c.venue).toUpperCase()) + ' · ' + esc(c.location) + '</div>' +
+        '<div class="sub">' + esc([c.status, c.contractor, c.purchase ? c.purchase.item + ' ' + fmtBaht(c.purchase.amount) + ' บาท' : ''].filter(Boolean).join(' · ')) + '</div></button>';
+    }).join(''));
+    return h;
+  }
+  function renderTech(t) {
+    var me = t.me, team = t.team;
+    var perTech = t.teamSize ? Math.round(team.closes / t.teamSize) : null;
+    function box(label, value, cmp) {
+      return stat(label, value, '<div class="delta' + (cmp.red ? ' late' : '') + '">' + esc(cmp.text) + '</div>');
+    }
+    var h = chipRow('techWin1', TECH_WINDOWS, t.window);
+    h += '<div class="statGrid">' +
+      box('ปิดงาน', String(me.closes), compareLine(me.closes, perTech, true)) +
+      box('รับงานทันใน 1 ชม.', me.claimInTimePct === null ? '—' : me.claimInTimePct + '%', compareLine(me.claimInTimePct, team.claimInTimePct, true, '%')) +
+      box('ปิดงานใน 24 ชม.', me.closeInTimePct === null ? '—' : me.closeInTimePct + '%', compareLine(me.closeInTimePct, team.closeInTimePct, true, '%')) +
+      box('เวลาต่องาน (ค่ากลาง)', me.medianFixMin === null ? '—' : durText(me.medianFixMin), compareLine(me.medianFixMin, team.medianFixMin, false, ' นาที')) + '</div>';
+    h += section('ปิดงานรายวัน 7 วัน', '<div class="card">' + colChart((t.daily || []).map(function (d) { return { label: dayLabel(d.day), n: d.n }; })) + '</div>');
+    h += section('ประเภทงาน', '<div class="card">' + barChart((t.categories || []).map(function (x) { return { label: x.name, n: x.n, text: x.n + ' งาน' }; })) + '</div>');
+    h += section('ตามร้าน', '<div class="card">' + barChart((t.venues || []).map(function (x) { return { label: x.name, n: x.n, text: x.n + ' งาน' }; })) + '</div>');
+    h += '<p class="pendLine">🧾 ขอซื้อในงานของ' + esc(t.name) + ' ' + fmtBaht(t.purchaseAsked) + ' บาท</p>';
+    h += section('ในมือตอนนี้', (t.inHand || []).length ? t.inHand.map(function (c) {
+      return '<button type="button" class="card trow" data-act="openTicket" data-k="' + esc(c.id) + '"><div class="title">' + esc(String(c.venue).toUpperCase()) + ' · ' + esc(c.location) + '</div><div class="sub">' + esc(c.status + ' · ' + c.problem) + '</div></button>';
+    }).join('') : '<div class="empty small">ว่าง</div>');
+    h += section('งานล่าสุด', '<div class="card">' + ((t.recent || []).length ? t.recent.map(function (x) {
+      return '<div class="slaRow"><b>' + esc(thaiClock(String(x.at).slice(0, 16))) + ' · ' + esc(String(x.venue).toUpperCase()) + ' ' + esc(x.location) + '</b><span>ใช้เวลา ' +
+        (x.fixMin === null ? '—' : durText(x.fixMin)) + (x.cost ? ' · ' + fmtBaht(x.cost) + ' บาท' : '') + ' · ' + (x.inTime ? 'ทันเวลา' : '<span class="late">ช้า</span>') + '</span></div>';
+    }).join('') : '<div class="empty small">ยังไม่มีงานที่ปิดในช่วงนี้</div>') + '</div>');
+    h += section('กลับมาซ่อมซ้ำหลังปิด', '<div class="card">' + ((t.backAfterClose || []).length ? t.backAfterClose.map(function (b) {
+      return '<div class="slaRow"><b class="late">' + esc(b.closed) + ' → ' + esc(b.again) + '</b><span>แจ้งใหม่ ' + esc(thaiClock(String(b.at).slice(0, 16))) + '</span></div>';
+    }).join('') : '<div class="empty small">ไม่มีงานที่กลับมาภายใน 30 วัน</div>') + '</div>');
+    return h;
+  }
+
+  // ---- บัญชี: รออนุมัติ · บิล · งานทั้งหมด (design §2.1 · §2.2 · §2.6) -----------------------
+  function renderApprovals(a, me, ui) {
+    ui = ui || {};
+    var h = '<div class="groupHead"><span>🧾 รออนุมัติ (' + a.count + ')</span><b>ซื้อในงานซ่อม ' + a.repair.length + ' · ขอซื้อสาขา ' + a.branch.length + '</b></div>';
+    h += a.repair.map(function (c) {
+      var p = c.purchase || {};
+      return '<article class="card rcard">' +
+        '<button type="button" class="tap" data-act="openTicket" data-k="' + esc(c.id) + '">' + (c.photo ? '<img class="thumb" src="' + esc(c.photo) + '" alt="" loading="lazy">' : '') +
+        '<div class="rbody"><div class="title">' + esc(p.item || c.problem) + '</div>' +
+        '<div class="sub">' + esc([String(c.venue).toUpperCase() + ' · ' + c.location, c.id, p.by ? 'ขอโดย ' + p.by : '', thaiClock(String(p.at || c.createdAt).slice(0, 16)), 'ซื้อในงานซ่อม'].filter(Boolean).join(' · ')) + '</div></div></button>' +
+        '<div class="promise">ประมาณ ' + fmtBaht(c.estimate || p.amount) + ' บาท' + (c.approvedBefore ? ' · จุดนี้เคยอนุมัติ ' + fmtBaht(c.approvedBefore.baht) + ' บาท เมื่อ ' + esc(thaiClock(String(c.approvedBefore.at).slice(0, 10))) : '') + '</div>' +
+        approveButtons(c, me) + '</article>';
+    }).join('');
+    h += ui.branchHtml || '';
+    if (!a.repair.length && !a.branch.length) h += '<div class="empty">ไม่มีคำขอรออนุมัติ</div>';
+    if ((a.history || []).length) h += section('ประวัติการอนุมัติ', '<div class="card">' + a.history.map(function (x) {
+      return '<div class="slaRow"><b>' + esc(thaiClock(String(x.at).slice(0, 16))) + ' · ' + esc(x.label) + ' · ' + esc(x.id) + '</b><span>' + esc([x.actor, x.detail].filter(Boolean).join(' · ')) + '</span></div>';
+    }).join('') + '</div>');
+    return h;
+  }
+  var BILL_WEEKS = [{ k: 0, label: 'สัปดาห์นี้' }, { k: -1, label: 'สัปดาห์ก่อน' }, { k: -2, label: '2 สัปดาห์ก่อน' }, { k: -3, label: '3 สัปดาห์ก่อน' }];
+  function renderBills(b, ui) {
+    ui = ui || {};
+    var h = chipRow('billWeek', BILL_WEEKS.concat([{ k: 'all', label: 'ทั้งหมด' }]), ui.all ? 'all' : b.week.offset);
+    h += ui.all
+      ? '<div class="statGrid">' + stat('ยอดรวมบิลทั้งหมด', fmtBaht(b.all.total) + '<small> บาท</small>') + stat('จำนวนบิล', b.all.count + '<small> ใบ</small>') +
+        stat('ตรวจแล้ว', b.all.reviewed + ' / ' + b.all.count) + '</div>'
+      : '<div class="statGrid">' + stat('ยอดรวม ' + thaiClock(b.week.start) + ' – ' + thaiClock(b.week.end), fmtBaht(b.week.total) + '<small> บาท</small>') +
+        stat('จำนวนบิล', b.week.count + '<small> ใบ</small>') + stat('ตรวจแล้ว', b.week.reviewed + ' / ' + b.week.count) + stat('วันจ่าย', esc(thaiClock(b.week.payDate))) + '</div>';
+    h += (b.groups || []).map(function (g) {
+      return '<div class="groupHead"><span>🏢 ' + esc(g.company) + ' · ตรวจแล้ว ' + g.reviewed + '/' + g.count + '</span><b>รวม ' + fmtBaht(g.total) + ' บาท</b></div>' +
+        g.bills.map(function (x) {
+          return '<article class="card bill">' + (x.photo ? '<a href="' + esc(x.photoFull) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(x.photo) + '" alt="รูปบิล" loading="lazy"></a>' : '<span class="thumb none">ไม่มีรูป</span>') +
+            '<div class="rbody"><div class="title">' + esc(x.item) + ' · ' + fmtBaht(x.amount) + ' บาท</div>' +
+            '<div class="sub">' + esc([thaiClock(String(x.timestamp).slice(0, 16)), x.submitter, x.venue ? String(x.venue).toUpperCase() + (x.location ? ' · ' + x.location : '') : '', x.ticketId].filter(Boolean).join(' · ')) + '</div>' +
+            '<label class="tick"><input type="checkbox" data-act="billTick" data-ts="' + esc(x.timestamp) + '" data-sub="' + esc(x.submitter) + '"' + (x.reviewed ? ' checked' : '') + '> ตรวจแล้ว' +
+            (x.reviewedBy ? ' · ' + esc(x.reviewedBy) : '') + '</label>' +
+            '<select data-act="billCompany" data-ts="' + esc(x.timestamp) + '" data-sub="' + esc(x.submitter) + '" aria-label="บริษัท">' +
+            ['<option value="">— บริษัทตามร้าน —</option>'].concat((b.companies || []).map(function (c) { return '<option' + (c === g.company && !g.unassigned ? ' selected' : '') + '>' + esc(c) + '</option>'; })).join('') +
+            '</select></div></article>';
+        }).join('');
+    }).join('') || '<div class="empty">ไม่มีบิลในสัปดาห์นี้</div>';
+    h += '<a class="sheetBtn linkBtn" href="' + esc(b.docUrl) + '" target="_blank" rel="noopener">เปิดเอกสารวางบิล ↗</a>';
+    return h;
+  }
+  function renderTicketList(l, ui) {
+    ui = ui || {};
+    var h = chipRow('tlStatus', [{ k: '', label: 'ทั้งหมด' }].concat((l.statuses || []).map(function (s) { return { k: s, label: s }; })), ui.status || '');
+    h += '<div class="groupHead"><span>📋 งานทั้งหมด (' + l.total + ')</span></div>';
+    h += (l.rows || []).map(function (c) {
+      return '<button type="button" class="card trow" data-act="openTicket" data-k="' + esc(c.id) + '"><div class="title">' + esc(String(c.venue).toUpperCase()) + ' · ' + esc(c.location) + '</div>' +
+        '<div class="sub">' + esc([c.id, c.status, c.category, c.assignee ? 'ช่าง ' + c.assignee : ''].filter(Boolean).join(' · ')) + '</div><div class="prob">' + esc(c.problem) + '</div></button>';
+    }).join('') || '<div class="empty">ไม่มีงาน</div>';
+    if (l.nextOffset !== null && l.nextOffset !== undefined) h += '<button type="button" class="sheetBtn" data-act="tlMore">โหลดเพิ่ม</button>';
+    return h;
+  }
+/* CARE END */
+
+
 /* AUTH START */
   var DEMO = null;
   var idToken = '', accessToken = '';

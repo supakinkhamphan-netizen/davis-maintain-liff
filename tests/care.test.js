@@ -21,7 +21,11 @@ function eq(label, got, want) {
 }
 const ok = (l, c) => eq(l, !!c, true);
 const has = name => typeof C[name] === 'function';
-const textOf = h => String(h).replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+const unesc = t => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+// What a reader sees, spaces collapsed (a tag is a word break).
+const textOf = h => unesc(String(h).replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
+// The text nodes as written: a "label  value" row shows up as two spaces inside one node.
+const textNodes = h => (String(h).replace(/<style[\s\S]*?<\/style>/g, '').match(/>[^<]+</g) || []).map(t => unesc(t.slice(1, -1)));
 const R = role => DEMO.roles[role];
 const callOf = (role, fn, p) => R(role).calls[fn + JSON.stringify(p || {})];
 const NOW = Date.UTC(2026, 9, 20, 5, 0);   // 12:00 Bangkok, the fixture's "now"
@@ -47,7 +51,7 @@ safe('2', () => {
   const html = C.renderOverview(o, {});
   const txt = textOf(html);
   ok('2.1 the headline: "N ใบแจ้งซ่อม"', txt.indexOf(o.report.ticketsThisWindow + ' ใบแจ้งซ่อม') >= 0);
-  eq('2.2 every finding, word for word (lead as the quote)', o.alerts.filter(a => txt.indexOf(textOf(a.html)) < 0).map(a => a.html), []);
+  eq('2.2 every finding, word for word (lead as the quote)', o.alerts.filter(a => txt.indexOf(textOf(a.html).trim()) < 0).map(a => a.html), []);
   ok('2.3 a red finding carries class late', !o.alerts.some(a => a.red) || /class="[^"]*\blate\b/.test(html));
   const want = Object.keys(o.deltas).map(k => C.deltaLine(o.deltas[k]).text);
   eq('2.4 every comparison line', want.filter(t => txt.indexOf(t) < 0), []);
@@ -55,7 +59,7 @@ safe('2', () => {
   const nums = ['ticketsThisWindow', 'overdueCount', 'totalOpenLike', 'closedTotal', 'purchaseRequested', 'purchaseApproved'].map(k => String(o.report[k]));
   eq('2.6 the figures of the exec page are on it', nums.filter(x => txt.indexOf(x) < 0), []);
   ok('2.7 money: approved purchases in the window, cumulative cost under it', txt.indexOf(Number(o.report.purchaseApprovedCost).toLocaleString('en-US')) >= 0 && txt.indexOf(Number(o.report.totalCost).toLocaleString('en-US')) >= 0);
-  ok('2.8 every section the page has', ['ปริมาณงาน', 'ความเร็วในการทำงาน', 'เงิน', 'งานซ่อม', 'ค่าซ่อมแยกร้าน', 'จุดที่ซ่อมบ่อยที่สุด', 'หมวดปัญหา', 'เวลาทำงานแยกตามร้าน', 'เวลาทำงานแยกตามช่าง', 'รอบตรวจ'].every(s => txt.indexOf(s) >= 0));
+  ok('2.8 every section the exec page has, under its own title', ['ปริมาณงาน', 'ความเร็วในการทำงาน', 'เงิน', 'งานซ่อม', 'แนวโน้มใบแจ้งรายวัน', 'ค่าซ่อมแยกร้าน (สะสม)', 'จุดที่ซ่อมซ้ำบ่อยที่สุด', 'หมวดปัญหาที่พบบ่อยสุด', 'เวลาทำงานแยกตามร้าน', 'เวลาทำงานแยกตามช่าง', 'เวลาทำงานแยกตามระดับความสำคัญ', 'งานประจำและรอบตรวจ'].every(s => txt.indexOf(s) >= 0));
   ok('2.9 the link to the old page (PDF/CSV)', html.indexOf(C.esc(o.pageUrl)) >= 0 && txt.indexOf('เปิดหน้าเว็บเดิม') >= 0);
   const bars = (html.match(/class="bar"/g) || []).length, bn = (html.match(/class="bn"/g) || []).length;
   ok('2.10 every bar has its number (including 0)', bars > 0 && bars === bn);
@@ -132,7 +136,7 @@ safe('7', () => {
     C.renderRepair(callOf('manager', 'bdRepairLive', {}), {}, NOW, R('manager').bdWhoAmI), C.renderTicket(callOf('manager', 'bdTicket', { id: '24BLVD_20261015_01' }), NOW),
     C.renderTechs(callOf('manager', 'bdTechs', { window: 7 }), {}), C.renderTech(callOf('manager', 'bdTech', { name: 'นัท', window: 7 })),
     C.renderApprovals(callOf('account', 'bdApprovals', {}), R('account').bdWhoAmI, {}), C.renderBills(callOf('account', 'bdBills', { weekOffset: 0 }), {})].join('');
-  eq('7.2 no "label  value" rows anywhere', (textOf(all).match(/[ก-๙A-Za-z]{2,}  +[^\s]/g) || []).slice(0, 5), []);
+  eq('7.2 no "label  value" rows anywhere', textNodes(all).filter(t => /[ก-๙A-Za-z]{2,}  +[^\s]/.test(t)).slice(0, 5), []);
   ok('7.3 red only via late/over', !/#F08C8C|var\(--danger\)/.test(all));
   ok('7.4 build v6', /var BUILD = 'care-board v6 · 2026-10-2\d/.test(SRC));
 });
