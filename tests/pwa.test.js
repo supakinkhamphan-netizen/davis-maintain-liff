@@ -166,5 +166,46 @@ safe('6', () => {
   ok('6.10 the LIFF id stays the board\'s own', /var LIFF_ID = '2012115315-ab7oUBTb';/.test(SRC));
 });
 
-console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
-process.exit(fails ? 1 : 0);
+// ---- 7. the worker running: network first, the cache when the network fails -------------------
+async function section7() {
+  const store = new Map();   // url -> response
+  const listeners = {};
+  let online = true;
+  const strip = u => u.split('?')[0];
+  const base = 'https://davis.example/davis-maintain-liff/';
+  const caches = {
+    open: () => Promise.resolve({ put: (req, res) => { store.set(typeof req === 'string' ? req : req.url, res); return Promise.resolve(); }, addAll: () => Promise.resolve() }),
+    match: (req, opt) => {
+      const url = new URL(typeof req === 'string' ? req : req.url, base).href;
+      if (store.has(url)) return Promise.resolve(store.get(url));
+      if (opt && opt.ignoreSearch) { for (const [k, v] of store) if (strip(k) === strip(url)) return Promise.resolve(v); }
+      return Promise.resolve(undefined);
+    },
+    keys: () => Promise.resolve([]), delete: () => Promise.resolve(true),
+  };
+  const ctx7 = { self: { addEventListener: (t, f) => { listeners[t] = f; }, location: { origin: 'https://davis.example' }, skipWaiting() {}, clients: { claim() {} } },
+    caches, URL, Promise, console, Response: { error: () => 'NETWORK-ERROR' },
+    fetch: req => online ? Promise.resolve({ ok: true, body: 'net:' + req.url, clone() { return { body: 'cached:' + req.url }; } }) : Promise.reject(new TypeError('offline')) };
+  vm.createContext(ctx7);
+  vm.runInContext(SW, ctx7);
+  const go = req => new Promise(res => {
+    let answered = false;
+    listeners.fetch({ request: Object.assign({ method: 'GET', mode: 'cors' }, req), respondWith: p => { answered = true; p.then(res); } });
+    if (!answered) res('PASSTHROUGH');
+  });
+  const r1 = await go({ url: base + '?src=pwa', mode: 'navigate' });
+  await new Promise(r => setTimeout(r, 10));
+  eq('7.1 online: the network answers, and a copy goes into the cache', [r1.body, (store.get(base + '?src=pwa') || {}).body], ['net:' + base + '?src=pwa', 'cached:' + base + '?src=pwa']);
+  eq('7.2 a cross-origin call is never answered by the worker', await go({ url: 'https://script.google.com/macros/s/X/exec', method: 'POST' }), 'PASSTHROUGH');
+  online = false;
+  eq('7.3 offline: the icon\'s ./?src=pwa comes from the cache', (await go({ url: base + '?src=pwa', mode: 'navigate' })).body, 'cached:' + base + '?src=pwa');
+  store.set(base, { body: 'cached:root' });
+  store.delete(base + '?src=pwa');
+  eq('7.4 offline, another query on the page: the cached page (search ignored)', (await go({ url: base + '?src=pwa&x=1', mode: 'navigate' })).body, 'cached:root');
+  eq('7.5 offline, a file never cached: a network error, never the page in its place', await go({ url: base + 'demo-bd.json' }), 'NETWORK-ERROR');
+}
+
+section7().catch(e => { fails++; n++; console.log('FAIL 7 crashed: ' + e.stack); }).then(() => {
+  console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
+  process.exit(fails ? 1 : 0);
+});

@@ -208,5 +208,95 @@ safe('8', () => {
   ok('8.17 offline also when the LINE SDK cannot load and data is painted', /sdk\.onerror = function \(\) \{\s*if \(S\.me && S\.cachedAt\) \{ S\.offline = true; render\(\); return; \}/.test(SRC));
 });
 
-console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
-process.exit(fails ? 1 : 0);
+// ---- 9. the page itself, booted in a fake browser (#18 §2.6, §2.3, §2.4, §2.5) ----------------
+const { bootPage, answer, offline } = require('./fake-browser');
+const tick = ms => new Promise(r => setTimeout(r, ms));
+const firstOf = { manager: ['repair', 'bdRepairLive'], account: ['approvals', 'bdApprovals'], venue_manager: ['repair', 'bdRepairLive'] };
+const T9 = Date.now() - 3 * 3600000;
+const hhmm9 = (t => ('0' + t.getUTCHours()).slice(-2) + ':' + ('0' + t.getUTCMinutes()).slice(-2))(new Date(T9 + 7 * 3600000));
+const answerOf = role => fn => {
+  if (fn === 'bdWhoAmI') return answer(R(role).bdWhoAmI);
+  const k = Object.keys(R(role).calls).filter(x => x.indexOf(fn + '{') === 0)[0];
+  return k ? answer(R(role).calls[k]) : answer({ ok: false, error: 'ไม่มี' });
+};
+function cacheFor(role) {
+  const [zone, fn] = firstOf[role], k = Object.keys(R(role).calls).filter(x => x.indexOf(fn + '{') === 0)[0];
+  const c = C.cacheZone({}, R(role).bdWhoAmI, zone, '', R(role).calls[k], T9);
+  return { 'davisPurchase.v1': JSON.stringify(c), _id: (JSON.stringify(R(role).calls[k]).match(/"id":"([^"]+)"/) || [])[1] };
+}
+async function section9() {
+  for (const role of Object.keys(firstOf)) {
+    const cache = cacheFor(role);
+    const pg = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: offline });
+    const t0 = textOf(pg.app.innerHTML);
+    ok('9.1 ' + role + ': boot paints the cached ' + firstOf[role][0] + ' before LINE answers (' + cache._id + ', ข้อมูลเมื่อ ' + hhmm9 + ')',
+      cache._id && t0.indexOf(cache._id) >= 0 && t0.indexOf('ข้อมูลเมื่อ ' + hhmm9) >= 0 && t0.indexOf('ไม่มีเน็ต') < 0);
+    pg.lineLoads();
+    await tick(150);
+    const t1 = textOf(pg.app.innerHTML);
+    ok('9.2 ' + role + ': the first fetch rejects: the data stays, one muted "ไม่มีเน็ต · แสดงข้อมูลเมื่อ" line, no red toast',
+      t1.indexOf(cache._id) >= 0 && t1.indexOf('ไม่มีเน็ต · แสดงข้อมูลเมื่อ ' + hhmm9) >= 0 && !/err/.test(pg.toast.className) && t1.indexOf('เปิดบอร์ดไม่สำเร็จ') < 0);
+  }
+  const cache = cacheFor('manager');
+  const sdkDown = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: offline });
+  sdkDown.sdk.onerror();
+  ok('9.3 the LINE SDK cannot load (airplane mode): painted data + the offline line, not the error page',
+    textOf(sdkDown.app.innerHTML).indexOf('ไม่มีเน็ต · แสดงข้อมูลเมื่อ') >= 0 && textOf(sdkDown.app.innerHTML).indexOf(cache._id) >= 0);
+  const bare = bootPage(SRC, { fetch: offline });
+  bare.sdk.onerror();
+  ok('9.4 nothing cached and no LINE: the error page as before', textOf(bare.app.innerHTML).indexOf('เปิดบอร์ดไม่สำเร็จ') >= 0);
+
+  const live = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: answerOf('manager') });
+  live.lineLoads({ isInClient: () => true });
+  await tick(150);
+  const tl = textOf(live.app.innerHTML);
+  ok('9.5 the fresh answer replaces the painted one: no "ข้อมูลเมื่อ" line left', live.log.fns.indexOf('bdRepairLive') >= 0 && tl.indexOf('ข้อมูลเมื่อ') < 0 && tl.indexOf('ไม่มีเน็ต') < 0);
+  ok('9.6 inside LINE: the "ติดตั้งเป็นแอป ›" line, and no sheet without ?install=1', tl.indexOf('ติดตั้งเป็นแอป ›') >= 0 && tl.indexOf('ติดตั้ง Davis Care เป็นแอป') < 0);
+  ok('9.7 the fresh answer is cached under its zone', (c => c && c.boards && !!c.boards['repair|'] && c.at['repair|'] > T9)(JSON.parse(live.local.get('davisPurchase.v1') || 'null')));
+
+  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  const inst = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?install=1', ua: IOS, fetch: answerOf('manager') });
+  inst.lineLoads();
+  await tick(150);
+  const ti = textOf(inst.app.innerHTML);
+  ok('9.8 the phone\'s browser with ?install=1: the iPhone sheet once the board shows, and the address loses install=1',
+    ti.indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0 && ti.indexOf('เพิ่มไปยังหน้าจอโฮม') >= 0 && inst.log.replaced.indexOf('https://davis.example/davis-maintain-liff/') >= 0);
+  const back = bootPage(SRC, { ua: IOS, session: { 'davisCare.install': '1' }, fetch: answerOf('manager') });
+  back.lineLoads();
+  await tick(150);
+  ok('9.9 back from LINE Login (install=1 dropped from the redirect): the sheet still opens once', textOf(back.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0 && !back.session.has('davisCare.install'));
+  const gone = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?install=1', ua: IOS, fetch: answerOf('manager') });
+  gone.lineLoads({ isLoggedIn: () => false });
+  await tick(50);
+  ok('9.10 not logged in: LINE Login comes back without install=1', gone.log.logins.length === 1 && gone.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/' && gone.session.get('davisCare.install') === '1');
+  const std = bootPage(SRC, { ua: IOS, standalone: true, href: 'https://davis.example/davis-maintain-liff/?src=pwa', fetch: answerOf('manager') });
+  std.lineLoads();
+  await tick(150);
+  ok('9.11 opened from the icon: no install line, no sheet', !/data-act="install/.test(std.app.innerHTML) && textOf(std.app.innerHTML).indexOf('ติดตั้งเป็นแอป ›') < 0 && textOf(std.app.innerHTML).indexOf(cache._id) >= 0);
+
+  const dead = { getDecodedIDToken: () => ({ exp: Date.now() / 1000 - 3600 }) };
+  const refused = () => answer({ ok: false, error: 'noCredential' });
+  const r1 = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?src=pwa', fetch: refused });
+  r1.lineLoads(dead);
+  await tick(150);
+  ok('9.12 both tokens dead: logout then login once, back to ?src=pwa', r1.log.logouts === 1 && r1.log.logins.length === 1 && r1.log.logins[0].redirectUri === 'https://davis.example/davis-maintain-liff/?src=pwa');
+  const r2 = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?src=pwa', session: { 'davisCare.relogin': r1.session.get('davisCare.relogin') }, fetch: refused });
+  r2.lineLoads(dead);
+  await tick(150);
+  ok('9.13 a refused login does not loop: the second time it says why', r2.log.logouts === 0 && r2.log.logins.length === 0 && textOf(r2.app.innerHTML).indexOf('noCredential') >= 0);
+
+  const upd = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, hadWorker: true, fetch: answerOf('manager') });
+  upd.lineLoads();
+  await tick(150);
+  upd.sw.controllerchange();
+  await tick(50);
+  ok('9.14 a new worker: the "มีรุ่นใหม่ · แตะเพื่อโหลด" line, and no reload by itself', textOf(upd.app.innerHTML).indexOf('มีรุ่นใหม่ · แตะเพื่อโหลด') >= 0 && upd.log.reloads === 0);
+  const first = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, hadWorker: false, fetch: answerOf('manager') });
+  first.sw.controllerchange();
+  ok('9.15 the very first worker is not a new build: no line', textOf(first.app.innerHTML).indexOf('มีรุ่นใหม่') < 0 && first.log.reloads === 0);
+}
+
+section9().catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+  console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
+  process.exit(fails ? 1 : 0);
+});
