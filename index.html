@@ -289,6 +289,13 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 .isteps{margin:4px 0 8px;padding-left:22px;font-size:15px;line-height:1.7;color:var(--ink)}
 .isteps li{margin:4px 0}
 .isteps svg{width:18px;height:18px;vertical-align:-3px;margin:0 2px}
+/* #18 F1: the installed app runs under the iPhone status bar (black-translucent):
+   the sticky header grows by the top inset, and what sticks under it moves with it. */
+@media (display-mode: standalone){
+  header{padding-top:env(safe-area-inset-top);height:calc(var(--head-h) + env(safe-area-inset-top))}
+  .tabs,.zones{top:calc(var(--head-h) + env(safe-area-inset-top))}
+  .notice{padding-top:calc(60px + env(safe-area-inset-top))}
+}
 /* Last colour word: red beats any rule that colours its children (.slaRow span, .xline, .sub). */
 #app .late{color:var(--danger)}
 </style>
