@@ -306,13 +306,13 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v7.0 · 2026-10-20 · ติดตั้งเป็นแอป';
+  var BUILD = 'care-board v7.1 · 2026-10-20 · เปิดครั้งเดียว';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
   var LIFF_ID = '2012115315-ab7oUBTb';
   var STORE_KEY = 'davisPurchase.v1';
-  var POLL_MS = 10000;
+  var POLL_MS = 30000;   // WO#19 B2: the engine caches the reads; a hidden page does not poll at all
   var QS = (function () {
     var q = location.search || '';
     // LIFF may redirect and hand the original query over inside liff.state.
@@ -354,6 +354,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       eta: 'ใส่วันที่คาดว่าของจะถึง',
       wrongStep: 'คำขอนี้ยังไม่ถึงขั้นนี้ หรือผ่านขั้นนี้ไปแล้ว',
       network: 'ติดต่อระบบไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง',
+      // The engine's PR_L_.err.unknownFn, word for word: an engine without bdBoot (@76) answers it (WO#19 B1).
+      unknownFn: 'บอร์ดขอคำสั่งที่ระบบไม่รู้จัก ปิดแล้วเปิดบอร์ดใหม่',
     },
   };
   var MAX_PHOTOS = 3;
@@ -1209,18 +1211,37 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var keep = u.params.filter(function (kv) { return kv !== 'install=1'; });
     return u.base + (keep.length ? '?' + keep.join('&') : '') + u.hash;
   }
+  /**
+   * #18 §6 (v7.1): a browser that can install, asked by ?install=1 and not logged in:
+   * the sheet first, LINE Login only if the person stays in the browser. iOS gives
+   * the installed app its own storage, so a login here would be asked again there.
+   */
+  function installBeforeLogin(o) {
+    return !!(o.asked && !o.loggedIn && ['android', 'ios', 'other'].indexOf(o.hint) >= 0);
+  }
   /** A board left installed for days: both tokens gone. Log out and in once, never offline, never twice. */
   function needsRelogin(o) {
     return !!(o.failed && !o.offline && o.loggedIn && o.exp && o.exp * 1000 < o.now && !o.tried);
   }
   // ---- §2.6 the last data first, every role ----
-  /** The cache with one more answer: me, the answer under zone|venue, and when it came. */
-  function cacheZone(cache, me, zone, venue, res, now) {
-    var c = cache || {};
-    c.me = me; c.boards = c.boards || {}; c.at = c.at || {};
-    c.boards[zone + '|' + (venue || '')] = res;
-    c.at[zone + '|' + (venue || '')] = now;
+  /**
+   * The cache with one more answer: me, the answer under zone|venue, when it came
+   * (the server's clock when the answer carries serverNow, WO#19 B3) and the chips
+   * it was asked with (v7.1), so a painted answer and its chips always agree.
+   */
+  function cacheZone(cache, me, zone, venue, res, now, ui) {
+    var c = cache || {}, key = zone + '|' + (venue || '');
+    var server = res && res.serverNow ? bkkMs(res.serverNow) : NaN;
+    c.me = me; c.boards = c.boards || {}; c.at = c.at || {}; c.ui = c.ui || {};
+    c.boards[key] = res;
+    c.at[key] = isFinite(server) ? server : now;
+    c.ui[key] = ui ? JSON.parse(JSON.stringify(ui)) : {};
     return c;
+  }
+  /** v7.1: the cache belongs to one LINE person (sub). Another one on this phone: 'wipe'. */
+  function cacheOwner(cache, sub) {
+    if (!cache || !sub || (!cache.me && !cache.boards)) return 'keep';
+    return cache.sub === sub ? 'keep' : 'wipe';
   }
   /** What boot paints before the network answers: {me, zone, tab, data, at}, or null. */
   function cachedPaint(cache, firstTab) {
@@ -1229,7 +1250,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     if (!zs.length) return null;
     var zone = zs.indexOf(cache.zone) >= 0 ? cache.zone : zs[0];
     var key = zone === 'purchase' ? firstTab(cache.me) + '|' : zone + '|';
-    return { me: cache.me, zone: zone, tab: zone === 'purchase' ? firstTab(cache.me) : '', data: cache.boards[key] || null, at: (cache.at || {})[key] || 0 };
+    return { me: cache.me, zone: zone, tab: zone === 'purchase' ? firstTab(cache.me) : '', data: cache.boards[key] || null, at: (cache.at || {})[key] || 0,
+      ui: (cache.ui || {})[key] || {} };
   }
   function staleLineHtml(at, offline) {
     if (!at) return '';
@@ -1525,6 +1547,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     function bd(fn, p) {
       var R = (DEMO_BD && DEMO_BD.roles[me.role]) || null;
       if (fn === 'bdWhoAmI') return Object.assign(FN.prWhoAmI(), { zones: R ? R.bdWhoAmI.zones : ['purchase'] });
+      // WO#19 A1, as the engine: who + the first zone with the board's default chips; serverNow on the envelope.
+      if (fn === 'bdBoot') {
+        var who = bd('bdWhoAmI', {}), z0 = who.zones[0], first = null;
+        if (z0 === 'repair' || z0 === 'approvals') {
+          var params = z0 === 'repair' ? { venue: '', limit: 200 } : {};
+          var data = bd(z0 === 'repair' ? 'bdRepairLive' : 'bdApprovals', params);
+          first = { zone: z0, params: params, data: data };
+        }
+        return { me: who, first: first, serverNow: who.serverNow };
+      }
       if (!R) throw new Error(L.err.notAllowed);
       var calls = R.calls, key = function (o) { return fn + JSON.stringify(o); };
       if (fn === 'bdApprove' || fn === 'bdReject') {
@@ -1578,7 +1610,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     zone: '', z: {}, zui: {}, ticket: null, tech: null, csheet: null, zbusy: false,
     // #18: painted from the cache at (0 = fresh), offline, a new build waiting, the install hint and sheet.
     cachedAt: 0, offline: false, updateReady: false, hint: 'none', isheet: '',
+    loginAfterSheet: false,   // v7.1: the sheet came before LINE Login; closing it logs in
   };
+  var bootFirst = null;   // WO#19 B1: bdBoot's first zone, used once by startWith
 
   function store(get, val) {
     try {
@@ -1688,9 +1722,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   // v5 polls its tab; v6 polls only the live repair zone (design §2.3), the rest on demand.
   setInterval(function () {
+    if (document.visibilityState === 'hidden') return;   // WO#19 B2: nobody is looking
     if (!S.me || S.view !== 'list' || busyNow() || S.csheet) return;
     if (!S.zone || S.zone === 'purchase' || S.zone === 'repair') load(true);
   }, POLL_MS);
+
+  // WO#19 B2: back in view after more than one poll: refresh the zone on screen at once (any zone).
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible' || !S.me || S.view !== 'list' || busyNow() || S.csheet) return;
+    if (Date.now() - S.lastLoad > POLL_MS) load(true);
+  });
 
   // ---- render -----------------------------------------------------------------
   function demoStrip() {
@@ -2218,7 +2259,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       if (S.zone !== z) { again = true; return; }
       S.z[z] = res;
       S.cachedAt = 0; S.offline = false;
-      if (res && !DEMO) store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', res, Date.now()));
+      if (res && !DEMO) store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', res, Date.now(), u));
       if (res && res.serverNow) S.serverSkew = bkkMs(res.serverNow) - Date.now();
       if (z === 'approvals' && res) S.board = { rows: res.branch };   // the v5 detail and decide work on these rows
       S.lastLoad = Date.now();
@@ -2375,18 +2416,49 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     openInstallOnce();
     var zs = zonesOf(me), saved = (store(true) || {}).zone;
     S.zone = zs.indexOf(S.zone) >= 0 ? S.zone : (zs.indexOf(saved) >= 0 ? saved : zs[0]);
-    if (S.zone !== 'purchase') { S.month = (me.serverNow || '').slice(0, 7); render(); load(); return; }
+    if (S.zone !== 'purchase') {
+      S.month = (me.serverNow || '').slice(0, 7);
+      if (useBootFirst()) { render(); return; }
+      render(); load(); return;
+    }
     if (!S.tab || !tabsFor(me).some(function (t) { return t.key === S.tab; })) S.tab = tabsFor(me)[0].key;
     S.month = (me.serverNow || '').slice(0, 7);
     render();
     load();
   }
+  /**
+   * WO#19 B1: the zone bdBoot already answered is the zone on screen, asked with the
+   * default chips (all venues, 200 cards): draw it as loadZone would, no second call.
+   */
+  function useBootFirst() {
+    var f = bootFirst, u;
+    bootFirst = null;
+    if (!f || f.zone !== S.zone) return false;
+    u = zuiOf(f.zone);
+    if (u.venue || (u.limit && u.limit !== 200)) return false;
+    S.z[f.zone] = f.data;
+    S.cachedAt = 0; S.offline = false; S.lastLoad = Date.now();
+    if (f.data.serverNow) S.serverSkew = bkkMs(f.data.serverNow) - Date.now();
+    if (f.zone === 'approvals') S.board = { rows: f.data.branch };
+    if (!DEMO) store(false, cacheZone(store(true) || {}, S.me, f.zone, '', f.data, Date.now(), u));
+    return true;
+  }
   function boot() {
     render();
     var code = DEMO ? '' : bindCodeFrom(QS);
     var cached0 = store(true) || {};
-    // v6: whoAmI is asked as bdWhoAmI (with the zones); an engine without it answers prWhoAmI.
-    var apiWho = function (fn, p) { return fn === 'prWhoAmI' ? api('bdWhoAmI', p).catch(function () { return api('prWhoAmI', p); }) : api(fn, p); };
+    // WO#19 B1: whoAmI is asked as bdBoot (who + the first zone, one call). An engine without
+    // it (@76) says unknownFn: then the v6 pair, bdWhoAmI (or prWhoAmI) and the zone after.
+    var apiWho = function (fn, p) {
+      if (fn !== 'prWhoAmI') return api(fn, p);
+      return api('bdBoot', p).then(function (b) {
+        bootFirst = b.first ? { zone: b.first.zone, data: Object.assign({}, b.first.data, { serverNow: b.serverNow }) } : null;
+        return Object.assign({}, b.me, { serverNow: (b.me && b.me.serverNow) || b.serverNow });
+      }, function (e) {
+        if (e.message !== L.err.unknownFn) throw e;
+        return api('bdWhoAmI', p).catch(function () { return api('prWhoAmI', p); });
+      });
+    };
     identify(apiWho, code, !!cached0.bound).then(function (res) {
       try { sessionStorage.removeItem(RELOGIN_KEY); } catch (e) { /* nothing to clear */ }
       if (res.bound) {
@@ -2419,18 +2491,40 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     return installHintFor({ inClient: inClient, standalone: standaloneNow(), ua: navigator.userAgent, dismissedAt: later, qs: q, now: Date.now() });
   }
   /** ?install=1 (kept across the LINE Login round trip in sessionStorage) opens the sheet once the board shows. */
-  function openInstallOnce() {
+  /** ?install=1 now or before the LINE Login round trip; asking clears it, so the sheet opens once. */
+  function takeInstallAsk() {
     var asked = /[?&]install=1\b/.test(QS);
     try { asked = asked || sessionStorage.getItem(INSTALL_ASK) === '1'; sessionStorage.removeItem(INSTALL_ASK); } catch (e) { /* the URL alone */ }
-    if (!asked || ['android', 'ios', 'other'].indexOf(S.hint) < 0) return;
+    if (asked) { try { history.replaceState(null, '', pwaRedirectUri(location.href)); } catch (e) { /* a reload reopens it; harmless */ } }
+    return asked;
+  }
+  function openInstallOnce() {
+    if (!takeInstallAsk() || ['android', 'ios', 'other'].indexOf(S.hint) < 0) return;
     S.isheet = S.hint;
-    try { history.replaceState(null, '', pwaRedirectUri(location.href)); } catch (e) { /* a reload reopens it; harmless */ }
+  }
+  /** v7.1: the sheet came before LINE Login; once it closes, the person stays in the browser: log in. */
+  function afterSheet() {
+    if (!S.loginAfterSheet) return;
+    S.loginAfterSheet = false;
+    liff.login({ redirectUri: pwaRedirectUri(location.href) });
   }
   function installLater() {
     try { localStorage.setItem(INSTALL_KEY, String(Date.now())); } catch (e) { /* asked again next time */ }
     S.isheet = ''; S.hint = 'none'; render();
+    afterSheet();
   }
   /** Both tokens dead on a board left installed for days: log out and in, once per tab. */
+  /** v7.1: the painted data and the cache belong to one LINE person (sub); another one wipes them. */
+  function forgetOtherPerson() {
+    var sub = '', c = store(true) || {};
+    try { sub = (liff.getDecodedIDToken() || {}).sub || ''; } catch (e) { sub = ''; }
+    if (cacheOwner(c, sub) === 'wipe') {
+      c = {};
+      S.me = null; S.zone = ''; S.tab = ''; S.z = {}; S.zui = {}; S.board = null; S.cachedAt = 0; S.offline = false;
+      render();
+    }
+    if (sub && c.sub !== sub) { c.sub = sub; store(false, c); }
+  }
   function relogin() {
     var tried = true, loggedIn = false, exp = 0;
     try { tried = sessionStorage.getItem(RELOGIN_KEY) === '1'; } catch (e) { tried = true; }
@@ -2453,11 +2547,15 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
         if (!ask) return true;
         el.disabled = true;
         ask.prompt();
-        ask.userChoice.then(function (c) { installPrompt = null; S.isheet = ''; if (c && c.outcome === 'accepted') S.hint = 'none'; render(); }, function () { S.isheet = ''; render(); });
+        ask.userChoice.then(function (c) {
+          installPrompt = null; S.isheet = '';
+          if (c && c.outcome === 'accepted') { S.hint = 'none'; S.loginAfterSheet = false; }   // the app logs in itself
+          render(); afterSheet();
+        }, function () { S.isheet = ''; render(); afterSheet(); });
         return true;
       }
       case 'installLater': installLater(); return true;
-      case 'installClose': if (ev.target !== el) return true; S.isheet = ''; render(); return true;
+      case 'installClose': if (ev.target !== el) return true; S.isheet = ''; render(); afterSheet(); return true;
       case 'reloadNew': location.reload(); return true;
     }
     return false;
@@ -2466,6 +2564,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installPrompt = e; if (S.isheet) render(); });
   window.addEventListener('appinstalled', function () { installPrompt = null; S.hint = 'none'; S.isheet = ''; render(); });
   window.addEventListener('offline', function () { if (S.cachedAt) { S.offline = true; render(); } });
+  // v7.1: the network is back while the painted data is shown: ask for it again.
+  window.addEventListener('online', function () { if (S.offline && S.me) load(true); });
   // A new worker takes over (a new build): say so in one line; the page reloads only on the tap.
   var hadWorker = false;
   if ('serviceWorker' in navigator) {
@@ -2489,7 +2589,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   var paint = cachedPaint(store(true), function (me) { return tabsFor(me)[0].key; });
   if (paint) {
     S.me = paint.me; S.zone = paint.zone; S.cachedAt = paint.data ? paint.at : 0;
-    if (paint.zone === 'purchase') { S.tab = paint.tab; S.board = paint.data; } else S.z[paint.zone] = paint.data;
+    if (paint.zone === 'purchase') { S.tab = paint.tab; S.board = paint.data; } else { S.z[paint.zone] = paint.data; S.zui[paint.zone] = JSON.parse(JSON.stringify(paint.ui)); }
     if (S.cachedAt && navigator.onLine === false) S.offline = true;
     render();
   }
@@ -2504,7 +2604,13 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   sdk.onload = function () {
     liff.init({ liffId: LIFF_ID }).then(function () {
       S.hint = pwaHint(liff.isInClient());
-      if (!liff.isLoggedIn()) { liff.login({ redirectUri: pwaRedirectUri(location.href) }); return; }
+      if (!liff.isLoggedIn()) {
+        // v7.1 (#18 §6): asked to install from a browser: the sheet first, no login (the app logs in once itself).
+        if (installBeforeLogin({ hint: S.hint, asked: takeInstallAsk(), loggedIn: false })) { S.isheet = S.hint; S.loginAfterSheet = true; render(); return; }
+        liff.login({ redirectUri: pwaRedirectUri(location.href) });
+        return;
+      }
+      forgetOtherPerson();
       try { idToken = liff.getIDToken() || ''; accessToken = liff.getAccessToken() || ''; } catch (e) { /* freshCreds tries again */ }
       // The LINE profile picture, top left like Order's header; the initial stays if LINE says no.
       try { liff.getProfile().then(function (p) { if (p && p.pictureUrl) { S.avatar = p.pictureUrl; if (S.view === 'list' && !S.sheet) render(); } }, function () {}); } catch (e) { /* keep the initial */ }

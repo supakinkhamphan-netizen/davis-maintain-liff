@@ -3,7 +3,7 @@
 // everything else (Apps Script, the LINE SDK, fonts) is never touched.
 // No precache beyond the page shell; the page alone decides when a new build loads.
 'use strict';
-var CACHE = 'care-board-v7.0';
+var CACHE = 'care-board-v7.1';
 var SHELL = ['./', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 /** 'network-first' for a same-origin GET (a navigation or a file), else 'passthrough'. */
