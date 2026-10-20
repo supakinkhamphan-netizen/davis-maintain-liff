@@ -25,11 +25,22 @@ Every call is `POST <API_URL>` with `Content-Type: text/plain` (no CORS prefligh
 - **`callApi` owns the credentials** (the Order board's v38 rule): it waits for `authReady` (liff.init settled, or 15 s), takes `freshCreds()` (drops an id token within 60 s of `exp`; the backend falls back to the access token), and refuses locally with no credential. `tests/callapi.test.js`.
 - Polls every 10 s, paused while the form, a sheet or any input has focus. The last board is kept in `localStorage` (`davisPurchase.v1`, wrapped in try/catch) and painted before LINE answers. No Firestore this round; `callApi` and the state are kept so it can be added without a rewrite.
 
-## The code's three lifted blocks
+## An installable app (work order #18, care-board v7.0)
+
+The board installs to the home screen as **Davis Care** (`manifest.webmanifest`, `start_url ./?src=pwa`, standalone). LINE Login stays the identity; nothing in the engine changed for it.
+- `icons/icon.svg` is the source of every PNG next to it (a wrench drawn as paths, never a glyph). The PNGs are committed (`.gitignore` has `!icons/*.png`); re-render them from the SVG with headless Chromium when the mark changes.
+- `sw.js`: same-origin GETs network first, the cache only when the network fails; the page is cached once under `./`. Cross-origin (Apps Script, the LINE SDK, fonts) is never touched. The cache name is `care-board-<version>` and must follow `BUILD` (pwa.test 3.3). A new worker never reloads the page: a line "มีรุ่นใหม่ · แตะเพื่อโหลด" waits for the tap.
+- Install help (`installHintFor`): inside LINE a muted line opens the phone's browser (`liff.openWindow({external: true})` with `?install=1`); in a browser, the sheet for Android (Chrome's held `beforeinstallprompt`, or the menu steps), iPhone (share → เพิ่มไปยังหน้าจอโฮม), or other. "ไว้ก่อน" hides it for 7 days (localStorage `davisCare.installLater`). `?install=1` survives the LINE Login round trip in sessionStorage; the login redirect drops it (`pwaRedirectUri`).
+- Both LINE tokens dead on a board left installed: logout + login once per tab (sessionStorage `davisCare.relogin`).
+- Boot paints the last answer of the person's zone from `davisPurchase.v1` for every role (`cacheZone` / `cachedPaint`), with a muted "ข้อมูลเมื่อ HH:MM" line; offline (the SDK or the first call cannot load) keeps it with "ไม่มีเน็ต · แสดงข้อมูลเมื่อ HH:MM". Never red.
+
+## The code's lifted blocks
 
 `index.html` keeps its rules between markers so node tests run the page's own code:
 - `/* LOGIC START */ … /* LOGIC END */` — labels `L`, money, the form's rules (`validateForm`, same Thai text as the backend's `PR_L_`), `statusChip`, `decisionPlan`, `buttonsFor` (a button that cannot be pressed is not drawn), `stepsFor`, `aggregateByShop`. **No DOM in here.**
 - `/* AUTH START */ … /* AUTH END */` — `authReady`, `freshCreds`, `callApi`, `callApiSend`.
+- `/* CARE START */ … /* CARE END */` — the combined board's zones and renderers (work order #17).
+- `/* PWA START */ … /* PWA END */` — the install hint and sheets, the login redirect, the relogin rule, the cache paint and the top lines. Pure, like LOGIC.
 - `/* DEMO START */ … /* DEMO END */` — `makeDemo(role)`: the backend's answers on sample data for `?demo=1`. Keep its shapes and refusals in step with `purchase-liff-api.js` / `purchase-request.js`, or the demo stops being a review of the real screens.
 
 ## Conventions
@@ -41,4 +52,4 @@ Every call is `POST <API_URL>` with `Content-Type: text/plain` (no CORS prefligh
 
 ## Tests
 
-`bash tests/run-all.sh` — `logic.test.js` (rules + a full demo walk), `callapi.test.js`, `page.test.js`. Screenshots of `?demo=1` at 390 px go to the reviewer with each `READY FOR REVIEW`; they are not committed (`*.png` is ignored).
+`bash tests/run-all.sh` — `logic.test.js` (rules + a full demo walk), `callapi.test.js`, `page.test.js`, `shape.test.js`, `care.test.js` (the zones from `demo-bd.json`; §9 boots the whole page script in `tests/fake-browser.js`: cache paint, offline, install sheet, relogin, a new build), `pwa.test.js` (manifest, icon sizes, the worker's strategy and its offline answer, the install table). Screenshots of `?demo=1` at 390 px go to the reviewer with each `READY FOR REVIEW`; they are not committed (`*.png` is ignored, except `icons/`). `?demo=1&hint=line|android|ios|other` (plus `&install=1` for the sheet) shows each install variant.
