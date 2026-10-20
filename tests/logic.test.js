@@ -207,7 +207,7 @@ eq('… and only a line.me link is ever drawn as the button', C.unknownNotice({ 
   const again = await D.call('prReceived', { id: made.id });
   eq('demo refuses a step out of order', again.ok, false);
   D.as('venue_manager');
-  const fresh = await D.call('prCreate', { venue: 'HOS', buyer: 'self', category: '', items: [{ name: 'ถุงขยะ', qty: 2, unit: 'แพ็ค', unitPrice: 50, from: '' }], reason: 'หมด' });
+  const fresh = await D.call('prCreate', { venue: 'HOS', buyer: 'self', category: '', items: [{ name: 'ถุงขยะ', qty: 2, unit: 'แพ็ค', unitPrice: 50, from: '' }], reason: 'ถุงขยะหมดแล้ว' });
   D.as('account');
   const accDecide = await D.call('prDecide', { id: fresh.id, lines: [{ n: 1, approved: true }], note: '' });
   // #17 §8.2 (owner, 20 Oct): accounting decides branch requests (was 'account cannot decide').

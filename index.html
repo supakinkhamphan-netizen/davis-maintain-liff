@@ -197,6 +197,84 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .notice h2{margin:0;font-size:18px}
 .notice p{margin:0;color:var(--ink-2);line-height:1.7}
 .notice .actionBtn{max-width:320px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+/* ---- v6 Davis Care (work order #17): zones above the v5 tabs, three colours ---- */
+.zones{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--bg);position:sticky;top:var(--head-h);z-index:5;box-shadow:0 1px 0 var(--line);scrollbar-width:none}
+.zones::-webkit-scrollbar{display:none}
+.zones .zone{flex:0 0 auto;min-height:40px;padding:0 14px;border:none;border-radius:999px;background:var(--card);color:var(--ink-2);font-family:inherit;font-size:15px;font-weight:700;box-shadow:var(--raise-sm);cursor:pointer;white-space:nowrap}
+.zones .zone.active{color:var(--accent);box-shadow:var(--sink), 0 0 0 2px rgba(47,163,154,.55)}
+.zones .zone b{color:var(--ink);margin-left:2px}
+.zones + .tabs{top:calc(var(--head-h) + 56px)}
+.late{color:var(--danger)}
+.pageTitle{font-size:20px;margin:16px 4px 4px}
+.secHead{font-size:14px;font-weight:700;color:var(--ink-2);margin:22px 4px 8px}
+.secHead.big{font-size:18px;color:var(--ink)}
+.secSub{font-size:13px;color:var(--ink-2);margin:-4px 4px 10px}
+.empty.small{padding:14px 4px;text-align:left;font-size:14px}
+.hero{padding:18px 4px 8px}
+.hero .eyebrow{font-size:12px;color:var(--ink-2);font-weight:600}
+.hero .big{font-size:30px;font-weight:800;margin:6px 0 6px;line-height:1.15}
+.hero .lede{font-size:14px;color:var(--ink-2);line-height:1.6;margin:0}
+.hero .lede b{color:var(--ink)}
+.quote{margin:14px 0 0;padding:12px 14px;border-radius:12px;box-shadow:var(--sink);font-size:15px;line-height:1.6;color:var(--ink)}
+.quote.late b{color:var(--danger)}
+.filterRows{margin:8px 0 4px}
+.filterRows .fl{display:block;font-size:12px;color:var(--ink-2);font-weight:600;margin:8px 4px 0}
+.pendLine{font-size:14px;color:var(--ink-2);margin:12px 4px}
+.pendLine b{color:var(--ink)}
+.alert{display:flex;flex-direction:column;gap:6px;padding:14px 16px}
+.alert .sev{font-size:13px;font-weight:700;color:var(--ink-2)}
+.alert .sev.late{color:var(--danger)}
+.alert p{margin:0;font-size:15px;line-height:1.55;color:var(--ink)}
+.statBox .v small{font-size:13px;color:var(--ink-2);font-weight:600}
+.statBox .delta{font-size:12px;font-weight:600;color:var(--ink-2);margin-top:6px}
+.statBox .delta.late{color:var(--danger)}
+.statBox .note{font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.4}
+.bars{display:flex;flex-direction:column;gap:8px}
+.brow{display:grid;grid-template-columns:minmax(0,40%) 1fr auto;align-items:center;gap:8px}
+.brow .bl{font-size:10px;color:var(--ink-2);font-weight:600;overflow-wrap:anywhere;line-height:1.35}
+.brow .bl small{display:block;font-size:10px;font-weight:500;opacity:.85}
+.brow .track{height:8px;border-radius:999px;background:var(--bg);box-shadow:var(--sink);overflow:hidden}
+.brow .bar{display:block;height:100%;border-radius:999px;background:var(--accent);min-width:2px}
+.brow .bn{font-size:9px;font-weight:700;color:var(--ink);white-space:nowrap}
+.cols{display:flex;align-items:flex-end;gap:3px;height:120px;padding-top:4px}
+.col{flex:1 1 0;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px}
+.col .cn{font-size:9px;font-weight:700;color:var(--ink)}
+.col .cb{width:100%;max-width:26px;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+.col .cl{font-size:10px;color:var(--ink-2);white-space:nowrap}
+.liveClock{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:12px 0 4px;padding:10px 8px;border-radius:12px;box-shadow:var(--sink)}
+.liveClock .lc{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--ink-2);font-weight:600;text-align:center}
+.liveClock .lc b{font-size:20px;color:var(--ink);font-weight:800}
+.liveClock .lcNow{grid-column:1/-1;text-align:center;font-size:11px;color:var(--ink-2);margin-top:4px}
+.mustSee{margin:12px 0;padding:10px 12px;border-radius:12px;box-shadow:var(--raise-sm);background:var(--card)}
+.mustSee .msHead{font-size:14px;font-weight:800;margin-bottom:4px}
+.mustSee .msItem{display:block;width:100%;text-align:left;border:none;background:none;font-family:inherit;font-size:14px;font-weight:600;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+.rcard .tap{display:flex;gap:12px;align-items:flex-start}
+.rcard .thumb,.bill .thumb{width:72px;height:72px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--panel)}
+.bill{display:flex;gap:12px;align-items:flex-start}
+.bill .thumb.none{display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-2)}
+.rbody{min-width:0;flex:1}
+.prob{font-size:15px;color:var(--ink);margin-top:6px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rcard .clock{margin:12px 0 0}
+.xline{font-size:14px;color:var(--ink-2);margin-top:8px;line-height:1.5}
+.xline.late{color:var(--danger)}
+.fold{margin-top:6px}
+.fold summary{cursor:pointer;list-style:none}
+.fold summary::-webkit-details-marker{display:none}
+.slaRow{display:flex;flex-direction:column;gap:2px;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.slaRow:first-child{border-top:none}
+.slaRow span{color:var(--ink-2);line-height:1.5}
+.timeline{list-style:none;padding:var(--pad);margin:0}
+.timeline li{padding:8px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.5}
+.timeline li:first-child{border-top:none}
+.timeline .gap{color:var(--ink-2);font-size:12px}
+.photos{display:flex;gap:8px;overflow-x:auto;margin-top:10px}
+.photos img{width:96px;height:96px;border-radius:10px;object-fit:cover}
+.trow{display:block;width:100%;text-align:left;border:none;font-family:inherit;color:inherit;cursor:pointer}
+.trow .bars{margin-top:10px}
+.tick{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px;color:var(--ink)}
+.tick input{width:22px;height:22px;accent-color:var(--accent)}
+.bill select{margin-top:8px;width:100%;min-height:44px;border:none;border-radius:10px;background:var(--bg);color:var(--ink);box-shadow:var(--sink);font-family:inherit;font-size:16px;padding:0 10px}
+.linkBtn{display:flex;align-items:center;justify-content:center;text-decoration:none;margin-top:18px}
 </style>
 </head>
 <body>
@@ -205,7 +283,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 <script>
 (function () {
   'use strict';
-  var BUILD = 'pr-board v5.5 · 2026-10-20 · LIFF ใน Davis Bot';
+  var BUILD = 'care-board v6 · 2026-10-20 · Davis Care';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -775,7 +853,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       '<p class="lede">งานซ่อมจริง <b>' + r.repairThisWindow + ' ใบ</b> · งานประจำและรอบตรวจ <b>' + r.routineThisWindow + ' ใบ</b> · ปิดได้ภายใน 24 ชม. <b>' +
       (r.closedWithin24hPct === null ? '—' : r.closedWithin24hPct + '%') + '</b> จากงานที่ปิดไป ' + r.closedTotal + ' ใบ</p>' +
       (lead ? '<blockquote class="quote' + (lead.red ? ' late' : '') + '">' + lead.html + '</blockquote>' : '') + '</section>';
-    h += '<div class="chips3"><span class="fl">ช่วงเวลา</span>' + chipRow('ovWin', [7, 30, 90].map(function (w) { return { k: w, label: w + ' วัน' }; }), o.window) +
+    h += '<div class="filterRows"><span class="fl">ช่วงเวลา</span>' + chipRow('ovWin', [7, 30, 90].map(function (w) { return { k: w, label: w + ' วัน' }; }), o.window) +
       '<span class="fl">ร้าน</span>' + chipRow('ovVenue', (o.venues && o.venues.length === 1 ? [] : [{ k: '', label: 'ทั้งหมด' }]).concat((o.venues && o.venues.length < (r.allVenues || []).length ? o.venues : venues).map(function (v) { return { k: v, label: v }; })), o.venue) +
       '<span class="fl">ช่าง</span>' + chipRow('ovTech', [{ k: '', label: 'ทั้งหมด' }].concat((r.allTechs || []).map(function (t) { return { k: t, label: t }; })), o.tech || '') + '</div>';
     if (o.pending && o.pending.total) h += '<p class="pendLine">🧾 รออนุมัติ <b>' + o.pending.total + '</b> · ซื้อในงานซ่อม ' + o.pending.repair + ' · ขอซื้อสาขา ' + o.pending.branch + '</p>';
@@ -1045,6 +1123,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 
 /* AUTH START */
   var DEMO = null;
+  var DEMO_BD = null;   // demo-bd.json, fetched only with ?demo=1
   var idToken = '', accessToken = '';
   var authReadyResolve = null;
   var authReady = new Promise(function (resolve) {
@@ -1188,7 +1267,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       };
     }
     var READ = ['venue_manager', 'purchasing', 'manager', 'account'];
-    var DECIDE = ['purchasing', 'manager'];
+    var DECIDE = ['purchasing', 'manager', 'account'];   // #17 §8.2: accounting decides branch requests
+    var FULFIL = ['purchasing', 'manager'];
     function need(roles) { if (roles.indexOf(me.role) < 0) throw new Error(L.err.notAllowed); }
     function visible(r) { return me.role === 'venue_manager' ? me.venues.indexOf(r.venue) >= 0 : READ.indexOf(me.role) >= 0; }
     function inScope(r, scope) {
@@ -1213,8 +1293,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         var role = me.role;
         var out = { known: true, allowed: true, role: role, roleLabel: L.role[role], actorName: me.actorName, venues: me.venues,
           canCreate: role === 'manager' || (role === 'venue_manager' && me.venues.length > 0), canDecide: DECIDE.indexOf(role) >= 0,
-          canFulfil: DECIDE.indexOf(role) >= 0, canReceive: role === 'manager' || role === 'venue_manager',
-          canByShop: ['purchasing', 'manager', 'account'].indexOf(role) >= 0, readOnly: role === 'account',
+          canFulfil: FULFIL.indexOf(role) >= 0, canReceive: role === 'manager' || role === 'venue_manager',
+          canByShop: ['purchasing', 'manager', 'account'].indexOf(role) >= 0, readOnly: false,
           categories: cats, highAmount: 5000, quickReasons: L.quickReasons, serverNow: stamp(), build: 'demo' };
         if (role === 'manager') out.venuesAll = hotels.slice();
         return out;
@@ -1277,7 +1357,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         return { id: r.id };
       },
       prOrdered: function (p) {
-        need(DECIDE);
+        need(FULFIL);
         var r = find(p.id);
         if (r.fulfilment !== 'awaiting') throw new Error(L.err.wrongStep);
         var a = priceOf(p.actualTotal);
@@ -1288,7 +1368,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         return { id: r.id };
       },
       prDelivered: function (p) {
-        need(DECIDE);
+        need(FULFIL);
         var r = find(p.id);
         if (r.fulfilment !== 'ordered') throw new Error(L.err.wrongStep);
         r.fulfilment = 'delivered'; r.deliveredAt = stamp(); log(r, 'DELIVERED');
@@ -1313,6 +1393,38 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         return { row: pub(r), audit: r.audit.map(function (a) { return { action: a.action, label: L.action[a.action], actor: a.actor, detail: a.detail, at: a.at }; }) };
       },
     };
+    /**
+     * bd* (the combined board): the engine's real answers on its fixture,
+     * demo-bd.json (davis-maintain-engine capture-board-demo.js). A chip mix
+     * the capture did not take falls back to the nearest one it did.
+     */
+    function bd(fn, p) {
+      var R = (DEMO_BD && DEMO_BD.roles[me.role]) || null;
+      if (fn === 'bdWhoAmI') return Object.assign(FN.prWhoAmI(), { zones: R ? R.bdWhoAmI.zones : ['purchase'] });
+      if (!R) throw new Error(L.err.notAllowed);
+      var calls = R.calls, key = function (o) { return fn + JSON.stringify(o); };
+      if (fn === 'bdApprove' || fn === 'bdReject') {
+        var ap = calls['bdApprovals{}'];
+        if (ap) { ap.repair = ap.repair.filter(function (c) { return c.id !== p.ticketId; }); ap.count = ap.repair.length + ap.branch.length; }
+        return { decision: fn === 'bdApprove' ? 'approve' : 'reject', ticketId: p.ticketId };
+      }
+      if (fn === 'bdBillReviewed' || fn === 'bdBillCompany') return {};
+      var hit = calls[key(p)];
+      if (!hit && fn === 'bdRepairLive') {
+        hit = JSON.parse(JSON.stringify(calls[key({})]));
+        if (p.venue) Object.keys(hit.groups).forEach(function (g) { hit.groups[g] = hit.groups[g].filter(function (c) { return c.venue === p.venue; }); });
+        hit.venue = p.venue || '';
+      }
+      if (!hit && fn === 'bdOverview') hit = calls[key({ window: p.window, venue: p.venue, tech: '' })] || calls[key({ window: 7, venue: p.venue || '', tech: p.tech || '' })] ||
+        calls[key({ window: p.window, venue: (R.bdWhoAmI.venues || [])[0] || '', tech: '' })];
+      if (!hit && fn === 'bdTickets') {
+        hit = JSON.parse(JSON.stringify(calls[key({ status: '', venue: '', offset: 0 })]));
+        if (p.status) { hit.rows = hit.rows.filter(function (c) { return c.status === p.status; }); hit.total = hit.rows.length; }
+      }
+      if (!hit && fn === 'bdBills') hit = calls[key({ weekOffset: 0 })];
+      if (!hit) throw new Error('ตัวอย่างไม่มีข้อมูลชุดนี้');
+      return JSON.parse(JSON.stringify(hit));
+    }
     return {
       as: function (key) { me = people[key] || me; },
       roleKey: function () { return me.role; },
@@ -1320,7 +1432,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         return new Promise(function (resolve) {
           var out;
           try {
-            var res = FN[fn] ? FN[fn](payload || {}) : null;
+            var res = /^bd/.test(fn) ? bd(fn, payload || {}) : (FN[fn] ? FN[fn](payload || {}) : null);
             out = res ? Object.assign({ ok: true }, res) : { ok: false, error: 'ไม่รู้จักคำสั่ง' };
           } catch (e) { out = { ok: false, error: e.message }; }
           setTimeout(function () { resolve(JSON.parse(JSON.stringify(out))); }, 120);
@@ -1338,6 +1450,8 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     me: null, notice: null, tab: '', venue: '', month: '', board: null, shops: null,
     view: 'list', detail: null, detailId: '', form: null, sheet: null, counts: {}, receipt: null,
     checks: {}, fields: {}, busy: false, lastLoad: 0, openMenu: '', avatar: '', sending: {},
+    // v6: the zone on screen, its answer and its chips; the job / tech page over it; a bd sheet.
+    zone: '', z: {}, zui: {}, ticket: null, tech: null, csheet: null, zbusy: false,
   };
 
   function store(get, val) {
@@ -1408,6 +1522,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 
   // ---- loading ----------------------------------------------------------------
   function load(silent) {
+    if (S.zone && S.zone !== 'purchase') return loadZone(silent);
     if (!S.me || S.busy) return Promise.resolve();
     S.busy = true;
     // A1.3: the answer is for the tab and shop on screen when it was asked; if
@@ -1447,7 +1562,11 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     var a = document.activeElement;
     return !!S.sheet || S.view === 'form' || !!S.openMenu || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName));
   }
-  setInterval(function () { if (S.me && S.view === 'list' && !busyNow()) load(true); }, POLL_MS);
+  // v5 polls its tab; v6 polls only the live repair zone (design §2.3), the rest on demand.
+  setInterval(function () {
+    if (!S.me || S.view !== 'list' || busyNow() || S.csheet) return;
+    if (!S.zone || S.zone === 'purchase' || S.zone === 'repair') load(true);
+  }, POLL_MS);
 
   // ---- render -----------------------------------------------------------------
   function demoStrip() {
@@ -1472,7 +1591,9 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     if (!S.me) { app.innerHTML = h + '<div class="notice"><p>กำลังเปิดบอร์ด…</p></div>'; return; }
     if (S.view === 'form') { app.innerHTML = h + renderForm(); afterForm(); return; }
     if (S.view === 'detail') { app.innerHTML = h + renderDetail() + footer() + renderSheet(); return; }
+    if (S.view === 'ticket' || S.view === 'tech' || (S.zone && S.zone !== 'purchase')) { app.innerHTML = h + renderCare() + footer() + careSheet(); return; }
     h += header();
+    h += zoneBarHtml(zonesOf(S.me), S.zone, zoneCounts());
     h += '<nav class="tabs" aria-label="แท็บ">' + tabsFor(S.me).map(function (t) {
       return '<button type="button" class="' + (S.tab === t.key ? 'active' : '') + '" data-act="tab" data-k="' + t.key + '"' + (S.tab === t.key ? ' aria-current="page"' : '') + '>' + esc(t.label) + '</button>';
     }).join('') + (S.me.canCreate ? '<button type="button" class="tabPlus" data-act="new" aria-label="ขอซื้อของใหม่">＋</button>' : '') + '</nav>';
@@ -1485,7 +1606,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       '<span id="avatar" class="initial" aria-hidden="true">' + esc(Array.from(me.actorName || '?')[0]) + '</span>';
     var where = me.role === 'venue_manager' ? (me.venues.join(', ') || 'ยังไม่ได้ผูกร้าน') : 'เห็นทุกสาขา';
     return '<header><div class="headRow">' + (back ? '<button type="button" class="back" data-act="' + back + '" aria-label="กลับ">‹</button>' : face) +
-      '<div style="min-width:0"><h1>🛒 Davis ขอซื้อ<small>' + esc(BUILD.split(' · ')[0].replace('pr-board ', '')) + '</small></h1>' +
+      '<div style="min-width:0"><h1>' + (zonesOf(me).length > 1 ? '🔧 Davis Care' : '🛒 Davis ขอซื้อ') + '<small>' + esc(BUILD.split(' · ')[0].replace(/^(pr|care)-board /, '')) + '</small></h1>' +
       '<div class="who">' + esc(me.actorName) + ' · ' + esc(me.roleLabel || L.role[me.role] || '') + ' (' + esc(where) + ')</div></div></div></header>';
   }
   function chipsHtml() {
@@ -1833,9 +1954,11 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     var el = ev.target.closest('[data-act]');
     if (!el || el.tagName === 'INPUT') return;
     var act = el.getAttribute('data-act'), k = el.getAttribute('data-k');
+    if (act === 'closeCsheet' && el.classList.contains('sheetWrap') && ev.target !== el) return;   // a tap inside the bd sheet
+    if (careClick(act, k, el)) return;
     var f = S.form;
     switch (act) {
-      case 'as': DEMO.as(k); S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; S.openMenu = ''; S.counts = {}; S.tab = ''; boot(); return;
+      case 'as': DEMO.as(k); S.zone = ''; S.z = {}; S.zui = {}; S.view = 'list'; S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; S.openMenu = ''; S.counts = {}; S.tab = ''; boot(); return;
       case 'tab':
         S.tab = k; S.venue = ''; S.board = null; S.shops = null; S.openMenu = '';
         if (k === 'byshop' && !S.month) S.month = (S.me.serverNow || '').slice(0, 7);
@@ -1898,6 +2021,15 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
   });
   app.addEventListener('change', function (ev) {
     var el = ev.target;
+    if (el.getAttribute('data-act') === 'billTick' || el.getAttribute('data-act') === 'billCompany') {
+      var isTick = el.getAttribute('data-act') === 'billTick';
+      var call = isTick ? api('bdBillReviewed', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), reviewed: el.checked })
+        : api('bdBillCompany', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), company: el.value });
+      el.disabled = true;
+      call.then(function () { toast(isTick ? (el.checked ? 'ตรวจแล้ว' : 'ยกเลิกตรวจแล้ว') : 'บันทึกบริษัทแล้ว'); loadZone(true); },
+        function (e) { toast(e.message, true); loadZone(true); });
+      return;
+    }
     if (el.getAttribute('data-act') === 'tick') {
       var ck = S.checks[el.getAttribute('data-k')] || {};
       ck[el.getAttribute('data-n')] = el.checked;
@@ -1922,15 +2054,192 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
       fl[el.getAttribute('data-field')] = el.value;
     } else if (el.getAttribute('data-sheet') === 'reason' && S.sheet) {
       S.sheet.reason = el.value;
+    } else if (el.getAttribute('data-csheet') && S.csheet) {
+      S.csheet[el.getAttribute('data-csheet')] = el.value;
     }
   });
 
+  // ---- Davis Care zones (work order #17, v6) ----------------------------------------
+  /** The numbers on the zone bar: what waits for this person. */
+  function zoneCounts() {
+    var o = {};
+    if (S.z.approvals) o.approvals = S.z.approvals.count;
+    if (S.z.repair && S.z.repair.mustSee && S.z.repair.mustSee.length) o.repair = S.z.repair.mustSee.length;
+    return o;
+  }
+  function zuiOf(z) { return S.zui[z] || (S.zui[z] = {}); }
+  /** One loader per zone; an answer for a zone no longer on screen is dropped (as A1.3 does for tabs). */
+  function loadZone(silent) {
+    var z = S.zone, u = zuiOf(z), p;
+    if (S.zbusy) return Promise.resolve();
+    S.zbusy = true;
+    if (z === 'repair') p = api('bdRepairLive', { venue: u.venue || '', limit: u.limit || 200 });
+    else if (z === 'approvals') p = api('bdApprovals', {});
+    else if (z === 'bills') p = api('bdBills', { weekOffset: u.week || 0 });
+    else if (z === 'tickets') p = api('bdTickets', { status: u.status || '', venue: '', offset: 0 });
+    else if (z === 'overview') p = api('bdOverview', { window: u.window || 7, venue: u.venue || '', tech: u.tech || '' });
+    else if (z === 'techs') p = api('bdTechs', { window: u.window || 1 });
+    else p = Promise.resolve(null);
+    var again = false;
+    return p.then(function (res) {
+      if (S.zone !== z) { again = true; return; }
+      S.z[z] = res;
+      if (res && res.serverNow) S.serverSkew = bkkMs(res.serverNow) - Date.now();
+      if (z === 'approvals' && res) S.board = { rows: res.branch };   // the v5 detail and decide work on these rows
+      S.lastLoad = Date.now();
+    }, function (e) { if (!silent) toast(e.message, true); })
+      .then(function () {
+        S.zbusy = false;
+        if (again) return loadZone(true);
+        if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
+      });
+  }
+  /** The server's clock, for running times (v5 does the same from serverNow). */
+  function careNow() { return Date.now() + (S.serverSkew || 0); }
+  function renderCare() {
+    var me = S.me, z = S.zone;
+    if (S.view === 'ticket') {
+      return header('closeTicket') + '<main id="list">' + (S.ticket ? renderTicket(S.ticket, careNow()) : '<div class="empty">กำลังโหลด…</div>') + '</main>';
+    }
+    if (S.view === 'tech') {
+      return header('closeTech') + '<main id="list"><h2 class="pageTitle">' + esc((S.tech && S.tech.name) || '') + '</h2>' +
+        (S.tech && S.tech.me ? renderTech(S.tech) : '<div class="empty">กำลังโหลด…</div>') + '</main>';
+    }
+    var d = S.z[z], u = zuiOf(z), body;
+    if (!d) body = '<div class="empty">กำลังโหลด…</div>';
+    else if (z === 'repair') body = renderRepair(d, u, careNow(), me);
+    else if (z === 'approvals') body = renderApprovals(d, me, { branchHtml: (d.branch || []).map(function (r) { return listCard(r); }).join('') });
+    else if (z === 'bills') body = renderBills(d, u);
+    else if (z === 'tickets') body = renderTicketList(d, u);
+    else if (z === 'overview') body = renderOverview(d, u);
+    else if (z === 'techs') body = renderTechs(d, u);
+    else body = '';
+    var open = S.openMenu;
+    if (open) body = body.replace('<div class="moreMenu" data-menu="' + esc(open) + '">', '<div class="moreMenu open" data-menu="' + esc(open) + '">');
+    return header() + zoneBarHtml(zonesOf(me), z, zoneCounts()) + '<main id="list" class="zone-' + z + '">' + body + '</main>';
+  }
+  /** The approve / cap / reject sheet for a repair purchase (bdApprove / bdReject). */
+  function careSheet() {
+    var sh = S.csheet;
+    if (!sh) return '';
+    var h = '<div class="sheetWrap" data-act="closeCsheet"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-stop="1">';
+    if (sh.kind === 'approve') {
+      h += '<h2 id="sheetTitle" class="sheetTitle">อนุมัติซื้อของ · ' + esc(sh.id) + '</h2><p class="sheetHint">' + esc(sh.text || '') + '</p>' +
+        '<button type="button" class="actionBtn" data-act="bdConfirm">✓ อนุมัติ</button>';
+    } else if (sh.kind === 'cap') {
+      h += '<h2 id="sheetTitle" class="sheetTitle">กำหนดวงเงิน · ' + esc(sh.id) + '</h2><p class="sheetHint">ช่างซื้อได้ไม่เกินยอดนี้ บิลที่เกินจะขึ้นแดงในกลุ่ม</p>' +
+        '<div class="miniform"><input id="capIn" inputmode="decimal" data-csheet="cap" value="' + esc(sh.cap || '') + '" placeholder="เช่น 2,000"></div>' +
+        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmCap">✓ อนุมัติด้วยวงเงินนี้</button>';
+    } else if (sh.kind === 'reject') {
+      h += '<h2 id="sheetTitle" class="sheetTitle">ไม่อนุมัติ · ' + esc(sh.id) + '</h2><p class="sheetHint">เหตุผลจะส่งถึงช่างในกลุ่ม</p>' +
+        '<div class="miniform"><textarea id="whyIn" data-csheet="reason" placeholder="เช่น ใช้ของในสต๊อกก่อน">' + esc(sh.reason || '') + '</textarea></div>' +
+        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmReject">ยืนยัน · ไม่อนุมัติ</button>';
+    }
+    return h + '<button type="button" class="sheetBtn cancel" data-act="closeCsheet">ยกเลิก</button></section></div>';
+  }
+  /** A repair-purchase card on screen (งานซ่อม or รออนุมัติ), for the sheet's line. */
+  function careCard(id) {
+    var all = [];
+    var r = S.z.repair, a = S.z.approvals;
+    if (r) Object.keys(r.groups).forEach(function (g) { all = all.concat(r.groups[g]); });
+    if (a) all = all.concat(a.repair);
+    return all.filter(function (c) { return c.id === id; })[0] || null;
+  }
+  function careDone(promise, okText) {
+    return promise.then(function () { toast(okText); S.csheet = null; S.openMenu = ''; render(); loadZone(true); },
+      function (e) { toast(e.message, true); if (S.csheet) S.csheet.busy = false; render(); });
+  }
+  function openTicket(id) {
+    S.ticketFrom = S.view === 'tech' ? 'tech' : 'list';
+    S.view = 'ticket'; S.ticket = null; S.openMenu = ''; render(); window.scrollTo(0, 0);
+    api('bdTicket', { id: id }).then(function (res) { if (S.view === 'ticket') { S.ticket = res; render(); } },
+      function (e) { toast(e.message, true); S.view = S.ticketFrom; render(); });
+  }
+  function openTech(name, w) {
+    S.view = 'tech'; S.tech = { name: name }; render(); window.scrollTo(0, 0);
+    api('bdTech', { name: name, window: w || 7 }).then(function (res) { if (S.view === 'tech') { S.tech = res; render(); } },
+      function (e) { toast(e.message, true); S.view = 'list'; S.tech = null; render(); });
+  }
+  /** v6 taps; anything not ours goes on to the v5 handler. True when handled. */
+  function careClick(act, k, el) {
+    var u = zuiOf(S.zone);
+    switch (act) {
+      case 'zone': {
+        S.zone = k; S.view = 'list'; S.openMenu = ''; S.sheet = null; S.csheet = null;
+        if (k === 'purchase') { S.board = null; if (!S.tab || !tabsFor(S.me).some(function (t) { return t.key === S.tab; })) S.tab = tabsFor(S.me)[0].key; }
+        var c0 = store(true) || {}; c0.zone = k; if (!DEMO) store(false, c0);
+        render(); load(); window.scrollTo(0, 0); return true;
+      }
+      case 'liveVenue': u.venue = k; render(); loadZone(); return true;
+      case 'liveMore': u.limit = (u.limit || 200) + 200; loadZone(); return true;
+      case 'ovWin': u.window = Number(k); S.z.overview = null; render(); loadZone(); return true;
+      case 'ovVenue': u.venue = k; S.z.overview = null; render(); loadZone(); return true;
+      case 'ovTech': u.tech = k; S.z.overview = null; render(); loadZone(); return true;
+      case 'techWin': u.window = Number(k); S.z.techs = null; render(); loadZone(); return true;
+      case 'techWin1': openTech(S.tech.name, Number(k)); return true;
+      case 'openTech': openTech(k, zuiOf('techs').window > 1 ? zuiOf('techs').window : 7); return true;
+      case 'closeTech': S.view = 'list'; S.tech = null; render(); return true;
+      case 'openTicket': openTicket(k); return true;
+      case 'closeTicket': S.view = S.ticketFrom === 'tech' && S.tech ? 'tech' : 'list'; S.ticket = null; render(); return true;
+      case 'billWeek':
+        if (k === 'all') { u.all = true; render(); return true; }
+        u.all = false; u.week = Number(k); S.z.bills = null; render(); loadZone(); return true;
+      case 'tlStatus': u.status = k; S.z.tickets = null; render(); loadZone(); return true;
+      case 'tlMore': {
+        var l = S.z.tickets;
+        el.disabled = true;
+        api('bdTickets', { status: u.status || '', venue: '', offset: l.nextOffset }).then(function (res) {
+          l.rows = l.rows.concat(res.rows); l.nextOffset = res.nextOffset; render();
+        }, function (e) { toast(e.message, true); render(); });
+        return true;
+      }
+      case 'bdMore': S.openMenu = S.openMenu === k ? '' : k; render(); return true;
+      case 'bdApprove': {
+        var c = careCard(k) || {};
+        var amt = c.purchase && c.purchase.amount ? fmtBaht(c.purchase.amount) + ' บาท' : '';
+        S.csheet = { kind: 'approve', id: k, text: [c.purchase && c.purchase.item, amt, S.me.role === 'manager' && amt ? 'วงเงิน = ยอดที่ขอ' : ''].filter(Boolean).join(' · ') };
+        S.openMenu = ''; render(); return true;
+      }
+      case 'bdCap': S.csheet = { kind: 'cap', id: k, cap: '' }; S.openMenu = ''; render(); return true;
+      case 'bdReject': S.csheet = { kind: 'reject', id: k, reason: '' }; S.openMenu = ''; render(); return true;
+      case 'closeCsheet': S.csheet = null; render(); return true;
+      case 'bdConfirm':
+        if (S.csheet.busy) return true;
+        S.csheet.busy = true; el.disabled = true;
+        careDone(api('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+      case 'bdConfirmCap': {
+        var cap = priceOf(S.csheet.cap);
+        if (cap === null || isNaN(cap) || cap <= 0) { S.csheet.err = 'ใส่วงเงินเป็นตัวเลขมากกว่า 0'; render(); return true; }
+        if (S.csheet.busy) return true;
+        S.csheet.busy = true; el.disabled = true;
+        careDone(api('bdApprove', { ticketId: S.csheet.id, cap: cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
+      }
+      case 'bdConfirmReject': {
+        var why = String(S.csheet.reason || '').trim();
+        if (!why) { S.csheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return true; }
+        if (S.csheet.busy) return true;
+        S.csheet.busy = true; el.disabled = true;
+        careDone(api('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+      }
+    }
+    return false;
+  }
+
   // ---- start --------------------------------------------------------------------
   function startWith(me) {
-    if (!me.known) { S.notice = unknownNotice(me); render(); return; }
-    if (me.allowed === false) { S.notice = { title: 'บอร์ดนี้ยังไม่ได้เปิดให้คุณ', text: L.notForYou }; render(); return; }
+    // A prBind answer has no zones: ask bdWhoAmI once (an engine without bd* answers no, and the purchase board opens as before).
+    if (me.known && !Array.isArray(me.zones) && !me.zonesAsked) {
+      me.zonesAsked = true;
+      api('bdWhoAmI', {}).then(function (w) { startWith(Object.assign(w, { zonesAsked: true })); }, function () { startWith(me); });
+      return;
+    }
+    var notice = noticeFor(me);
+    if (notice) { S.notice = notice; render(); return; }
     S.notice = null;
     S.me = me;
+    var zs = zonesOf(me), saved = (store(true) || {}).zone;
+    S.zone = zs.indexOf(S.zone) >= 0 ? S.zone : (zs.indexOf(saved) >= 0 ? saved : zs[0]);
+    if (S.zone !== 'purchase') { S.month = (me.serverNow || '').slice(0, 7); render(); load(); return; }
     if (!S.tab || !tabsFor(me).some(function (t) { return t.key === S.tab; })) S.tab = tabsFor(me)[0].key;
     S.month = (me.serverNow || '').slice(0, 7);
     render();
@@ -1940,7 +2249,9 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     render();
     var code = DEMO ? '' : bindCodeFrom(QS);
     var cached0 = store(true) || {};
-    identify(api, code, !!cached0.bound).then(function (res) {
+    // v6: whoAmI is asked as bdWhoAmI (with the zones); an engine without it answers prWhoAmI.
+    var apiWho = function (fn, p) { return fn === 'prWhoAmI' ? api('bdWhoAmI', p).catch(function () { return api('prWhoAmI', p); }) : api(fn, p); };
+    identify(apiWho, code, !!cached0.bound).then(function (res) {
       if (res.bound) {
         try { history.replaceState(null, '', stripBind(location.href)); } catch (e) { /* the code is spent anyway */ }
         if (!DEMO) { var c1 = store(true) || {}; c1.bound = true; store(false, c1); }
@@ -1956,12 +2267,12 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
   if (DEMO_MODE) {
     var as = (/[?&]as=(\w+)/.exec(QS) || [])[1];
     DEMO = makeDemo(as || 'venue_manager');
-    boot();
+    fetch('demo-bd.json').then(function (r) { return r.json(); }).then(function (j) { DEMO_BD = j; }, function () { DEMO_BD = null; }).then(boot);
     return;
   }
   // The last board, painted before LINE answers.
   var cached = store(true);
-  if (cached && cached.me) {
+  if (cached && cached.me && zonesOf(cached.me)[0] === 'purchase') {
     S.me = cached.me;
     S.tab = tabsFor(cached.me)[0].key;
     S.board = (cached.boards || {})[S.tab + '|'] || null;
