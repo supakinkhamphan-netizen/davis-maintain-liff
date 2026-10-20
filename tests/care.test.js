@@ -157,7 +157,7 @@ safe('7', () => {
   // A1.4's lesson: a class that colours its children (.slaRow span) beats .late at equal weight.
   ok('7.5 red wins over every descendant colour rule: #app .late is the last colour word', /#app \.late\{color:var\(--danger\)\}/.test(SRC) &&
     SRC.lastIndexOf('#app .late{color:var(--danger)}') > SRC.lastIndexOf('.slaRow span{'));
-  ok('7.4 build v6', /var BUILD = 'care-board v6 · 2026-10-2\d/.test(SRC));
+  ok('7.4 build v6', /var BUILD = 'care-board v6(\.\d+)? · 2026-10-2\d/.test(SRC));
 });
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');

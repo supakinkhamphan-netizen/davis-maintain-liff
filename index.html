@@ -245,9 +245,9 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 .liveClock .lc{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--ink-2);font-weight:600;text-align:center}
 .liveClock .lc b{font-size:20px;color:var(--ink);font-weight:800}
 .liveClock .lcNow{grid-column:1/-1;text-align:center;font-size:11px;color:var(--ink-2);margin-top:4px}
-.mustSee{margin:12px 0;padding:10px 12px;border-radius:12px;box-shadow:var(--raise-sm);background:var(--card)}
+.mustSee{margin:12px 0;padding:10px 12px;border-radius:12px;box-shadow:var(--raise-sm);background:var(--card);border-left:3px solid var(--danger)}
 .mustSee .msHead{font-size:14px;font-weight:800;margin-bottom:4px}
-.mustSee .msItem{display:block;width:100%;text-align:left;border:none;background:none;font-family:inherit;font-size:14px;font-weight:600;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+.mustSee .msItem{display:block;width:100%;text-align:left;border:none;background:none;font-family:inherit;font-size:14px;font-weight:600;padding:8px 0;border-top:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .rcard .tap{display:flex;gap:12px;align-items:flex-start}
 .rcard .thumb,.bill .thumb{width:72px;height:72px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--panel)}
 .bill{display:flex;gap:12px;align-items:flex-start}
@@ -285,7 +285,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v6 · 2026-10-20 · Davis Care';
+  var BUILD = 'care-board v6.1 · 2026-10-20 · Davis Care';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -801,7 +801,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
   function barChart(items, opts) {
     opts = opts || {};
     if (!items || !items.length) return '<div class="empty small">' + esc(opts.empty || 'ยังไม่มีข้อมูลในช่วงนี้') + '</div>';
-    var max = Math.max.apply(null, items.map(function (i) { return Number(i.n) || 0; }).concat([1]));
+    var max = opts.max || Math.max.apply(null, items.map(function (i) { return Number(i.n) || 0; }).concat([1]));
     return '<div class="bars">' + items.map(function (i) {
       var n = Number(i.n) || 0;
       return '<div class="brow"><span class="bl">' + esc(i.label) + (i.sub ? '<small>' + esc(i.sub) + '</small>' : '') + '</span>' +
@@ -906,15 +906,17 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
 
   // ---- งานซ่อม: live, read only (design §2.3) --------------------------------------------
   var LIVE_GROUPS = [['open', '🚨 รอช่างรับ'], ['approval', '🧾 รออนุมัติ'], ['inProgress', '🔧 กำลังซ่อม'], ['contractor', '⏸ ผู้รับเหมา'], ['other', 'อื่น ๆ']];
-  function mustSeeText(m, nowMs) {
+  /** One ต้องดู line in ink; only the part past the line is red (v6.1, board 8). */
+  function mustSeeHtml(m) {
     var c = m.card || {};
-    var where = String(c.venue || '').toUpperCase() + ' · ' + (c.location || '');
-    if (m.kind === 'emergency') return 'ฉุกเฉิน ยังไม่มีคนรับ · ' + where;
-    if (m.kind === 'claimLate') return 'รอช่างรับ ' + durText(m.minutes) + ' · ' + where;
-    if (m.kind === 'openLong') return 'เปิดมา ' + durText(m.minutes) + ' · ' + where;
-    if (m.kind === 'repeat') return 'ซ่อมซ้ำครั้งที่ ' + m.nth + ' · ' + where;
-    if (m.kind === 'overCap') return 'บิลเกินวงเงิน ' + fmtBaht(m.baht) + ' บาท · ' + where;
-    return where;
+    var where = ' · ' + esc(String(c.venue || '').toUpperCase() + ' · ' + (c.location || '')) + ' · ' + esc(m.id);
+    var red = function (t) { return '<span class="late">' + esc(t) + '</span>'; };
+    if (m.kind === 'emergency') return red('ฉุกเฉิน') + ' ยังไม่มีคนรับ' + where;
+    if (m.kind === 'claimLate') return 'รอช่างรับ ' + red(durText(m.minutes)) + where;
+    if (m.kind === 'openLong') return 'เปิดมา ' + red(durText(m.minutes)) + where;
+    if (m.kind === 'repeat') return 'ซ่อมซ้ำ' + red('ครั้งที่ ' + m.nth) + where;
+    if (m.kind === 'overCap') return 'บิล' + red('เกินวงเงิน ' + fmtBaht(m.baht) + ' บาท') + where;
+    return where.slice(3);
   }
   function canApprove(me) { return !!me && (me.role === 'account' || me.role === 'manager'); }
   function approveButtons(c, me) {
@@ -955,7 +957,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
     if (venues.length > 1 || r.venue) h += chipRow('liveVenue', [{ k: '', label: 'ทุกร้าน' }].concat(venues.map(function (v) { return { k: v, label: v + ' ' + r.venues[v] }; })), r.venue || '');
     if ((r.mustSee || []).length) {
       h += '<section class="mustSee"><div class="msHead late">⚠️ ต้องดู ' + r.mustSee.length + '</div>' + r.mustSee.map(function (m) {
-        return '<button type="button" class="msItem late" data-act="openTicket" data-k="' + esc(m.id) + '">' + esc(mustSeeText(m, nowMs)) + ' · ' + esc(m.id) + '</button>';
+        return '<button type="button" class="msItem" data-act="openTicket" data-k="' + esc(m.id) + '">' + mustSeeHtml(m) + '</button>';
       }).join('') + '</section>';
     }
     var g = r.groups || {};
@@ -1024,7 +1026,7 @@ header .back{width:44px;height:44px;border:none;border-radius:var(--btn-r);backg
         '<div class="title">' + esc(t.name) + '</div><div class="sub">' + esc(now) + '</div>' +
         '<div class="xline">ปิด ' + t.closes + ' งาน · รับเฉลี่ย ' + (t.avgClaimMin === null ? '—' : durText(t.avgClaimMin)) +
         ' · เวลาต่องาน ' + (t.medianFixMin === null ? '—' : durText(t.medianFixMin)) + '</div>' +
-        barChart([{ label: 'งานในมือ', n: t.load, text: t.inHand + ' งาน' }]) + '</button>';
+        barChart([{ label: 'งานในมือ', n: t.load, text: t.inHand + ' งาน' }], { max: 100 }) + '</button>';   // load is % of the busiest tech
     }).join('') + (ts.others && ts.others.closes ? '<div class="card"><div class="title">อื่น ๆ</div><div class="sub">ปิด ' + ts.others.closes + ' งาน · ' + esc(ts.others.names.join(', ')) + '</div></div>' : ''));
     h += section('ตามร้าน', '<div class="card">' + ((ts.venues || []).length ? ts.venues.map(function (v) {
       return '<div class="slaRow"><b>' + esc(v.venue) + '</b><span>ค้าง ' + v.live + ' · นานสุด ' + esc(thaiClock(String(v.oldestAt).slice(0, 16))) +

@@ -54,7 +54,7 @@ ok('A1.4 no retired colour token', !/--(ok|ok-bg|warn-ink|warn-bg|hot-ink|hot-bg
 ok('A1.4 the clock has two looks: normal muted, late red, no tint', /\.clock\.normal\{[^}]*color:var\(--ink-2\)/.test(SRC) && /\.clock\.late\{[^}]*color:var\(--danger\)/.test(SRC));
 ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
 // v5.5 (e4b4855) left this pin at v5.4 (it failed there); #17 moves it to the combined board.
-ok('build v6', /var BUILD = 'care-board v6 · 2026-10-2\d · Davis Care';/.test(SRC));
+ok('build v6.1', /var BUILD = 'care-board v6\.1 · 2026-10-2\d · Davis Care';/.test(SRC));
 // A1.3 build v5.3 (retired by the v5.4 pin above):
 // ok('build v5.3', /var BUILD = 'pr-board v5\.3 · 2026-10-19 · A1\.3';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
