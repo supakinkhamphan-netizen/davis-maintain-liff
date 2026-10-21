@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const { tables, DEMO, bkkMs } = require('./sb-fixture');
+const { tables, DEMO, bkkMs, personOf, uidOf } = require('./sb-fixture');
 const { matches } = require('./fake-sb');
 const slice = (a, b) => SRC.indexOf(a) < 0 ? '' : SRC.slice(SRC.indexOf(a), SRC.indexOf(b));
 let fails = 0, n = 0;
@@ -32,7 +32,7 @@ const R = role => DEMO.roles[role];
 const strip = o => { const c = JSON.parse(JSON.stringify(o)); delete c.ok; delete c.serverNow; return c; };
 const SLA = T.lists[0].doc.slaRules, HOTELS = T.lists[0].doc.hotels;
 const byTime = (a, b) => (a.createdMs || 0) - (b.createdMs || 0) || (a.id < b.id ? -1 : 1);
-const me = role => Object.assign({}, R(role).bdWhoAmI, { uid: 'U-' + role });   // sbMe adds the uid (people.uid)
+const me = role => Object.assign({}, R(role).bdWhoAmI, { uid: uidOf(role) });   // sbMe adds the uid (people.uid)
 // What PostgREST answers for one built query, on the fixture (RLS aside: these are the manager's).
 const run = q => T[q.table].filter(r => Object.keys(q.params).every(k => ['select', 'order', 'limit', 'offset'].indexOf(k) >= 0 || matches(r, k, q.params[k])));
 
@@ -122,13 +122,13 @@ safe('2', () => {
 
 // ---- 3. the ported rules = the engine's answers ------------------------------------------
 safe('3', () => {
-  const meM = P.sbMe(T.people[0], T.lists[0].doc, NOW);
-  ['manager', 'account', 'venue_manager'].forEach((role, i) => {
-    const got = P.sbMe(T.people[i], T.lists[0].doc, NOW), want = strip(me(role));
+  const meM = P.sbMe(personOf('manager'), T.lists[0].doc, NOW);
+  ['manager', 'account', 'venue_manager'].forEach(role => {
+    const got = P.sbMe(personOf(role), T.lists[0].doc, NOW), want = strip(me(role));
     delete want.build;
     eq('3.1 ' + role + ': me from people + lists = bdWhoAmI (but build; serverNow is 3.2)', Object.assign({}, got, { uid: undefined, serverNow: undefined }), Object.assign(want, { uid: undefined }));
   });
-  eq('3.2 me carries the uid (for mine) and serverNow from the phone in Bangkok time', [meM.uid, meM.serverNow], ['U-manager', '2026-10-20 12:00:00']);
+  eq('3.2 me carries the uid (for mine) and serverNow from the phone in Bangkok time', [meM.uid, meM.serverNow], [uidOf('manager'), '2026-10-20 12:00:00']);
   const live = role => P.sbQueryFor('repair', me(role), {}, NOW).map(run).reduce((a, b) => a.concat(b), []);
   ['manager', 'venue_manager'].forEach(role => {
     const rows = live(role).filter(r => role !== 'venue_manager' || me(role).venues.indexOf(r.venue) >= 0);
@@ -175,8 +175,8 @@ safe('3', () => {
   const ov = P.sbStat(st);
   const wantOv = strip(R('manager').calls['bdOverview{"window":7,"venue":"","tech":""}']); delete wantOv.pageUrl;
   eq('3.11 ภาพรวม from its stats row = bdOverview (the page link minted on the tap)', [ov.data, ov.at], [wantOv, Date.parse(st.computed_at)]);
-  const pr = { id: 'PR-1', venue: 'HOS', status: 'pending', by: 'U-manager', created_at: '2026-10-20T03:00:00+00:00', doc: {} };
-  eq('3.12 a purchase row: mine from by, the age from created_at', [P.sbPurchaseFacts(pr, 'U-manager', NOW), P.sbPurchaseFacts(pr, 'U-x', NOW)],
+  const pr = { id: 'PR-1', venue: 'HOS', status: 'pending', by: uidOf('manager'), created_at: '2026-10-20T03:00:00+00:00', doc: {} };
+  eq('3.12 a purchase row: mine from by, the age from created_at', [P.sbPurchaseFacts(pr, uidOf('manager'), NOW), P.sbPurchaseFacts(pr, 'U-x', NOW)],
     [{ mine: true, ageMinutes: 120 }, { mine: false, ageMinutes: 120 }]);
 });
 

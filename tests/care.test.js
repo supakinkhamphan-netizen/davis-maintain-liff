@@ -479,19 +479,19 @@ async function section10() {
 
 // ---- 11. work order #21 phase 1: the board reads Supabase (fake window.SB) ---------------------
 const { makeFakeSb } = require('./fake-sb');
-const { tables: sbTables } = require('./sb-fixture');
+const { tables: sbTables, uidOf } = require('./sb-fixture');
 const PAGE_URL = 'https://script.google.com/macros/s/TEST/exec?page=exec&t=new';
 /** Apps Script as answerOf, plus the two #21 fns: the link (the engine's people_links upsert) and the page link. */
 const apiSb = (role, fake) => (fn, opts, payload) => {
-  if (fn === 'bdSupabaseLink') { fake.link(payload.authUid, 'U-' + role); return answer({ ok: true, uid: 'U-' + role, url: 'https://x.supabase.co' }); }
+  if (fn === 'bdSupabaseLink') { fake.link(payload.authUid, uidOf(role)); return answer({ ok: true, uid: uidOf(role), url: 'https://xrnaxhgdfqcquxpookpr.supabase.co' }); }
   if (fn === 'bdExecLink') return answer({ ok: true, pageUrl: PAGE_URL });
   return answerOf(role)(fn, opts, payload);
 };
 /** A device that has opened v8 before: an anonymous session, linked to the role's person. */
 function sbDevice(role, o) {
   o = o || {};
-  const fake = makeFakeSb(sbTables(), o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: 'U-' + role } });
-  const local = Object.assign(o.fresh ? {} : { 'davisCare.sb': JSON.stringify({ linked: !o.notLinked, uid: 'U-' + role }) }, o.local || {});
+  const fake = makeFakeSb(sbTables(), o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: uidOf(role) } });
+  const local = Object.assign(o.fresh ? {} : { 'davisCare.sb': JSON.stringify({ linked: !o.notLinked, uid: uidOf(role) }) }, o.local || {});
   const pg = bootPage(SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, fetch: apiSb(role, fake) });
   return { fake, pg };
 }
@@ -520,7 +520,8 @@ async function section11() {
   await tick(80);
   eq('11.7 leaving งานซ่อม unsubscribes; ช่าง reads its stats row and subscribes to it', [m.fake.log.unsubs, m.fake.log.selects.slice(-1)[0].params.id, m.fake.log.subs.slice(-1)[0].filter],
     [['sub1'], 'eq.techs|1', 'id=eq.techs|1']);
-  ok('11.8 … one muted "ข้อมูลเมื่อ 11:30" from computed_at, and the technicians drawn', textOf(m.pg.app.innerHTML).indexOf('ข้อมูลเมื่อ 11:30') >= 0 && textOf(m.pg.app.innerHTML).indexOf('นัท') >= 0 && m.pg.log.fns.length === 0);
+  const at = new Date(Date.parse(require('./sb-fixture').COMPUTED) + 7 * 3600000), hm = ('0' + at.getUTCHours()).slice(-2) + ':' + ('0' + at.getUTCMinutes()).slice(-2);
+  ok('11.8 … one muted "ข้อมูลเมื่อ ' + hm + '" from computed_at, and the technicians drawn', textOf(m.pg.app.innerHTML).indexOf('ข้อมูลเมื่อ ' + hm) >= 0 && textOf(m.pg.app.innerHTML).indexOf('นัท') >= 0 && m.pg.log.fns.length === 0);
   m.pg.tap('zone', 'overview');
   await tick(80);
   ok('11.9 ภาพรวม from its stats row, with the page link as a tap', m.fake.log.selects.slice(-1)[0].params.id === 'eq.overview|all|7' && /data-act="execLink"/.test(m.pg.app.innerHTML) && m.pg.log.fns.length === 0);
@@ -555,7 +556,7 @@ async function section11() {
     [['session', 'signInAnon'], ['bdBoot', 'bdSupabaseLink']]);
   const link = first.pg.log.calls.filter(c => c.fn === 'bdSupabaseLink')[0];
   eq('11.16 … the link names this device\'s anonymous user, and the device remembers it', [link && link.payload.authUid, JSON.parse(first.pg.local.get('davisCare.sb') || '{}')],
-    ['anon-1', { linked: true, uid: 'U-manager' }]);
+    ['anon-1', { linked: true, uid: uidOf('manager') }]);
   const again = bootPage(SRC, { sbOn: true, sb: first.fake.SB, local: { 'davisCare.sb': first.pg.local.get('davisCare.sb') }, fetch: apiSb('manager', first.fake) });
   await tick(120);
   eq('11.17 the next open on that device reads Supabase only', [again.log.fns, tablesOf(first.fake).slice(-4)], [[], ['people', 'lists', 'tickets', 'tickets']]);
