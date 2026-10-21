@@ -780,11 +780,15 @@ async function section15() {
 }
 
 // ---- 16. v9 (WO#23 phase 1): actions through Supabase RPC; LINE's SDK only when needed ----------------
+const L_NOT_ALLOWED = (/notAllowed: '([^']+)'/.exec(SRC) || [])[1];
 async function section16() {
   const ON = 'supabase', OFF = 'sheets';
   const ST = (t, p, b) => ({ record_of_truth_tickets: t, record_of_truth_purchase: p, record_of_truth_bills: b });
   // approve_purchase as team B's function answers: the ticket row after the write.
-  const approveRow = (args, T) => { const r = JSON.parse(JSON.stringify(T.tickets.filter(x => x.id === args.id)[0])); r.status = r.card.status = 'กำลังดำเนินการ'; r.card.purchase.pending = false; return r; };
+  // The ticket row after approve_purchase (the engine's card included, as Realtime brings it later).
+  const approvedRow = id => { const r = JSON.parse(JSON.stringify(sbTables().tickets.filter(x => x.id === id)[0])); r.status = r.card.status = 'กำลังดำเนินการ'; r.card.purchase.pending = false; return r; };
+  // Team B's E1 answer shape: {row: <truth columns>, events: [<lines written>]} — never the bare row.
+  const approveRow = args => ({ row: { id: args.p_id, status: 'กำลังดำเนินการ', venue: 'Fairway' }, events: [{ action: 'APPROVE_PURCHASE' }] });
   const nApprovals = h => +((/รออนุมัติ (\d+)/.exec(textOf(h)) || [])[1]);
   const a = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow }, rpcDelay: 80 } });
   await tick(150);
@@ -796,10 +800,10 @@ async function section16() {
   ok('16.2 mid-flight: the pressed button says it is sending', /กำลังส่ง/.test(textOf(a.pg.app.innerHTML)));
   await tick(150);
   eq('16.3 approve on tickets=supabase: approve_purchase {id, cap: null}, nothing to Apps Script, no SDK', [a.fake.log.rpc, a.pg.log.fns, !!a.pg.sdk],
-    [[{ fn: 'approve_purchase', args: { id: 'Fairway_20261020_02', cap: null } }], [], false]);
+    [[{ fn: 'approve_purchase', args: { p_id: 'Fairway_20261020_02', p_cap: null } }], [], false]);
   eq('16.4 the returned row is applied at once: รออนุมัติ one fewer, no read', [n0 - nApprovals(a.pg.app.innerHTML), a.fake.log.selects.length - sel0], [1, 0]);
   const before = a.pg.app.innerHTML;
-  a.fake.emit('tickets', { type: 'UPDATE', row: approveRow({ id: 'Fairway_20261020_02' }, sbTables()) });
+  a.fake.emit('tickets', { type: 'UPDATE', row: approvedRow('Fairway_20261020_02') });
   await tick(30);
   eq('16.5 the Realtime echo of that row changes nothing here and reads nothing', [a.pg.app.innerHTML === before, a.fake.log.selects.length - sel0], [true, 0]);
 
@@ -813,7 +817,7 @@ async function section16() {
   await tick(200);
   eq('16.7 … then bdApprove through Apps Script exactly as v8.2; no RPC', [s.pg.log.fns, s.fake.log.rpc.length], [['bdApprove'], 0]);
 
-  const nc = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { message: 'NOT_CUT_OVER' }; } } } });
+  const nc = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { code: 'DC001', message: 'NOT_CUT_OVER' }; } } } });
   await tick(150);
   const ncSet = nc.fake.log.selects.filter(q => q.table === 'settings').length;
   nc.pg.tap('bdApprove', 'Fairway_20261020_02');
@@ -824,7 +828,7 @@ async function section16() {
   eq('16.8 NOT_CUT_OVER: one fallback to api(), and the settings row read again', [nc.fake.log.rpc.length, nc.pg.log.fns, nc.fake.log.selects.filter(q => q.table === 'settings').length - ncSet],
     [1, ['bdApprove'], 1]);
 
-  const no = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }; } } } });
+  const no = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { code: 'P0001', message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }; } } } });
   await tick(150);
   no.pg.tap('bdApprove', 'Fairway_20261020_02');
   no.pg.tap('bdConfirm');
@@ -832,7 +836,7 @@ async function section16() {
   eq('16.9 a refusal: the function\'s Thai message, red, where v8.2 shows the API\'s; nothing else called', [no.pg.toasts.slice(-1)[0], no.pg.log.fns],
     [{ text: 'งานนี้ไม่ได้รออนุมัติแล้ว', err: true }, []]);
 
-  const v = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: (args, T) => Object.assign(JSON.parse(JSON.stringify(T.purchase.filter(x => x.id === args.id)[0])), { status: 'cancelled' }) } } });
+  const v = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: args => ({ row: { id: args.p_id, status: 'cancelled' }, events: [] }) } } });
   await tick(150);
   v.pg.tap('zone', 'purchase');
   await tick(120);
@@ -841,9 +845,9 @@ async function section16() {
   await tick(2);
   ok('16.10b mid-flight on a v5 sheet: the pressed button says it is sending', /กำลังส่ง/.test(textOf(v.pg.app.innerHTML)));
   await tick(150);
-  eq('16.10 purchase=supabase: a branch request cancelled through pr_cancel {id}', [v.fake.log.rpc, v.pg.log.fns], [[{ fn: 'pr_cancel', args: { id: 'PR_20261020_01' } }], []]);
+  eq('16.10 purchase=supabase: a branch request cancelled through pr_cancel {id}', [v.fake.log.rpc, v.pg.log.fns], [[{ fn: 'pr_cancel', args: { p_id: 'PR_20261020_01' } }], []]);
 
-  const vr = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: () => { throw { message: 'คำขอนี้ตัดสินไปแล้ว ยกเลิกไม่ได้' }; } } } });
+  const vr = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: () => { throw { code: 'DC003', message: 'คำขอนี้ตัดสินไปแล้ว ยกเลิกไม่ได้' }; } } } });
   await tick(150);
   vr.pg.tap('zone', 'purchase');
   await tick(120);
@@ -853,28 +857,28 @@ async function section16() {
   const vt = textOf(vr.pg.app.innerHTML);
   ok('16.10c refused: the Thai words, and the sheet\'s button is pressable again (not stuck on กำลังส่ง…)', vr.pg.toasts.some(t => t.err && t.text === 'คำขอนี้ตัดสินไปแล้ว ยกเลิกไม่ได้') && !/กำลังส่ง/.test(vt) && /ยกเลิกคำขอ/.test(vt));
 
-  const b = sbDevice('account', { settings: ST(OFF, OFF, ON), fake: { rpc: { bill_review: (args, T) => Object.assign(JSON.parse(JSON.stringify(T.bills.filter(x => x.id === args.bill_id)[0])), { reviewed: args.reviewed }) } } });
+  const b = sbDevice('account', { settings: ST(OFF, OFF, ON), fake: { rpc: { bill_review: args => ({ row: { id: args.p_legacy_id, reviewed: args.p_reviewed, reviewed_by: 'หมีน้อย' }, events: [] }) } } });
   await tick(150);
   b.pg.tap('zone', 'bills');
   await tick(120);
   const bill = sbTables().bills.filter(x => x.week_off === 0)[0];
   b.pg.change({ 'data-act': 'billTick', 'data-ts': '2026-10-19 15:00:00', 'data-sub': bill.submitter }, { checked: false });
   await tick(120);
-  eq('16.11 bills=supabase: the tick through bill_review {bill_id, reviewed}', [b.fake.log.rpc, b.pg.log.fns], [[{ fn: 'bill_review', args: { bill_id: bill.id, reviewed: false } }], []]);
+  eq('16.11 bills=supabase: the tick through bill_review {bill_id, reviewed}', [b.fake.log.rpc, b.pg.log.fns], [[{ fn: 'bill_review', args: { p_legacy_id: bill.id, p_reviewed: false } }], []]);
 
   // Addendum: the function's row carries the new status but the OLD card; the engine's card comes later by Realtime.
   // From an untouched copy of the fixture: the fake's emit writes into its own tables, and the function's row must stay stale.
-  const stale = args => { const x = JSON.parse(JSON.stringify(sbTables().tickets.filter(t => t.id === args.id)[0])); x.status = 'กำลังดำเนินการ'; return x; };
+  const stale = args => { const x = JSON.parse(JSON.stringify(sbTables().tickets.filter(t => t.id === args.p_id)[0])); x.status = 'กำลังดำเนินการ'; return { row: x, events: [] }; };
   const st2 = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: stale }, rpcDelay: 150 } });
   await tick(150);
   const m0 = nApprovals(st2.pg.app.innerHTML), sel2 = st2.fake.log.selects.length;
   st2.pg.tap('bdApprove', 'Fairway_20261020_02');
   st2.pg.tap('bdConfirm');
   await tick(30);
-  const truth = stale({ id: 'Fairway_20261020_02' }, sbTables());
+  const truth = stale({ p_id: 'Fairway_20261020_02' }).row;
   st2.fake.emit('tickets', { type: 'UPDATE', row: truth });   // the truth columns, first
   await tick(30);
-  st2.fake.emit('tickets', { type: 'UPDATE', row: approveRow({ id: 'Fairway_20261020_02' }, sbTables()) });   // then card + detail, rebuilt
+  st2.fake.emit('tickets', { type: 'UPDATE', row: approvedRow('Fairway_20261020_02') });   // then card + detail, rebuilt
   await tick(30);
   ok('16.11b two Realtime changes for the same job during the action: the button still says it is sending', /กำลังส่ง/.test(textOf(st2.pg.app.innerHTML)));
   await tick(150);
@@ -886,7 +890,7 @@ async function section16() {
   mg.pg.tap('bdApprove', 'Fairway_20261020_02');
   mg.pg.tap('bdConfirm');
   await tick(40);
-  mg.fake.emit('tickets', { type: 'UPDATE', row: approveRow({ id: 'Fairway_20261020_02' }, sbTables()) });
+  mg.fake.emit('tickets', { type: 'UPDATE', row: approvedRow('Fairway_20261020_02') });
   await tick(200);
   const card = (textOf(mg.pg.app.innerHTML).split('Fairway_20261020_02')[1] || '').slice(0, 120);
   ok('16.11d the function\'s row arriving after the engine\'s card leaves the card as the engine drew it (ซ่อมมา, not รออนุมัติซื้อ)', /ซ่อมมา/.test(card) && !/รออนุมัติซื้อ/.test(card));
@@ -902,6 +906,33 @@ async function section16() {
   r.pg.lineLoads();
   await tick(200);
   eq('16.12 a rollback flips settings by Realtime: the next action goes to api(), no RPC', [r.fake.log.rpc.length, r.pg.log.fns], [0, ['bdApprove']]);
+
+  // (B) the answer {row, events}: the patch reads row.id / row.status (with a bare-row reader it never applied).
+  ok('16.18 the {row, events} answer patched the local rows (16.4 above uses that shape)', true);
+  const na = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { status: 403, code: '42501', message: 'NOT_ALLOWED' }; } } } });
+  await tick(150);
+  na.pg.tap('bdApprove', 'Fairway_20261020_02');
+  na.pg.tap('bdConfirm');
+  await tick(120);
+  eq('16.19 42501 NOT_ALLOWED: the board\'s Thai words, never the raw code', na.pg.toasts.slice(-1)[0], { text: L_NOT_ALLOWED, err: true });
+  let first = true;
+  const au = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: args => { if (first) { first = false; throw { status: 401, code: 'PGRST301', message: 'JWT expired' }; } return approveRow(args); } } } });
+  await tick(150);
+  const a0 = nApprovals(au.pg.app.innerHTML);
+  au.pg.tap('bdApprove', 'Fairway_20261020_02');
+  au.pg.tap('bdConfirm');
+  await tick(150);
+  eq('16.20 a 401 on a function: the session refreshed once, the call made again, done', [au.fake.log.auth.filter(x => x === 'refresh').length, au.fake.log.rpc.length, a0 - nApprovals(au.pg.app.innerHTML), au.pg.log.fns],
+    [1, 2, 1, []]);
+  eq('16.21 (D) the toast on the function path does not promise the LINE card (it follows through the outbox)', a.pg.toasts.filter(t => !t.err).map(t => t.text), ['อนุมัติแล้ว · Fairway_20261020_02']);
+  ok('16.21b … through Apps Script it still says the group was told (as v8.2)', s.pg.toasts.some(t => t.text === 'อนุมัติแล้ว · Fairway_20261020_02 · แจ้งกลุ่มช่างแล้ว'));
+  const cp = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
+  await tick(150);
+  cp.pg.tap('bdCap', 'Fairway_20261020_02');
+  cp.pg.change({ 'data-csheet': 'cap' }, { value: '2,000' }, 'input');
+  cp.pg.tap('bdConfirmCap');
+  await tick(120);
+  eq('16.22 a typed cap goes as the typed text (p_cap; the function strips commas and refuses words in Thai)', cp.fake.log.rpc.map(r => r.args), [{ p_id: 'Fairway_20261020_02', p_cap: '2,000' }]);
 
   const LIFFUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.10.0 LIFF';
   const l = sbDevice('manager', { ua: LIFFUA, settings: ST(ON, ON, ON) });

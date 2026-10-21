@@ -246,31 +246,39 @@ safe('7', () => {
     ['bdApprove', 'bdBillCompany', 'bdBillReviewed', 'bdReject', 'prCancel', 'prCreate', 'prDecide', 'prDelivered', 'prOrdered', 'prReceived'].join());
   const ON = 'supabase', OFF = 'sheets';
   const st = (t, p, b) => ({ tickets: t, purchase: p, bills: b });
+  // Team B's E1 contract (schema.sql 96807d4, reviewer 21 Oct): p_-prefixed; p_cap is the typed text (F2).
   const A = {
-    bdApprove: [{ ticketId: 'T1' }, 'tickets', 'approve_purchase', { id: 'T1', cap: null }],
-    bdApproveCap: [{ ticketId: 'T1', cap: 2000 }, 'tickets', 'approve_purchase', { id: 'T1', cap: 2000 }],
-    bdReject: [{ ticketId: 'T1', reason: 'ใช้ของในสต๊อก' }, 'tickets', 'reject_purchase', { id: 'T1', reason: 'ใช้ของในสต๊อก' }],
-    prDecide: [{ id: 'PR1', lines: [{ n: 1, ok: true }], note: '' }, 'purchase', 'pr_decide', { id: 'PR1', lines: [{ n: 1, ok: true }], note: '' }],
-    prOrdered: [{ id: 'PR1', actualTotal: 950, eta: '19 ต.ค.' }, 'purchase', 'pr_ordered', { id: 'PR1', total: 950, eta: '19 ต.ค.' }],
-    prDelivered: [{ id: 'PR1' }, 'purchase', 'pr_delivered', { id: 'PR1' }],
-    prReceived: [{ id: 'PR1' }, 'purchase', 'pr_received', { id: 'PR1' }],
-    prCancel: [{ id: 'PR1' }, 'purchase', 'pr_cancel', { id: 'PR1' }],
+    bdApprove: [{ ticketId: 'T1' }, 'tickets', 'approve_purchase', { p_id: 'T1', p_cap: null }],
+    bdApproveCap: [{ ticketId: 'T1', cap: 2000, capText: '2,000' }, 'tickets', 'approve_purchase', { p_id: 'T1', p_cap: '2,000' }],
+    bdReject: [{ ticketId: 'T1', reason: 'ใช้ของในสต๊อก' }, 'tickets', 'reject_purchase', { p_id: 'T1', p_reason: 'ใช้ของในสต๊อก' }],
+    prDecide: [{ id: 'PR1', lines: [{ n: 1, ok: true }], note: '' }, 'purchase', 'pr_decide', { p_id: 'PR1', p_lines: [{ n: 1, ok: true }], p_note: '' }],
+    prOrdered: [{ id: 'PR1', actualTotal: 950, eta: '19 ต.ค.' }, 'purchase', 'pr_ordered', { p_id: 'PR1', p_actual_total: 950, p_eta: '19 ต.ค.' }],
+    prDelivered: [{ id: 'PR1' }, 'purchase', 'pr_delivered', { p_id: 'PR1' }],
+    prReceived: [{ id: 'PR1' }, 'purchase', 'pr_received', { p_id: 'PR1' }],
+    prCancel: [{ id: 'PR1' }, 'purchase', 'pr_cancel', { p_id: 'PR1' }],
     prCreate: [{ venue: 'HOS', buyer: 'self', category: 'ของใช้สิ้นเปลือง', items: [{ name: 'สบู่', qty: 1 }], reason: 'หมด' }, 'purchase', 'pr_create',
-      { venue: 'HOS', buyer: 'self', category: 'ของใช้สิ้นเปลือง', items: [{ name: 'สบู่', qty: 1 }], reason: 'หมด' }],
-    bdBillReviewed: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', reviewed: true }, 'bills', 'bill_review', { bill_id: '2026-10-19 15:00:00_อาร์ม', reviewed: true }],
-    bdBillCompany: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', company: 'House of Savoy Co., Ltd.' }, 'bills', 'bill_company', { bill_id: '2026-10-19 15:00:00_อาร์ม', company: 'House of Savoy Co., Ltd.' }],
+      { p_venue: 'HOS', p_buyer: 'self', p_category: 'ของใช้สิ้นเปลือง', p_items: [{ name: 'สบู่', qty: 1 }], p_reason: 'หมด' }],
+    bdBillReviewed: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', reviewed: true }, 'bills', 'bill_review', { p_legacy_id: '2026-10-19 15:00:00_อาร์ม', p_reviewed: true }],
+    bdBillCompany: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', company: 'House of Savoy Co., Ltd.' }, 'bills', 'bill_company', { p_legacy_id: '2026-10-19 15:00:00_อาร์ม', p_company: 'House of Savoy Co., Ltd.' }],
+    bdBillReviewedUuid: [{ billId: '6f1c2c6e-0000-4000-8000-000000000001', reviewed: false }, 'bills', 'bill_review', { p_bill_id: '6f1c2c6e-0000-4000-8000-000000000001', p_reviewed: false }],
   };
   const combos = [];
   [ON, OFF].forEach(t => [ON, OFF].forEach(p => [ON, OFF].forEach(b => combos.push(st(t, p, b)))));
   const bad = [];
   combos.forEach(set => Object.keys(A).forEach(k => {
-    const [payload, domain, fn, args] = A[k], action = k.replace(/Cap$/, '');
+    const [payload, domain, fn, args] = A[k], action = k.replace(/Cap$|Uuid$/, '');
     const got = P.actionRoute({ action, payload, settings: set });
     const want = set[domain] === ON ? { via: 'rpc', fn, args } : { via: 'api', fn: action, payload };
     if (JSON.stringify(got) !== JSON.stringify(want)) bad.push([set, k, got]);
   }));
   eq('7.1 every action in the 8 domain states: supabase → the RPC with its arguments, sheets → api() as v8.2', bad.slice(0, 3), []);
-  eq('7.2 no settings at all: every action through api()', Object.keys(A).filter(k => P.actionRoute({ action: k.replace(/Cap$/, ''), payload: A[k][0], settings: null }).via !== 'api'), []);
+  eq('7.2 no settings at all: every action through api()', Object.keys(A).filter(k => P.actionRoute({ action: k.replace(/Cap$|Uuid$/, ''), payload: A[k][0], settings: null }).via !== 'api'), []);
+  // Any of these from a board → 42501 NOT_ALLOWED: the database takes the actor from the session.
+  const sneaky = { p_actor: 'x', p_actor_name: 'x', p_actor_role: 'manager', p_actor_venues: ['HOS'], p_source: 'engine', actor: 'x' };
+  eq('7.2b the board never sends an actor or a source, even when the payload carries one', Object.keys(A).filter(k => {
+    const r = P.actionRoute({ action: k.replace(/Cap$|Uuid$/, ''), payload: Object.assign({}, A[k][0], sneaky), settings: st(ON, ON, ON) });
+    return Object.keys(r.args).some(x => /actor|source/.test(x));
+  }), []);
   eq('7.3 a request with photos goes through Apps Script even on Supabase (no Storage in this stage; the engine uploads, then calls the RPC)',
     P.actionRoute({ action: 'prCreate', payload: { venue: 'HOS', photoDataUrls: ['data:image/jpeg;base64,AA'] }, settings: st(ON, ON, ON) }).via, 'api');
   eq('7.4 the settings row: each domain\'s record of truth, sheets unless it says supabase', [
@@ -280,9 +288,12 @@ safe('7', () => {
   eq('7.5 the LINE SDK: not on a warm open; on a first open (no session / no link) and on each of the three intents', [
     L_({}), L_({ session: null }), L_({ linked: false }), L_({ intent: 'chat' }), L_({ intent: 'openWindow' }), L_({ intent: 'install' }), L_({ intent: 'api' }),
   ], [false, true, true, true, true, true, true]);
-  eq('7.6 an RPC failure: NOT_CUT_OVER (the engine\'s safety net) vs a refusal in Thai', [
-    P.sbRpcFailure({ status: 400, code: 'P0001', message: 'NOT_CUT_OVER' }), P.sbRpcFailure({ status: 400, code: 'P0001', message: 'คุณไม่มีสิทธิ์ทำขั้นนี้' }), P.sbRpcFailure({ status: 0, name: 'TypeError' }),
-  ], [{ kind: 'notCutOver' }, { kind: 'refused', message: 'คุณไม่มีสิทธิ์ทำขั้นนี้' }, { kind: 'network' }]);
+  eq('7.6 an RPC failure by PostgREST\'s code: DC001 the engine\'s net, 42501 never shown raw, P0001/DC003 the engine\'s Thai, 401 a session refresh, no network', [
+    P.sbRpcFailure({ status: 400, code: 'DC001', message: 'NOT_CUT_OVER' }), P.sbRpcFailure({ status: 403, code: '42501', message: 'NOT_ALLOWED' }),
+    P.sbRpcFailure({ status: 400, code: 'P0001', message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }), P.sbRpcFailure({ status: 400, code: 'DC003', message: 'วงเงินต้องเป็นตัวเลข' }),
+    P.sbRpcFailure({ status: 401, code: 'PGRST301', message: 'JWT expired' }), P.sbRpcFailure({ status: 0, name: 'TypeError' }),
+  ], [{ kind: 'notCutOver' }, { kind: 'refused', message: P.L.err.notAllowed }, { kind: 'refused', message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }, { kind: 'refused', message: 'วงเงินต้องเป็นตัวเลข' },
+    { kind: 'auth' }, { kind: 'network' }]);
 });
 
 // ---- 8. WO#23 addendum (engine 4e0d1c7): the returned row patches only what the action changed --------

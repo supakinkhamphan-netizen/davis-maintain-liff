@@ -85,9 +85,9 @@ function bootPage(SRC, o) {
       els.app.listeners.click({ target, preventDefault() {} });
     },
     /** A change on an input carrying data-act (and other data-* attributes), checked / value as given. */
-    change(attrs, extra) {
+    change(attrs, extra, type) {
       const target = Object.assign({ tagName: 'INPUT', disabled: false, getAttribute: a => (a in attrs ? attrs[a] : null) }, extra || {});
-      els.app.listeners.change({ target });
+      els.app.listeners[type || 'change']({ target });
     },
     /** LINE's SDK arrives: a fake liff, then the page's own onload. */
     lineLoads(liff) { ctx.liff = Object.assign({
