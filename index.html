@@ -306,7 +306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v8.0 · 2026-10-21 · Supabase';
+  var BUILD = 'care-board v8.1 · 2026-10-21 · Supabase';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -3121,6 +3121,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   var SB_FALL = new Error('sb: v7.1 boot'), SB_NOROW = new Error('sb: no row');
   var sbPhase = SB_ON ? 'trying' : 'off';   // trying → on, or fallback (bdBoot)
   var sbNeedLink = null, sbLiffReady = false, sbSubs = [];
+  // v8.1: a Supabase boot not done by then (a hung supabase-js, a slow network) gives way to the
+  // v7.1 boot for this open; Supabase is tried again on the next open.
+  var SB_BOOT_MS = 5000;
   function sbLoadScript(src) {
     return new Promise(function (resolve, reject) {
       var el = document.createElement('script');
@@ -3254,7 +3257,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
    */
   function sbBoot() {
     var session = null;
+    setTimeout(function () { if (sbPhase === 'trying') sbGiveUp(); }, SB_BOOT_MS);
     SB.session().then(function (s) {
+      if (sbPhase !== 'trying') throw SB_FALL;   // past the deadline: the v7.1 board is up; read nothing
       session = s;
       var st = sbSessionState({ session: s, linked: !!sbStoreGet().linked });
       if (st === 'anon-signin') return SB.signInAnon().then(function (s2) { sbNeedLink = s2; throw SB_FALL; });
@@ -3273,11 +3278,14 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       S.sb = true; sbPhase = 'on';
       startWith(sbMe(person, S.sbLists, Date.now()));
     }).catch(function () {
-      S.sb = false;
-      if (sbPhase !== 'trying') return;
-      sbPhase = 'fallback';
-      if (sbLiffReady) boot();
+      if (sbPhase !== 'trying') return;   // the deadline came first: no second boot
+      sbGiveUp();
     });
+  }
+  function sbGiveUp() {
+    S.sb = false;
+    sbPhase = 'fallback';
+    if (sbLiffReady) boot();
   }
   function sbLinkNow() {
     var s = sbNeedLink;
