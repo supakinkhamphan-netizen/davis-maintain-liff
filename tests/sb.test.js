@@ -214,6 +214,16 @@ safe('6', () => {
   eq('6.12 one request: the row and its audit as prDetail answers', [d.row, d.audit], [P.sbPrRow(vmRow, uidOf('venue_manager'), NOW), vmRow.doc.audit]);
   const tie = [{ id: 'B', created_ms: 5, seq: 1, card: { id: 'B', createdMs: 5 }, status: 'รอดำเนินการ', venue: 'HOS' },
     { id: 'A', created_ms: 5, seq: 2, card: { id: 'A', createdMs: 5 }, status: 'รอดำเนินการ', venue: 'HOS' }];
+  const vrow = (id, o) => Object.assign(JSON.parse(JSON.stringify(vmRow)), { id }, o, { doc: Object.assign({}, vmRow.doc, { id }, (o || {}).doc || {}) });
+  const fl = [vrow('PR_A', { doc: { fulfilment: 'awaiting' } }), vrow('PR_B', { doc: { fulfilment: 'ordered' } }), vrow('PR_C', { doc: { fulfilment: 'delivered' } }), vrow('PR_D', { by: 'U-someone-else' })];
+  eq('6.14 ต้องซื้อ = waiting to be bought or ordered (not delivered)', P.sbPrBoard(fl, me('manager'), 'tobuy', '', '', HOTELS, NOW).rows.map(r => r.id).sort(), ['PR_A', 'PR_B']);
+  eq('6.15 a venue manager\'s mine is every request of their venues, not only theirs', P.sbPrBoard(fl, me('venue_manager'), 'mine', '', '', HOTELS, NOW).counts.mine, 4);
+  const pt = JSON.parse(JSON.stringify(T.tickets.filter(r => r.status === 'รออนุมัติซื้อของ')[0]));
+  pt.card.cost = 0; pt.card.purchase.amount = 500;
+  eq('6.16 the estimate is the ticket\'s Cost (purchaseEstimate_), not the request\'s amount', P.sbApprovals([pt], [], 'x', NOW).repair[0].estimate, 0);
+  const many = JSON.parse(JSON.stringify(pt));
+  many.events = Array.from({ length: 60 }, (_, i) => ({ ms: i, at: '2026-10-0' + (1 + (i % 9)) + ' 10:00:00', action: 'REQUEST_PURCHASE', actor: 'นัท', detail: '' }));
+  eq('6.17 the history: 50 at most', P.sbApprovals([many], [], 'x', NOW).history.length, 50);
   const third = { id: 'C', created_ms: 5, seq: null, card: { id: 'C', createdMs: 5 }, status: 'รอดำเนินการ', venue: 'HOS' };
   eq('6.13 jobs made in the same minute: by the sheet row (seq); an archived row (seq null) last; no seq at all: by id',
     [P.sbRepairLive(tie.concat([third]), '', 200, 10, SLA, HOTELS).groups.open.map(c => c.id), P.sbRepairLive(tie.map(r => Object.assign({}, r, { seq: undefined })), '', 200, 10, SLA, HOTELS).groups.open.map(c => c.id)],
