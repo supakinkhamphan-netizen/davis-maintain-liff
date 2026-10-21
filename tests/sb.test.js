@@ -145,6 +145,12 @@ safe('3', () => {
     JSON.stringify(hos.venues) === JSON.stringify(R('manager').calls['bdRepairLive{}'].venues) && hos.venue === 'HOS');
   const two = P.sbRepairLive(all, '', 2, NOW, SLA, HOTELS);
   eq('3.5 the cap: 2 cards, more = true, counts whole', [Object.keys(two.groups).reduce((s, g) => s + two.groups[g].length, 0), two.more, two.counts.open], [2, true, 4]);
+  const old = JSON.parse(JSON.stringify(all)).map(r => { r.events = (r.events || []).map(e => e.action === 'PURCHASE_RECONCILE' ? Object.assign(e, { ms: NOW - 8 * 86400000 }) : e); return r; });
+  eq('3.5b a bill over its cap 8 days ago is no longer ต้องดู (7 days, as the engine)', P.sbRepairLive(old, '', 200, NOW, SLA, HOTELS).mustSee.filter(x => x.kind === 'overCap').length, 0);
+  ok('3.5c … and the fixture has one inside the 7 days', P.sbRepairLive(all, '', 200, NOW, SLA, HOTELS).mustSee.filter(x => x.kind === 'overCap').length === 1);
+  const two2 = [{ id: 'A', card: { id: 'A' } }, { id: 'B', card: { id: 'B' } }];
+  eq('3.5d งานทั้งหมด paging: the next offset while rows are left, null on the last page', [P.sbTicketList(two2, 5, 0).nextOffset, P.sbTicketList(two2, 5, 2).nextOffset, P.sbTicketList(two2, 4, 2).nextOffset],
+    [2, 4, null]);
   const acc = R('account').calls['bdTickets{"status":"","venue":"","offset":0}'];
   const q = P.sbQueryFor('tickets', me('account'), {}, NOW)[0];
   const page = run(q).sort((a, b) => b.created_ms - a.created_ms).slice(0, 50);
