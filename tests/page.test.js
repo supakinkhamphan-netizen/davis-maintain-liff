@@ -91,6 +91,11 @@ ok('#18 F1 every sticky top rule is covered (header top:0, .tabs and .zones top:
 // WO#21: the one Supabase project the board may name (reviewer, 21 Oct): "davis-care".
 ok('WO#21 SB_URL is the davis-care project, and no other Supabase host appears', /var SB_URL = 'https:\/\/xrnaxhgdfqcquxpookpr\.supabase\.co';/.test(SRC) &&
   (SRC.match(/[a-z0-9]+\.supabase\.co/g) || []).every(h => h === 'xrnaxhgdfqcquxpookpr.supabase.co'));
-ok('WO#21 the anon key stays empty until the release (Supabase off)', /var SB_ANON = '';/.test(SRC));
+{
+  // v8.0 release (2026-10-21): the anon key is in the page; it is the public key of the davis-care project (role anon).
+  const m = /var SB_ANON = '([A-Za-z0-9._-]+)';/.exec(SRC);
+  const payload = m ? JSON.parse(Buffer.from(m[1].split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) : {};
+  ok('WO#21 release: SB_ANON is the davis-care anon key (role anon, ref xrnaxhgdfqcquxpookpr), never service_role', !!m && payload.role === 'anon' && payload.ref === 'xrnaxhgdfqcquxpookpr');
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);
