@@ -215,9 +215,11 @@ safe('8', () => {
   c4.zone = 'overview';
   eq('8.20 the painted overview brings its chips (window 30, tech นัท)', (p => p && p.ui)(C.cachedPaint(c4, firstTab)), { window: 30, tech: 'นัท', venue: '' });
   eq('8.21 no chips stored: an empty set', (p => p && p.ui)(C.cachedPaint(C.cacheZone({}, mgr, 'repair', '', { a: 1 }, T0), firstTab)), {});
-  eq('8.22 the owner check: same LINE id keeps, another wipes, unknown keeps', [
+  // v8.2 (the owner's first v8 open, 21 Oct): a cache with no sub (v7.0 era) is adopted, never wiped —
+  // the wipe signed out the fresh Supabase session and linked a dead one. Only another sub wipes.
+  eq('8.22 the owner check: same LINE id keeps, another wipes, a cache with no sub is adopted, unknown keeps', [
     C.cacheOwner({ sub: 'U1', me: mgr }, 'U1'), C.cacheOwner({ sub: 'U1', me: mgr }, 'U2'), C.cacheOwner({ me: mgr }, 'U2'), C.cacheOwner({ sub: 'U1' }, ''), C.cacheOwner(null, 'U2'), C.cacheOwner({}, 'U2'),
-  ], ['keep', 'wipe', 'wipe', 'keep', 'keep', 'keep']);
+  ], ['keep', 'wipe', 'keep', 'keep', 'keep', 'keep']);
   ok('8.17 offline also when the LINE SDK cannot load and data is painted', /sdk\.onerror = function \(\) \{\s*if \(S\.me && S\.cachedAt\) \{ S\.offline = true; render\(\); return; \}/.test(SRC));
 });
 
@@ -734,7 +736,30 @@ async function section14() {
   eq('14.3 Supabase in time: no Apps Script call, past the deadline too', fp.log.fns, []);
 }
 
-section9().then(section10).then(section11).then(section13).then(section14).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 15. v8.2: a cache with no sub must not sign out the fresh Supabase session --------------------
+async function section15() {
+  const cacheNoSub = JSON.parse(cacheFor('manager')['davisPurchase.v1']); delete cacheNoSub.sub;
+  const subToken = sub => ({ getDecodedIDToken: () => ({ sub, exp: Date.now() / 1000 + 3600 }) });
+  // The owner's first v8 open: a v7.0-era cache (no sub), no Supabase session on the phone yet.
+  const f1 = makeFakeSb(sbTables(), {});
+  const p1 = bootPage(SRC, { sbOn: true, sb: f1.SB, local: { 'davisPurchase.v1': JSON.stringify(cacheNoSub) }, fetch: apiSb('manager', f1) });
+  await tick(60);
+  p1.lineLoads(subToken('U9'));
+  await tick(250);
+  const link1 = p1.log.calls.filter(c => c.fn === 'bdSupabaseLink')[0];
+  eq('15.1 an old cache with no sub: no sign-out, and the fresh anonymous session is the one linked', [f1.log.auth.indexOf('signOut'), link1 && link1.payload.authUid, f1.state.session && f1.state.session.user.id],
+    [-1, 'anon-1', 'anon-1']);
+  eq('15.2 … the cache is adopted: it now carries this person\'s sub, and the painted board was not wiped', [JSON.parse(p1.local.get('davisPurchase.v1')).sub, p1.log.fns[0]], ['U9', 'bdBoot']);
+  // Another LINE person on the phone (the cache's sub differs): sign out, and never link the session just signed out.
+  const f2 = makeFakeSb(sbTables(), {});
+  const p2 = bootPage(SRC, { sbOn: true, sb: f2.SB, local: { 'davisPurchase.v1': JSON.stringify(Object.assign({}, cacheNoSub, { sub: 'U1' })) }, fetch: apiSb('manager', f2) });
+  await tick(60);
+  p2.lineLoads(subToken('U2'));
+  await tick(250);
+  eq('15.3 another person\'s sub: the session is signed out and not linked (the next open links a fresh one)', [f2.log.auth.indexOf('signOut') >= 0, p2.log.fns.indexOf('bdSupabaseLink')], [true, -1]);
+}
+
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });
