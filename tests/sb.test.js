@@ -320,6 +320,22 @@ safe('8', () => {
   eq('8.6 no local row: nothing to patch (the Realtime row will come)', P.sbPatchFor('bdApprove', null, ret, {}), null);
 });
 
+// ---- 9. v9 phase 2: a bill is its uuid once the mirror carries one (p_legacy_id until then) ---------------
+safe('9', () => {
+  ok('9.0 sbBillIdFor', typeof P.sbBillIdFor === 'function');
+  const rows = JSON.parse(JSON.stringify(T.bills));
+  const b = rows[0], ts = P.sbBkkText(Date.parse(b.ts));
+  eq('9.1 no bill_id on the row yet: none (the call goes with p_legacy_id)', P.sbBillIdFor(rows, ts, b.submitter), '');
+  b.bill_id = '6f1c2c6e-0000-4000-8000-0000000000aa';
+  eq('9.2 the row carries bill_id: that uuid, found by the legacy key the card shows', P.sbBillIdFor(rows, ts, b.submitter), b.bill_id);
+  const moved = Object.assign({}, b, { id: b.bill_id, legacy_id: b.id });
+  eq('9.3 … also when the row\'s id is the uuid and the old key sits in legacy_id', P.sbBillIdFor([moved], ts, b.submitter), b.bill_id);
+  eq('9.4 the route then: p_bill_id', P.actionRoute({ action: 'bdBillReviewed', payload: { timestamp: ts, submitter: b.submitter, billId: b.bill_id, reviewed: true }, settings: { tickets: 'sheets', purchase: 'sheets', bills: 'supabase' } }).args,
+    { p_bill_id: b.bill_id, p_reviewed: true });
+  const local = Object.assign({}, b, { reviewed: false }), ret = { id: b.bill_id, bill_id: b.bill_id, reviewed: true, reviewed_by: 'หมีน้อย' };
+  eq('9.5 the answer\'s row (uuid id) patches the local row it is (same bill_id), keeping the local id', (p => p && [p.id, p.reviewed, p.reviewed_by])(P.sbPatchFor('bdBillReviewed', local, ret, {})), [b.id, true, 'หมีน้อย']);
+});
+
 // ---- 4. Realtime: the local row set -------------------------------------------------------
 safe('4', () => {
   const rows = [{ id: 'A', v: 1 }, { id: 'B', v: 1 }];

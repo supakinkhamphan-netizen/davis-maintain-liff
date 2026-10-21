@@ -729,7 +729,7 @@ async function section13() {
     /T\.settings = \[\{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' \}\];/.test(SRC));
   ok('13.5c … and the demo reads that row at its start, as the Supabase boot does (else every demo action took api())',
     /function demoSbStart\(\) \{[\s\S]*?sbReadSettings\(\);[\s\S]*?\n  \}/.test(SRC));
-  ok('13.4 BUILD v8.x · Supabase', /var BUILD = 'care-board v8\.\d · 2026-10-2\d · Supabase';/.test(SRC));
+  ok('13.4 BUILD v8.x/v9.x · Supabase', /var BUILD = 'care-board v[89]\.\d · 2026-10-2\d · Supabase( RPC)?';/.test(SRC));
 }
 
 // ---- 14. v8.1: a Supabase boot that never ends must not hold the board (reviewer, 21 Oct) ----------
@@ -895,6 +895,20 @@ async function section16() {
   await tick(200);
   const card = (textOf(mg.pg.app.innerHTML).split('Fairway_20261020_02')[1] || '').slice(0, 120);
   ok('16.11d the function\'s row arriving after the engine\'s card leaves the card as the engine drew it (ซ่อมมา, not รออนุมัติซื้อ)', /ซ่อมมา/.test(card) && !/รออนุมัติซื้อ/.test(card));
+
+  // Phase 2: the bills mirror carries bill_id (uuid): the tick goes by p_bill_id, and the answer (uuid id) is drawn at once.
+  const UUID = '6f1c2c6e-0000-4000-8000-0000000000aa';
+  const bu = sbDevice('account', { settings: ST(OFF, OFF, ON), fake: { rpc: { bill_review: args => ({ row: { id: args.p_bill_id, bill_id: args.p_bill_id, reviewed: args.p_reviewed, reviewed_by: 'หมีน้อย' }, events: [] }) } } });
+  await tick(10);
+  // The mirror gives the week's bill its uuid (the fake's emit writes its own table too).
+  const w0 = sbTables().bills.filter(x => x.week_off === 0)[0];
+  bu.fake.emit('bills', { type: 'UPDATE', row: Object.assign({}, w0, { bill_id: UUID }) });
+  await tick(150);
+  bu.pg.tap('zone', 'bills');
+  await tick(120);
+  bu.pg.change({ 'data-act': 'billTick', 'data-ts': '2026-10-19 15:00:00', 'data-sub': w0.submitter }, { checked: false });
+  await tick(120);
+  eq('16.11e bills cut over and the row carries bill_id: the tick goes by p_bill_id', bu.fake.log.rpc.map(x => x.args), [{ p_bill_id: UUID, p_reviewed: false }]);
 
   const r = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
   await tick(150);
