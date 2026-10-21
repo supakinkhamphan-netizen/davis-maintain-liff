@@ -836,6 +836,23 @@ async function section16() {
   await tick(120);
   eq('16.11 bills=supabase: the tick through bill_review {bill_id, reviewed}', [b.fake.log.rpc, b.pg.log.fns], [[{ fn: 'bill_review', args: { bill_id: bill.id, reviewed: false } }], []]);
 
+  // Addendum: the function's row carries the new status but the OLD card; the engine's card comes later by Realtime.
+  const stale = (args, T) => { const x = JSON.parse(JSON.stringify(T.tickets.filter(t => t.id === args.id)[0])); x.status = 'กำลังดำเนินการ'; return x; };
+  const st2 = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: stale }, rpcDelay: 150 } });
+  await tick(150);
+  const m0 = nApprovals(st2.pg.app.innerHTML), sel2 = st2.fake.log.selects.length;
+  st2.pg.tap('bdApprove', 'Fairway_20261020_02');
+  st2.pg.tap('bdConfirm');
+  await tick(30);
+  const truth = stale({ id: 'Fairway_20261020_02' }, sbTables());
+  st2.fake.emit('tickets', { type: 'UPDATE', row: truth });   // the truth columns, first
+  await tick(30);
+  st2.fake.emit('tickets', { type: 'UPDATE', row: approveRow({ id: 'Fairway_20261020_02' }, sbTables()) });   // then card + detail, rebuilt
+  await tick(30);
+  ok('16.11b two Realtime changes for the same job during the action: the button still says it is sending', /กำลังส่ง/.test(textOf(st2.pg.app.innerHTML)));
+  await tick(150);
+  eq('16.11c the function\'s row (old card) patched only the status and purchase: รออนุมัติ one fewer, no read', [m0 - nApprovals(st2.pg.app.innerHTML), st2.fake.log.selects.length - sel2], [1, 0]);
+
   const r = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
   await tick(150);
   const flip = Object.assign({ id: 'main' }, ST(OFF, ON, ON));

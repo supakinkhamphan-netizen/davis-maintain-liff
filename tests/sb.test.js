@@ -285,6 +285,30 @@ safe('7', () => {
   ], [{ kind: 'notCutOver' }, { kind: 'refused', message: 'คุณไม่มีสิทธิ์ทำขั้นนี้' }, { kind: 'network' }]);
 });
 
+// ---- 8. WO#23 addendum (engine 4e0d1c7): the returned row patches only what the action changed --------
+safe('8', () => {
+  ok('8.0 sbPatchFor', typeof P.sbPatchFor === 'function');
+  // The function returns the truth columns at once; card/detail/doc are rebuilt by the engine 1–3 s later (Realtime).
+  const local = JSON.parse(JSON.stringify(T.tickets.filter(r => r.status === 'รออนุมัติซื้อของ')[0]));
+  const ret = Object.assign(JSON.parse(JSON.stringify(local)), { status: 'กำลังดำเนินการ', updated_at: 'x' });   // card still the old one
+  const got = P.sbPatchFor('bdApprove', local, ret, { id: local.id, cap: 2000 });
+  eq('8.1 approve: the status (row and card) and the card\'s purchase block; every other field the local row\'s', [got.status, got.card.status, got.card.purchase.pending, got.card.purchase.cap,
+    got.card.problem === local.card.problem, JSON.stringify(got.detail) === JSON.stringify(local.detail), JSON.stringify(got.events) === JSON.stringify(local.events)],
+    ['กำลังดำเนินการ', 'กำลังดำเนินการ', false, 2000, true, true, true]);
+  eq('8.2 … and the local row is not touched', local.status, 'รออนุมัติซื้อของ');
+  const rj = P.sbPatchFor('bdReject', local, Object.assign({}, ret, { status: 'กำลังดำเนินการ' }), { id: local.id, reason: 'x' });
+  eq('8.3 reject: the status and the purchase block (no cap)', [rj.card.status, rj.card.purchase.pending, rj.card.purchase.cap], ['กำลังดำเนินการ', false, local.card.purchase.cap]);
+  const pr = JSON.parse(JSON.stringify(T.purchase[0]));
+  const pd = P.sbPatchFor('prOrdered', pr, Object.assign({}, pr, { status: 'approved', fulfilment: 'ordered' }), { id: pr.id });
+  eq('8.4 pr_*: the status and fulfilment it changed, row and doc; the rest of the doc the local one', [pd.status, pd.doc.status, pd.doc.fulfilment, pd.doc.items === undefined ? 'gone' : pd.doc.items.length],
+    ['approved', 'approved', 'ordered', pr.doc.items.length]);
+  const bl = JSON.parse(JSON.stringify(T.bills[0]));
+  eq('8.5 bill_review / bill_company: reviewed, reviewed_by, company', [P.sbPatchFor('bdBillReviewed', bl, Object.assign({}, bl, { reviewed: true, reviewed_by: 'หมีน้อย' }), {}).reviewed_by,
+    P.sbPatchFor('bdBillCompany', bl, Object.assign({}, bl, { company: 'House of Savoy Co., Ltd.' }), {}).company, P.sbPatchFor('bdBillCompany', bl, Object.assign({}, bl, { company: 'House of Savoy Co., Ltd.' }), {}).item],
+    ['หมีน้อย', 'House of Savoy Co., Ltd.', bl.item]);
+  eq('8.6 no local row: nothing to patch (the Realtime row will come)', P.sbPatchFor('bdApprove', null, ret, {}), null);
+});
+
 // ---- 4. Realtime: the local row set -------------------------------------------------------
 safe('4', () => {
   const rows = [{ id: 'A', v: 1 }, { id: 'B', v: 1 }];
