@@ -220,12 +220,14 @@ safe('8', () => {
   eq('8.22 the owner check: same LINE id keeps, another wipes, a cache with no sub is adopted, unknown keeps', [
     C.cacheOwner({ sub: 'U1', me: mgr }, 'U1'), C.cacheOwner({ sub: 'U1', me: mgr }, 'U2'), C.cacheOwner({ me: mgr }, 'U2'), C.cacheOwner({ sub: 'U1' }, ''), C.cacheOwner(null, 'U2'), C.cacheOwner({}, 'U2'),
   ], ['keep', 'wipe', 'keep', 'keep', 'keep', 'keep']);
-  ok('8.17 offline also when the LINE SDK cannot load and data is painted', /sdk\.onerror = function \(\) \{\s*if \(S\.me && S\.cachedAt\) \{ S\.offline = true; render\(\); return; \}/.test(SRC));
+  ok('8.17 offline also when the LINE SDK cannot load and data is painted', /sdk\.onerror = function \(\) \{[\s\S]{0,240}?\n\s*if \(S\.me && S\.cachedAt\) \{ S\.offline = true; render\(\); return; \}/.test(SRC));
 });
 
 // ---- 9. the page itself, booted in a fake browser (#18 §2.6, §2.3, §2.4, §2.5) ----------------
 const { bootPage, answer, offline } = require('./fake-browser');
 const tick = ms => new Promise(r => setTimeout(r, ms));
+// WO#23: with Supabase on, LINE's SDK script appears once the page needs it (a few ms after boot here).
+const sdkOf = async pg => { for (let i = 0; i < 200 && !pg.sdk; i++) await tick(1); };
 const firstOf = { manager: ['repair', 'bdRepairLive'], account: ['approvals', 'bdApprovals'], venue_manager: ['repair', 'bdRepairLive'] };
 const T9 = Date.now() - 3 * 3600000;
 // v7.1 (WO#19 B3): the line reads the cached answer's serverNow (the fixture's 12:00), not when the phone stored it.
@@ -266,10 +268,12 @@ async function section9() {
   }
   const cache = cacheFor('manager');
   const sdkDown = bootPage(SRC, { local: { 'davisPurchase.v1': cache['davisPurchase.v1'] }, fetch: offline });
+  await sdkOf(sdkDown);
   sdkDown.sdk.onerror();
   ok('9.3 the LINE SDK cannot load (airplane mode): painted data + the offline line, not the error page',
     textOf(sdkDown.app.innerHTML).indexOf('ไม่มีเน็ต · แสดงข้อมูลเมื่อ') >= 0 && textOf(sdkDown.app.innerHTML).indexOf(cache._id) >= 0);
   const bare = bootPage(SRC, { fetch: offline });
+  await sdkOf(bare);
   bare.sdk.onerror();
   ok('9.4 nothing cached and no LINE: the error page as before', textOf(bare.app.innerHTML).indexOf('เปิดบอร์ดไม่สำเร็จ') >= 0);
 
@@ -506,7 +510,7 @@ async function section11() {
   const m = sbDevice('manager');
   await tick(120);
   eq('11.1 manager, a linked device: me from people + lists, งานซ่อม from two ticket reads, no Apps Script call', [tablesOf(m.fake), m.pg.log.fns],
-    [['people', 'lists', 'tickets', 'tickets'], []]);
+    [['people', 'lists', 'settings', 'tickets', 'tickets'], []]);   // WO#23: + the settings row, never waited for
   ok('11.2 … the zone is drawn from the rows (ต้องดู, the cards)', textOf(m.pg.app.innerHTML).indexOf('ต้องดู') >= 0 && textOf(m.pg.app.innerHTML).indexOf('Mandrake_20261008_01') >= 0);
   m.pg.lineLoads();
   await tick(120);
@@ -547,7 +551,7 @@ async function section11() {
   a.pg.lineLoads();   // within the page's LINE wait (15 s; the fake browser cuts every timer to 30 ms)
   await tick(200);
   // Phase 2: รออนุมัติ reads Supabase too (phase 1 had it on Apps Script, ruling (4)).
-  eq('11.13 account: me and รออนุมัติ from Supabase, no Apps Script call', [tablesOf(a.fake), a.pg.log.fns], [['people', 'lists', 'tickets', 'purchase'], []]);
+  eq('11.13 account: me and รออนุมัติ from Supabase, no Apps Script call', [tablesOf(a.fake), a.pg.log.fns], [['people', 'lists', 'settings', 'tickets', 'purchase'], []]);
   ok('11.13b … the repair purchase and the branch requests drawn', textOf(a.pg.app.innerHTML).indexOf('Fairway_20261020_02') >= 0 && textOf(a.pg.app.innerHTML).indexOf('สบู่ล้างมือ') >= 0);
   const nA = a.fake.log.selects.length, cA = +((/รออนุมัติ (\d+)/.exec(textOf(a.pg.app.innerHTML)) || [])[1]);
   const pr2 = JSON.parse(JSON.stringify(sbTables().purchase.filter(r => r.id === 'PR_20261020_02')[0]));
@@ -570,7 +574,7 @@ async function section11() {
   pu.pg.lineLoads();
   await tick(200);
   eq('11.13g purchasing: the v5 board from purchase rows, no Apps Script call', [tablesOf(pu.fake), pu.pg.log.fns, textOf(pu.pg.app.innerHTML).indexOf('PR_20261020_0') >= 0],
-    [['people', 'lists', 'purchase'], [], true]);
+    [['people', 'lists', 'settings', 'purchase'], [], true]);
   pu.pg.tap('open', 'PR_20261020_01');
   await tick(60);
   ok('11.13h one request opens from the rows (no prDetail call)', pu.pg.log.fns.indexOf('prDetail') < 0 && textOf(pu.pg.app.innerHTML).indexOf('ส่งคำขอ') >= 0);
@@ -591,7 +595,7 @@ async function section11() {
     ['anon-1', { linked: true, uid: uidOf('manager') }]);
   const again = bootPage(SRC, { sbOn: true, sb: first.fake.SB, local: { 'davisCare.sb': first.pg.local.get('davisCare.sb') }, fetch: apiSb('manager', first.fake) });
   await tick(120);
-  eq('11.17 the next open on that device reads Supabase only', [again.log.fns, tablesOf(first.fake).slice(-4)], [[], ['people', 'lists', 'tickets', 'tickets']]);
+  eq('11.17 the next open on that device reads Supabase only', [again.log.fns, tablesOf(first.fake).slice(-5)], [[], ['people', 'lists', 'settings', 'tickets', 'tickets']]);
 
   const gone = sbDevice('manager', { unlinked: true });
   await tick(80);
@@ -629,11 +633,11 @@ async function section11() {
   await tick(200);
   ok('11.23 … still 401 after the refresh: that zone goes through Apps Script', r.pg.log.fns.indexOf('bdTechs') >= 0);
 
+  // WO#23 §1: a warm open loads no LINE SDK, so it cannot ask LINE who is holding the phone; the check
+  // (sign out, forget the link) runs whenever LINE loads: a first open, an api() call, the install line (15.3).
   const other = sbDevice('manager', { local: { 'davisPurchase.v1': JSON.stringify({ sub: 'U1', me: R('manager').bdWhoAmI, boards: {} }) } });
   await tick(120);
-  other.pg.lineLoads({ getDecodedIDToken: () => ({ sub: 'U2', exp: Date.now() / 1000 + 3600 }) });
-  await tick(80);
-  ok('11.24 another LINE person on this phone: the Supabase session is signed out and the link forgotten', other.fake.log.auth.indexOf('signOut') >= 0 && !other.pg.local.get('davisCare.sb'));
+  eq('11.24 a warm open asks LINE nothing: no SDK, so no other-person check on this open (WO#23 §1)', [!!other.pg.sdk, other.fake.log.auth.indexOf('signOut')], [false, -1]);
 }
 
 // ---- 12. phase 2: every zone drawn from rows = the v7.1 drawing of the engine's answer --------------
@@ -811,8 +815,8 @@ async function section16() {
   no.pg.tap('bdApprove', 'Fairway_20261020_02');
   no.pg.tap('bdConfirm');
   await tick(120);
-  eq('16.9 a refusal: the function\'s Thai message where v8.2 shows the API\'s, nothing else called', [no.pg.toast.textContent, /err/.test(no.pg.toast.className), no.pg.log.fns],
-    ['งานนี้ไม่ได้รออนุมัติแล้ว', true, []]);
+  eq('16.9 a refusal: the function\'s Thai message, red, where v8.2 shows the API\'s; nothing else called', [no.pg.toasts.slice(-1)[0], no.pg.log.fns],
+    [{ text: 'งานนี้ไม่ได้รออนุมัติแล้ว', err: true }, []]);
 
   const v = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: (args, T) => Object.assign(JSON.parse(JSON.stringify(T.purchase.filter(x => x.id === args.id)[0])), { status: 'cancelled' }) } } });
   await tick(150);

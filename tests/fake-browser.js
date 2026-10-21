@@ -18,6 +18,9 @@ function bootPage(SRC, o) {
     addEventListener(t, f) { this.listeners[t] = f; },
   });
   el('app'); el('toast');
+  // Every toast the page shows, with whether it was red (the page clears it on a timer the fake cuts to 30 ms).
+  const toasts = [];
+  (t => { let cls = ''; Object.defineProperty(t, 'className', { get: () => cls, set: v => { cls = v; if (/show/.test(v)) toasts.push({ text: t.textContent, err: /err/.test(v) }); } }); })(els.toast);
   const storage = m => ({ getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); } });
   const local = new Map(Object.entries(o.local || {})), session = new Map(Object.entries(o.session || {}));
   const appended = [], win = {}, sw = {};
@@ -69,7 +72,7 @@ function bootPage(SRC, o) {
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
   const pg = {
-    ctx, app: els.app, toast: els.toast, get sdk() { return appended.filter(x => /line-scdn/.test(x.src || ''))[0]; }, scripts: appended, win, sw, log, local, session, docL, intervals, clock, doc,
+    ctx, app: els.app, toast: els.toast, toasts, get sdk() { return appended.filter(x => /line-scdn/.test(x.src || ''))[0]; }, scripts: appended, win, sw, log, local, session, docL, intervals, clock, doc,
     set fetch(f) { swap.fetch = f; },
     /** A tap on the element carrying data-act (and data-k) — enough for the page's click handler. */
     tap(act, k) {
@@ -91,7 +94,10 @@ function bootPage(SRC, o) {
       init: () => Promise.resolve(), isLoggedIn: () => true, isInClient: () => false,
       getIDToken: () => 'ID', getAccessToken: () => 'AT', getDecodedIDToken: () => ({ exp: Date.now() / 1000 + 3600 }),
       getProfile: () => Promise.resolve({}), login: x => log.logins.push(x), logout: () => { log.logouts++; }, openWindow: x => log.opened.push(x),
-    }, liff || {}); pg.sdk.onload(); },
+    }, liff || {});
+      // WO#23: with Supabase on, the page adds LINE's SDK only when it needs it: fire it once it is there.
+      const go = () => { if (pg.sdk) pg.sdk.onload(); else setTimeout(go, 1); };
+      go(); },
   };
   return pg;
 }

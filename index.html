@@ -1312,6 +1312,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var vm = !!me && me.role === 'venue_manager', q;
     var TK = 'id,venue,status,live,created_ms,close_ms,seq,card,events';
     if (zone === 'me') return [{ table: 'people', params: { select: '*' } }, { table: 'lists', params: { select: 'doc', id: 'eq.main' } }];
+    if (zone === 'settings') return [{ table: 'settings', params: { select: '*', id: 'eq.main' } }];
     if (zone === 'repair') q = [{ table: 'tickets', params: { select: TK, live: 'is.true' } }, { table: 'tickets', params: { select: TK, close_ms: 'gte.' + (nowMs - 7 * SB_DAY) } }];
     else if (zone === 'tickets') {
       var p = { select: 'id,card' };
@@ -1584,6 +1585,46 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   /** A stats row: the engine's answer and when it was computed. */
   function sbStat(row) { return { data: row.doc, at: Date.parse(row.computed_at) }; }
+  // ---- WO#23 (v9): actions through Supabase RPC, routed by the settings row ----
+  /**
+   * Every board action and the database function that does it once its domain is on Supabase.
+   * Argument names are design §3.2's until team B's SQL lands: this map is the one place to change.
+   */
+  var SB_ACTIONS = {
+    bdApprove: { domain: 'tickets', fn: 'approve_purchase', args: function (p) { return { id: p.ticketId, cap: p.cap === undefined ? null : p.cap }; } },
+    bdReject: { domain: 'tickets', fn: 'reject_purchase', args: function (p) { return { id: p.ticketId, reason: p.reason }; } },
+    prCreate: { domain: 'purchase', fn: 'pr_create', args: function (p) { return { venue: p.venue, buyer: p.buyer, category: p.category, items: p.items, reason: p.reason }; } },
+    prDecide: { domain: 'purchase', fn: 'pr_decide', args: function (p) { return { id: p.id, lines: p.lines, note: p.note }; } },
+    prOrdered: { domain: 'purchase', fn: 'pr_ordered', args: function (p) { return { id: p.id, total: p.actualTotal, eta: p.eta }; } },
+    prDelivered: { domain: 'purchase', fn: 'pr_delivered', args: function (p) { return { id: p.id }; } },
+    prReceived: { domain: 'purchase', fn: 'pr_received', args: function (p) { return { id: p.id }; } },
+    prCancel: { domain: 'purchase', fn: 'pr_cancel', args: function (p) { return { id: p.id }; } },
+    bdBillReviewed: { domain: 'bills', fn: 'bill_review', args: function (p) { return { bill_id: p.billId || p.timestamp + '_' + p.submitter, reviewed: !!p.reviewed }; } },
+    bdBillCompany: { domain: 'bills', fn: 'bill_company', args: function (p) { return { bill_id: p.billId || p.timestamp + '_' + p.submitter, company: p.company }; } },
+  };
+  /** The settings row: each domain's record of truth; anything but 'supabase' is the sheets. */
+  function sbSettingsOf(row) {
+    var d = function (k) { return row && row['record_of_truth_' + k] === 'supabase' ? 'supabase' : 'sheets'; };
+    return { tickets: d('tickets'), purchase: d('purchase'), bills: d('bills') };
+  }
+  /**
+   * Where one action goes: {via:'rpc', fn, args} when its domain is on Supabase, else
+   * {via:'api', fn, payload} exactly as v8.2. A request with photos stays on Apps Script
+   * (no Storage this stage: the engine uploads them and calls the function itself).
+   */
+  function actionRoute(o) {
+    var a = SB_ACTIONS[o.action], p = o.payload || {};
+    if (!a || !o.settings || o.settings[a.domain] !== 'supabase' || (p.photoDataUrls && p.photoDataUrls.length)) return { via: 'api', fn: o.action, payload: p };
+    return { via: 'rpc', fn: a.fn, args: a.args(p) };
+  }
+  /** LINE's SDK: only on a first open (no session, no link) or for something that needs LINE. */
+  function needLine(o) { return !o.session || !o.linked || ['chat', 'openWindow', 'install', 'api'].indexOf(o.intent) >= 0; }
+  /** What a failed function call means: the engine's NOT_CUT_OVER, a refusal (its Thai words), or no network. */
+  function sbRpcFailure(e) {
+    if (!e || !e.status) return { kind: 'network' };
+    if (/NOT_CUT_OVER/.test(e.message || '')) return { kind: 'notCutOver' };
+    return { kind: 'refused', message: e.message };
+  }
   /**
    * window.SB: supabase-js (vendored, loaded on first use) keeps the anonymous session and
    * carries Realtime; reads are plain fetch to PostgREST with the session's token.
@@ -1623,6 +1664,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
             });
           },
         };
+      },
+      /** WO#23: a database function; its row, or an Error carrying status, code and its message. */
+      rpc: function (fn, args) {
+        var h = { apikey: o.anon, Authorization: 'Bearer ' + token, 'Content-Profile': o.schema, 'Accept-Profile': o.schema, 'Content-Type': 'application/json' };
+        return o.fetch(o.url + '/rest/v1/rpc/' + fn, { method: 'POST', headers: h, body: JSON.stringify(args || {}) }).then(function (r) {
+          return r.json().then(null, function () { return null; }).then(function (b) {
+            if (!r.ok) { var e = new Error((b && b.message) || 'Supabase ' + r.status); e.status = r.status; e.code = b && b.code; throw e; }
+            return b;
+          });
+        });
       },
       subscribe: function (table, filter, cb) {
         var id = 'sb' + (++next);
@@ -2105,6 +2156,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     loginAfterSheet: false,   // v7.1: the sheet came before LINE Login; closing it logs in
     // WO#21: the zone reads Supabase; its rows (งานซ่อม), the lists, and when a stats row was computed.
     sb: false, sbRows: {}, sbLists: null, statsAt: 0,
+    settings: null,   // WO#23: {tickets, purchase, bills} → 'supabase' | 'sheets'; null = all sheets
   };
   var bootFirst = null;   // WO#19 B1: bdBoot's first zone, used once by startWith
 
@@ -2459,11 +2511,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   function after(promise, okText, id) {
     if (id) { S.sending[id] = true; if (!S.sheet) render(); }
-    return promise.then(function () {
+    return promise.then(function (res) {
       if (okText) toast(okText);
       S.sheet = null; S.openMenu = '';
       if (id) delete S.sending[id];
-      if (S.view === 'detail') openDetail(S.detailId); else { render(); load(true); }
+      // WO#23: a function's row is already drawn; Apps Script's answer is read again as v8.2.
+      if (S.view === 'detail') openDetail(S.detailId); else { render(); if (!(res && res.__rpc)) load(true); }
     }, function (e) { if (id) delete S.sending[id]; toast(e.message, true); render(); });
   }
   function sendDecision(r, whole, reason) {
@@ -2471,7 +2524,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var lines = buildDecideLines(r, checked, reason);
     var plan = decisionPlan(r, checked, S.me.highAmount);
     delete S.checks[r.id];
-    return after(api('prDecide', { id: r.id, lines: lines, note: whole ? String(reason || '').trim() : '' }),
+    return after(doAction('prDecide', { id: r.id, lines: lines, note: whole ? String(reason || '').trim() : '' }),
       plan.wholeReject ? 'ไม่อนุมัติ ' + r.id + ' แล้ว' : (plan.rejected.length ? 'อนุมัติบางส่วน ' + r.id + ' แล้ว' : 'อนุมัติ ' + r.id + ' แล้ว'), r.id);
   }
 
@@ -2585,7 +2638,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       items: f.items.map(function (it) { return { name: it.name, qty: Number(it.qty), unit: it.unit, unitPrice: priceOf(it.price), from: f.buyer === 'purchasing' ? it.from : '' }; }),
       reason: f.reason, photoDataUrls: f.photos,
     };
-    api('prCreate', payload).then(function (res) {
+    doAction('prCreate', payload).then(function (res) {
       var from = { tab: S.tab, venue: S.venue };
       S.form = null; S.view = 'list';
       S.tab = S.me.role === 'venue_manager' ? 'active' : 'pending'; S.venue = '';
@@ -2676,7 +2729,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       }
       case 'confirmApprove': el.disabled = true; sendDecision(findRow(S.sheet.id), false, ''); return;
       case 'cancel': S.sheet = { kind: 'cancel', id: k }; render(); return;
-      case 'confirmCancel': el.disabled = true; after(api('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
+      case 'confirmCancel': el.disabled = true; after(doAction('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
       case 'ordered': S.sheet = { kind: 'ordered', id: k }; render(); return;
       case 'confirmOrdered': {
         var fl = S.fields[k] || {};
@@ -2684,21 +2737,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
         if (a === null || isNaN(a) || a <= 0) { fl.err = L.err.actualTotal; render(); return; }
         if (!String(fl.eta || '').trim()) { fl.err = L.err.eta; render(); return; }
         fl.err = ''; el.disabled = true; el.textContent = 'กำลังบันทึก…'; el.className = 'actionBtn busy';
-        after(api('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k, k).then(function () { delete S.fields[k]; });
+        after(doAction('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k, k).then(function () { delete S.fields[k]; });
         return;
       }
-      case 'delivered': after(api('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k, k); return;
-      case 'received': after(api('prReceived', { id: k }), 'รับของแล้ว · ' + k, k); return;
+      case 'delivered': after(doAction('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k, k); return;
+      case 'received': after(doAction('prReceived', { id: k }), 'รับของแล้ว · ' + k, k); return;
     }
   });
   app.addEventListener('change', function (ev) {
     var el = ev.target;
     if (el.getAttribute('data-act') === 'billTick' || el.getAttribute('data-act') === 'billCompany') {
       var isTick = el.getAttribute('data-act') === 'billTick';
-      var call = isTick ? api('bdBillReviewed', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), reviewed: el.checked })
-        : api('bdBillCompany', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), company: el.value });
+      var call = isTick ? doAction('bdBillReviewed', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), reviewed: el.checked })
+        : doAction('bdBillCompany', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), company: el.value });
       el.disabled = true;
-      call.then(function () { toast(isTick ? (el.checked ? 'ตรวจแล้ว' : 'ยกเลิกตรวจแล้ว') : 'บันทึกบริษัทแล้ว'); loadZone(true); },
+      call.then(function (res) { toast(isTick ? (el.checked ? 'ตรวจแล้ว' : 'ยกเลิกตรวจแล้ว') : 'บันทึกบริษัทแล้ว'); if (!(res && res.__rpc)) loadZone(true); },
         function (e) { toast(e.message, true); loadZone(true); });
       return;
     }
@@ -2810,15 +2863,15 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var h = '<div class="sheetWrap" data-act="closeCsheet"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-stop="1">';
     if (sh.kind === 'approve') {
       h += '<h2 id="sheetTitle" class="sheetTitle">อนุมัติซื้อของ · ' + esc(sh.id) + '</h2><p class="sheetHint">' + esc(sh.text || '') + '</p>' +
-        '<button type="button" class="actionBtn" data-act="bdConfirm">✓ อนุมัติ</button>';
+        '<button type="button" class="actionBtn" data-act="bdConfirm"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>✓ อนุมัติ') + '</button>';
     } else if (sh.kind === 'cap') {
       h += '<h2 id="sheetTitle" class="sheetTitle">กำหนดวงเงิน · ' + esc(sh.id) + '</h2><p class="sheetHint">ช่างซื้อได้ไม่เกินยอดนี้ บิลที่เกินจะขึ้นแดงในกลุ่ม</p>' +
         '<div class="miniform"><input id="capIn" inputmode="decimal" data-csheet="cap" value="' + esc(sh.cap || '') + '" placeholder="เช่น 2,000"></div>' +
-        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmCap">✓ อนุมัติด้วยวงเงินนี้</button>';
+        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmCap"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>✓ อนุมัติด้วยวงเงินนี้') + '</button>';
     } else if (sh.kind === 'reject') {
       h += '<h2 id="sheetTitle" class="sheetTitle">ไม่อนุมัติ · ' + esc(sh.id) + '</h2><p class="sheetHint">เหตุผลจะส่งถึงช่างในกลุ่ม</p>' +
         '<div class="miniform"><textarea id="whyIn" data-csheet="reason" placeholder="เช่น ใช้ของในสต๊อกก่อน">' + esc(sh.reason || '') + '</textarea></div>' +
-        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmReject">ยืนยัน · ไม่อนุมัติ</button>';
+        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmReject"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>ยืนยัน · ไม่อนุมัติ') + '</button>';
     }
     return h + '<button type="button" class="sheetBtn cancel" data-act="closeCsheet">ยกเลิก</button></section></div>';
   }
@@ -2831,7 +2884,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     return all.filter(function (c) { return c.id === id; })[0] || null;
   }
   function careDone(promise, okText) {
-    return promise.then(function () { toast(okText); S.csheet = null; S.openMenu = ''; render(); loadZone(true); },
+    return promise.then(function (res) { toast(okText); S.csheet = null; S.openMenu = ''; render(); if (!(res && res.__rpc)) loadZone(true); },
       function (e) { toast(e.message, true); if (S.csheet) S.csheet.busy = false; render(); });
   }
   function openTicket(id) {
@@ -2916,21 +2969,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'closeCsheet': S.csheet = null; render(); return true;
       case 'bdConfirm':
         if (S.csheet.busy) return true;
-        S.csheet.busy = true; el.disabled = true;
-        careDone(api('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+        S.csheet.busy = true; el.disabled = true; render();
+        careDone(doAction('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
       case 'bdConfirmCap': {
         var cap = priceOf(S.csheet.cap);
         if (cap === null || isNaN(cap) || cap <= 0) { S.csheet.err = 'ใส่วงเงินเป็นตัวเลขมากกว่า 0'; render(); return true; }
         if (S.csheet.busy) return true;
-        S.csheet.busy = true; el.disabled = true;
-        careDone(api('bdApprove', { ticketId: S.csheet.id, cap: cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
+        S.csheet.busy = true; el.disabled = true; render();
+        careDone(doAction('bdApprove', { ticketId: S.csheet.id, cap: cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
       }
       case 'bdConfirmReject': {
         var why = String(S.csheet.reason || '').trim();
         if (!why) { S.csheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return true; }
         if (S.csheet.busy) return true;
-        S.csheet.busy = true; el.disabled = true;
-        careDone(api('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+        S.csheet.busy = true; el.disabled = true; render();
+        careDone(doAction('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
       }
     }
     return false;
@@ -3080,7 +3133,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'installLine':
         if (S.hint !== 'line') { S.isheet = S.hint; render(); return true; }
         if (DEMO) { toast('(ตัวอย่าง) เปิดเบราว์เซอร์ของเครื่อง'); return true; }
-        liff.openWindow({ url: installUrl(location.href), external: true });
+        loadLine().then(function () { liff.openWindow({ url: installUrl(location.href), external: true }); }, function (e) { toast(e.message, true); });
         return true;
       case 'installGo': {
         var ask = installPrompt;
@@ -3287,6 +3340,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       S.sbLists = (res[1].rows[0] || {}).doc || {};
       if (sbPhase !== 'trying') return;   // another LINE person came in meanwhile
       S.sb = true; sbPhase = 'on';
+      sbReadSettings();   // never waited for: absent = every domain on the sheets
       startWith(sbMe(person, S.sbLists, Date.now()));
     }).catch(function () {
       if (sbPhase !== 'trying') return;   // the deadline came first: no second boot
@@ -3296,7 +3350,52 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function sbGiveUp() {
     S.sb = false;
     sbPhase = 'fallback';
-    if (sbLiffReady) boot();
+    if (sbLiffReady) boot(); else loadLine();   // its onload boots (sbPhase is fallback)
+  }
+  // ---- WO#23: actions ----
+  var sbSetSub = null;
+  /** The settings row (each domain's record of truth), kept current by Realtime. */
+  function sbReadSettings() {
+    return sbRead(sbQueryFor('settings', S.me, {}, 0)[0]).then(function (r) {
+      if (!r.rows[0]) return;
+      S.settings = sbSettingsOf(r.rows[0]);
+      if (!sbSetSub) sbSetSub = SB.subscribe('settings', 'id=eq.main', function (c) { if (c.row) S.settings = sbSettingsOf(c.row); });
+    }, function () { /* the sheets, as v8.2 */ });
+  }
+  /** api() needs LINE's token: load the SDK first if this open has not. */
+  function apiWithLine(fn, payload) { return DEMO ? api(fn, payload) : loadLine().then(function () { return api(fn, payload); }); }   // the demo never needs LINE
+  /**
+   * One board action: its database function when its domain is on Supabase (the row it returns is
+   * drawn at once; the Realtime echo changes nothing), else Apps Script as v8.2. NOT_CUT_OVER (the
+   * engine's net) → api() once, and the settings row read again.
+   */
+  function doAction(action, payload) {
+    var route = actionRoute({ action: action, payload: payload, settings: S.sb ? S.settings : null });
+    if (route.via === 'api') return apiWithLine(action, payload);
+    return SB.rpc(route.fn, route.args).then(function (row) {
+      sbTakeRow(SB_ACTIONS[action].domain, row);
+      var out = row && typeof row === 'object' ? row : {};
+      out.__rpc = true;
+      return out;
+    }, function (e) {
+      var f = sbRpcFailure(e);
+      if (f.kind === 'notCutOver') { sbReadSettings(); return apiWithLine(action, payload); }
+      throw new Error(f.kind === 'network' ? L.err.network : f.message);
+    });
+  }
+  /** A row a function returned, into every local set that holds its table; the zone drawn again. */
+  function sbTakeRow(domain, row) {
+    if (!row || typeof row !== 'object' || !row.id) return;
+    var c = { type: 'UPDATE', row: JSON.parse(JSON.stringify(row)) };
+    if (domain === 'tickets') { if (S.sbRows.repair) S.sbRows.repair = sbApply(S.sbRows.repair, c); if (S.sbRows.apT) S.sbRows.apT = sbApply(S.sbRows.apT, c); }
+    if (domain === 'purchase') { if (S.sbRows.purchase) S.sbRows.purchase = sbApply(S.sbRows.purchase, c); if (S.sbRows.apP) S.sbRows.apP = sbApply(S.sbRows.apP, c); }
+    if (domain === 'bills' && S.sbRows.bills) S.sbRows.bills = sbApply(S.sbRows.bills, c);
+    var z = S.zone || 'purchase';
+    if (z === 'repair' && S.sbRows.repair) S.z.repair = sbRepairView();
+    else if (z === 'approvals' && S.sbRows.apT) { S.z.approvals = sbApprovalsView(); S.board = { rows: S.z.approvals.branch }; }
+    else if (z === 'bills' && S.sbRows.bills) S.z.bills = sbBillsView();
+    else if (z === 'purchase' && S.sbRows.purchase) { sbPurchaseView(); return; }
+    if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
   }
   function sbLinkNow() {
     var s = sbNeedLink;
@@ -3357,7 +3456,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     render();
     return;
   }
-  if (SB_ON) sbBoot();   // WO#21: Supabase first; LINE loads beside it, for the actions
+  // WO#23: LINE's SDK only when something needs it (the v7.1 boot, a first open, an api() call, the install line).
+  var lineP = null, lineDone = null, lineFail = null;
+  function loadLine() {
+    if (lineP) return lineP;
+    lineP = new Promise(function (resolve, reject) { lineDone = resolve; lineFail = reject; });
+    lineP.catch(function () {});
   var sdk = document.createElement('script');
   sdk.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
   sdk.onload = function () {
@@ -3375,13 +3479,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       try { liff.getProfile().then(function (p) { if (p && p.pictureUrl) { S.avatar = p.pictureUrl; if (S.view === 'list' && !S.sheet) render(); } }, function () {}); } catch (e) { /* keep the initial */ }
       authReadyResolve();
       sbLiffReady = true;
+      lineDone();
       if (sbPhase !== 'trying' && sbPhase !== 'on') boot();   // on Supabase, LINE is for the actions only
-    }, function () { S.hint = pwaHint(false); authReadyResolve(); sbLiffReady = true; if (sbPhase !== 'trying' && sbPhase !== 'on') boot(); });
+    }, function () { S.hint = pwaHint(false); authReadyResolve(); sbLiffReady = true; lineDone(); if (sbPhase !== 'trying' && sbPhase !== 'on') boot(); });
   };
   sdk.onerror = function () {
+    lineFail(new Error(L.err.network));
+    if (S.sb) return;   // on Supabase the board is up; only the action that needed LINE says so
     if (S.me && S.cachedAt) { S.offline = true; render(); return; }
     S.notice = { title: 'เปิดบอร์ดไม่สำเร็จ', text: 'โหลดไลน์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วเปิดใหม่' }; render(); };
   document.head.appendChild(sdk);
+    return lineP;
+  }
+  // Inside LINE without the SDK yet: its browser says LIFF; the SDK confirms when it comes.
+  S.hint = pwaHint(/\bLIFF\b/.test(navigator.userAgent || ''));
+  if (SB_ON) sbBoot(); else loadLine();
 })();
 </script>
 </body>
