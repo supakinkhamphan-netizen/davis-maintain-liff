@@ -2562,7 +2562,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       if (id) delete S.sending[id];
       // WO#23: a function's row is already drawn; Apps Script's answer is read again as v8.2.
       if (S.view === 'detail') openDetail(S.detailId); else { render(); if (!(res && res.__rpc)) load(true); }
-    }, function (e) { if (id) delete S.sending[id]; toast(e.message, true); render(); });
+    }, function (e) { if (id) delete S.sending[id]; if (S.sheet) S.sheet.busy = false; toast(e.message, true); render(); });
   }
   function sendDecision(r, whole, reason) {
     var checked = whole ? {} : checksOf(r);
