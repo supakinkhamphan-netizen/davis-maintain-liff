@@ -1480,7 +1480,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     (rows || []).slice().sort(function (a, b) { return a.ts < b.ts ? -1 : 1; }).forEach(function (b) {
       var g = by[b.company];
       if (!g) { g = by[b.company] = { company: b.company, unassigned: !!b.unassigned, total: 0, reviewed: 0, count: 0, bills: [] }; groups.push(g); }
-      g.bills.push({ timestamp: b.ts, day: b.day, submitter: b.submitter, item: b.item, amount: Number(b.amount) || 0, ticketId: b.ticket_id || '',
+      // ts is timestamptz; the engine shows normalizeTimestamp_'s Bangkok text.
+      g.bills.push({ timestamp: /T/.test(String(b.ts)) ? sbBkkText(Date.parse(b.ts)) : b.ts, day: b.day, submitter: b.submitter, item: b.item, amount: Number(b.amount) || 0, ticketId: b.ticket_id || '',
         venue: b.venue || '', location: b.location || '', reviewed: !!b.reviewed, reviewedBy: b.reviewed_by || '', photo: b.photo || '', photoFull: b.photo_full || '' });
       g.total += Number(b.amount) || 0; g.count++;
       if (b.reviewed) g.reviewed++;
