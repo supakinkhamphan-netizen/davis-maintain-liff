@@ -853,6 +853,17 @@ async function section16() {
   await tick(150);
   eq('16.11c the function\'s row (old card) patched only the status and purchase: รออนุมัติ one fewer, no read', [m0 - nApprovals(st2.pg.app.innerHTML), st2.fake.log.selects.length - sel2], [1, 0]);
 
+  // The engine's card arrives by Realtime BEFORE the function's (stale-card) row: the patch must not put the old card back.
+  const mg = sbDevice('manager', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: stale }, rpcDelay: 150 } });
+  await tick(150);
+  mg.pg.tap('bdApprove', 'Fairway_20261020_02');
+  mg.pg.tap('bdConfirm');
+  await tick(40);
+  mg.fake.emit('tickets', { type: 'UPDATE', row: approveRow({ id: 'Fairway_20261020_02' }, sbTables()) });
+  await tick(200);
+  const card = (textOf(mg.pg.app.innerHTML).split('Fairway_20261020_02')[1] || '').slice(0, 120);
+  ok('16.11d the function\'s row arriving after the engine\'s card leaves the card as the engine drew it (ซ่อมมา, not รออนุมัติซื้อ)', /ซ่อมมา/.test(card) && !/รออนุมัติซื้อ/.test(card));
+
   const r = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
   await tick(150);
   const flip = Object.assign({ id: 'main' }, ST(OFF, ON, ON));
