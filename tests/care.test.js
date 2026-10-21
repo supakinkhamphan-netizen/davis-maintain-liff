@@ -542,7 +542,34 @@ async function section11() {
   const a = sbDevice('account');
   a.pg.lineLoads();   // within the page's LINE wait (15 s; the fake browser cuts every timer to 30 ms)
   await tick(200);
-  eq('11.13 account: me from Supabase, รออนุมัติ still through Apps Script in phase 1 (ruling (4)), never bdBoot', [tablesOf(a.fake), a.pg.log.fns], [['people', 'lists'], ['bdApprovals']]);
+  // Phase 2: รออนุมัติ reads Supabase too (phase 1 had it on Apps Script, ruling (4)).
+  eq('11.13 account: me and รออนุมัติ from Supabase, no Apps Script call', [tablesOf(a.fake), a.pg.log.fns], [['people', 'lists', 'tickets', 'purchase'], []]);
+  ok('11.13b … the repair purchase and the branch requests drawn', textOf(a.pg.app.innerHTML).indexOf('Fairway_20261020_02') >= 0 && textOf(a.pg.app.innerHTML).indexOf('สบู่ล้างมือ') >= 0);
+  const nA = a.fake.log.selects.length, cA = +((/รออนุมัติ (\d+)/.exec(textOf(a.pg.app.innerHTML)) || [])[1]);
+  const pr2 = JSON.parse(JSON.stringify(sbTables().purchase.filter(r => r.id === 'PR_20261020_02')[0]));
+  pr2.status = pr2.doc.status = 'approved';
+  a.fake.emit('purchase', { type: 'UPDATE', row: pr2 });
+  await tick(30);
+  eq('11.13c a branch request decided elsewhere leaves รออนุมัติ by Realtime, no read', [cA - +((/รออนุมัติ (\d+)/.exec(textOf(a.pg.app.innerHTML)) || [])[1]), a.fake.log.selects.length - nA], [1, 0]);
+  a.pg.tap('zone', 'bills');
+  await tick(120);
+  eq('11.13d บิล: the week\'s rows and its stats row; the sheet link is a tap', [a.fake.log.selects.slice(-2).map(q => [q.table, q.params.week_off || q.params.id]), /data-act="billDoc"/.test(a.pg.app.innerHTML), /href=""/.test(a.pg.app.innerHTML)],
+    [[['bills', 'eq.0'], ['stats', 'eq.billweek|0']], true, false]);
+  a.pg.tap('billDoc');
+  await tick(60);
+  const bl = a.pg.log.calls.filter(c => c.fn === 'bdExecLink').slice(-1)[0];
+  eq('11.13e … minted on the tap for this week (bdExecLink page=billweek)', [bl && bl.payload, a.pg.log.windows.length], [{ page: 'billweek', week: 0 }, 1]);
+  a.pg.tap('billWeek', 'all');
+  await tick(60);
+  ok('11.13f ทั้งหมด from the stats row, no Apps Script call', a.pg.log.fns.indexOf('bdBills') < 0 && textOf(a.pg.app.innerHTML).indexOf('870') >= 0);
+  const pu = sbDevice('purchasing');
+  pu.pg.lineLoads();
+  await tick(200);
+  eq('11.13g purchasing: the v5 board from purchase rows, no Apps Script call', [tablesOf(pu.fake), pu.pg.log.fns, textOf(pu.pg.app.innerHTML).indexOf('PR_20261020_0') >= 0],
+    [['people', 'lists', 'purchase'], [], true]);
+  pu.pg.tap('open', 'PR_20261020_01');
+  await tick(60);
+  ok('11.13h one request opens from the rows (no prDetail call)', pu.pg.log.fns.indexOf('prDetail') < 0 && textOf(pu.pg.app.innerHTML).indexOf('ส่งคำขอ') >= 0);
 
   const off = sbDevice('manager', { href: 'https://davis.example/davis-maintain-liff/?sb=0' });
   off.pg.lineLoads();

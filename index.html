@@ -2057,6 +2057,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   // ---- loading ----------------------------------------------------------------
   function load(silent) {
     if (S.zone && S.zone !== 'purchase') return loadZone(silent);
+    if (S.sb && S.me) return sbLoadPurchase(silent);   // WO#21: the v5 tabs from purchase rows
     if (!S.me || S.busy) return Promise.resolve();
     S.busy = true;
     // A1.3: the answer is for the tab and shop on screen when it was asked; if
@@ -2290,6 +2291,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   function openDetail(id) {
     S.view = 'detail'; S.detailId = id; S.detail = null; S.openMenu = ''; render(); window.scrollTo(0, 0);
+    var row = S.sb ? (S.sbRows.purchase || []).filter(function (r) { return r.id === id; })[0] : null;
+    if (row) { S.detail = sbPrDetail(row, S.me.uid, careNow()); render(); return; }
     api('prDetail', { id: id }).then(function (res) { S.detail = res; render(); }, function (e) { toast(e.message, true); S.view = 'list'; render(); });
   }
 
@@ -2674,6 +2677,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     else body = '';
     // WO#21: a stats row has no page link (it needs the reader's token): minted on the tap.
     if (z === 'overview' && d && S.sb && !d.pageUrl) body += '<button type="button" class="sheetBtn linkBtn" data-act="execLink">เปิดหน้าเว็บเดิม (PDF/CSV) ↗</button>';
+    // … and the bill sheet's link, the same way (bdExecLink page=billweek).
+    if (z === 'bills' && d && S.sb && !d.docUrl) body = body.replace('<a class="sheetBtn linkBtn" href="" target="_blank" rel="noopener">เปิดเอกสารวางบิล ↗</a>', '<button type="button" class="sheetBtn linkBtn" data-act="billDoc">เปิดเอกสารวางบิล ↗</button>');
     var open = S.openMenu;
     if (open) body = body.replace('<div class="moreMenu" data-menu="' + esc(open) + '">', '<div class="moreMenu open" data-menu="' + esc(open) + '">');
     return header() + zoneBarHtml(zonesOf(me), z, zoneCounts()) + '<main id="list" class="zone-' + z + '">' + body + '</main>';
@@ -2746,7 +2751,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'openTicket': openTicket(k); return true;
       case 'closeTicket': S.view = S.ticketFrom === 'tech' && S.tech ? 'tech' : 'list'; S.ticket = null; render(); return true;
       case 'billWeek':
-        if (k === 'all') { u.all = true; render(); return true; }
+        if (k === 'all') {
+          u.all = true; render();
+          // WO#21: ทั้งหมด is in the week's stats row; a mirror without it asks Apps Script once.
+          if (S.z.bills && !S.z.bills.all) api('bdBills', { weekOffset: u.week || 0 }).then(function (r) { if (S.z.bills) { S.z.bills.all = r.all; render(); } }, function (e) { toast(e.message, true); });
+          return true;
+        }
         u.all = false; u.week = Number(k); S.z.bills = null; render(); loadZone(); return true;
       case 'tlStatus': u.status = k; S.z.tickets = null; render(); loadZone(); return true;
       case 'tlMore': {
@@ -2760,6 +2770,13 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
         return true;
       }
       case 'bdMore': S.openMenu = S.openMenu === k ? '' : k; render(); return true;
+      case 'billDoc': {
+        var bwin = window.open('', '_blank');
+        api('bdExecLink', { page: 'billweek', week: u.week || 0 }).then(function (r) {
+          if (bwin) bwin.location.href = r.pageUrl; else location.href = r.pageUrl;
+        }, function (e) { if (bwin) bwin.close(); toast(e.message, true); });
+        return true;
+      }
       case 'execLink': {
         // The window opens on the tap itself (a window opened after an await is blocked).
         var win = window.open('', '_blank'), ov = zuiOf('overview');
@@ -2982,8 +2999,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 
   // ---- work order #21: Supabase -----------------------------------------------------------
   var SB_ON = !DEMO_MODE && sbEnabled({ url: SB_URL, anon: SB_ANON, qs: QS });
-  // Phase 1 zones on Supabase; รออนุมัติ, ขอซื้อ and บิล stay on Apps Script until phase 2 (ruling (4)).
-  var SB_PHASE1 = ['repair', 'tickets', 'overview', 'techs'];
+  // The zones on Supabase (phase 2: every zone; a ช่าง chip on ภาพรวม still asks Apps Script).
+  var SB_PHASE1 = ['repair', 'tickets', 'overview', 'techs', 'approvals', 'bills'];   // + ขอซื้อ through load()
   var SB_STORE = 'davisCare.sb', SB_LINK_ONCE = 'davisCare.sbLink';
   var SB_FALL = new Error('sb: v7.1 boot'), SB_NOROW = new Error('sb: no row');
   var sbPhase = SB_ON ? 'trying' : 'off';   // trying → on, or fallback (bdBoot)
@@ -3011,15 +3028,60 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var u = zuiOf('repair');
     return sbRepairLive(S.sbRows.repair || [], u.venue || '', u.limit || 200, careNow(), sbSla(), (S.sbLists || {}).hotels);
   }
+  function sbApprovalsView() {
+    return sbApprovals((S.sbRows.apT || []).filter(function (r) { return !!(r.card && r.card.purchase); }),
+      (S.sbRows.apP || []).filter(function (r) { return r.status === 'pending'; }), S.me.uid, careNow());
+  }
+  function sbBillsView() {
+    var d = sbBillsWeek(S.sbRows.bills || [], S.sbBillDoc);
+    d.docUrl = '';   // the reader's token: minted on the tap (billDoc)
+    return d;
+  }
+  /** The v5 tab on screen from the purchase rows: the board, the counts, ตามร้าน, the receipt strip. */
+  function sbPurchaseView() {
+    var rows = S.sbRows.purchase || [], hotels = (S.sbLists || {}).hotels || [], now = careNow();
+    if (S.tab === 'byshop') {
+      S.shops = aggregateByShop(sbPrBoard(rows, S.me, 'all', '', '', hotels, now).rows, hotels, S.month);
+    } else {
+      var b = sbPrBoard(rows, S.me, scopeOfTab(S.tab), S.venue, '', hotels, now);
+      if (S.tab === 'active' || S.tab === 'done') b.mineRows = b.rows;
+      S.board = b; S.counts = b.counts;
+      S.receipt = S.tab === 'tobuy' ? receiptSection(sbPrBoard(rows, S.me, 'all', S.venue, '', hotels, now).rows, S.venue) : null;
+    }
+    S.lastLoad = Date.now(); S.cachedAt = 0; S.offline = false; S.statsAt = 0;
+    if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
+  }
+  function sbLoadPurchase(silent) {
+    if (S.busy) return Promise.resolve();
+    S.busy = true;
+    return sbRead(sbQueryFor('purchase', S.me, {}, 0)[0]).then(function (r) {
+      S.busy = false;
+      if (S.zone && S.zone !== 'purchase') return;
+      S.sbRows.purchase = r.rows;
+      sbPurchaseView();
+      if (S.tab !== 'byshop' && S.board) store(false, cacheZone(store(true) || {}, S.me, S.tab, S.venue, S.board, Date.now()));
+      sbSubscribe('purchase', {});
+    }, function (e) {
+      S.busy = false;
+      if (e && e.name === 'TypeError') { if (S.cachedAt) S.offline = true; else if (!silent) toast(L.err.network, true); render(); return; }
+      S.sb = false;   // refused: the purchase board through Apps Script, as v7.1
+      return load(silent);
+    });
+  }
   function sbUnsubAll() { sbSubs.forEach(function (h) { SB.unsubscribe(h); }); sbSubs = []; }
   function sbSubscribe(z, u) {
     sbUnsubAll();
-    sbSubsFor(z, S.me, u).forEach(function (x) { sbSubs.push(SB.subscribe(x.table, x.filter, function (c) { sbChange(z, c); })); });
+    sbSubsFor(z, S.me, u).forEach(function (x) { sbSubs.push(SB.subscribe(x.table, x.filter, function (c) { sbChange(z, c, x.table); })); });
   }
   /** A Realtime change: the local rows, drawn again; never a read. */
-  function sbChange(z, c) {
+  function sbChange(z, c, table) {
     if (S.zone !== z || !S.sb) return;
     if (z === 'repair') { S.sbRows.repair = sbApply(S.sbRows.repair, c); S.z.repair = sbRepairView(); }
+    else if (z === 'approvals') {
+      if (table === 'purchase') S.sbRows.apP = sbApply(S.sbRows.apP, c); else S.sbRows.apT = sbApply(S.sbRows.apT, c);
+      S.z.approvals = sbApprovalsView(); S.board = { rows: S.z.approvals.branch };
+    } else if (z === 'bills') { S.sbRows.bills = sbApply(S.sbRows.bills, c); S.z.bills = sbBillsView(); }
+    else if (z === 'purchase') { S.sbRows.purchase = sbApply(S.sbRows.purchase, c); sbPurchaseView(); }
     else if (z === 'tickets') {
       var l = S.z.tickets;
       if (!l || !c.row) return;
@@ -3037,8 +3099,15 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       var data, at = 0;
       if (z === 'repair') { S.sbRows.repair = res[0].rows.concat(res[1].rows); data = sbRepairView(); }
       else if (z === 'tickets') data = sbTicketList(res[0].rows, res[0].count, u.offset || 0);
+      else if (z === 'approvals') { S.sbRows.apT = res[0].rows; S.sbRows.apP = res[1].rows; data = sbApprovalsView(); }
+      else if (z === 'bills') {
+        if (!res[1].rows[0]) throw SB_NOROW;
+        S.sbRows.bills = res[0].rows; S.sbBillDoc = res[1].rows[0].doc;   // live rows: no "ข้อมูลเมื่อ" line
+        data = sbBillsView();
+      }
       else { if (!res[0].rows[0]) throw SB_NOROW; var st = sbStat(res[0].rows[0]); data = st.data; at = st.at; }
       S.z[z] = data; S.statsAt = at; S.cachedAt = 0; S.offline = false; S.lastLoad = Date.now();
+      if (z === 'approvals') S.board = { rows: data.branch };   // the v5 detail and decide work on these rows
       store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', data, Date.now(), u));
       sbSubscribe(z, u);
       if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
