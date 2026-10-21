@@ -706,7 +706,7 @@ async function section13() {
   await tick(400);
   const n1 = +((/รออนุมัติ (\d+)/.exec(textOf(ad.app.innerHTML)) || [])[1]);
   eq('13.3 a demo approval reaches the rows and Realtime draws it: รออนุมัติ one fewer', n0 - n1, 1);
-  ok('13.4 BUILD v8.0 · Supabase', /var BUILD = 'care-board v8\.0 · 2026-10-2\d · Supabase';/.test(SRC));
+  ok('13.4 BUILD v8.x · Supabase', /var BUILD = 'care-board v8\.\d · 2026-10-2\d · Supabase';/.test(SRC));
 }
 
 // ---- 14. v8.1: a Supabase boot that never ends must not hold the board (reviewer, 21 Oct) ----------
