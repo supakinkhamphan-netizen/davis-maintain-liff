@@ -843,6 +843,16 @@ async function section16() {
   await tick(150);
   eq('16.10 purchase=supabase: a branch request cancelled through pr_cancel {id}', [v.fake.log.rpc, v.pg.log.fns], [[{ fn: 'pr_cancel', args: { id: 'PR_20261020_01' } }], []]);
 
+  const vr = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: () => { throw { message: 'คำขอนี้ตัดสินไปแล้ว ยกเลิกไม่ได้' }; } } } });
+  await tick(150);
+  vr.pg.tap('zone', 'purchase');
+  await tick(120);
+  vr.pg.tap('cancel', 'PR_20261020_01');
+  vr.pg.tap('confirmCancel');
+  await tick(150);
+  const vt = textOf(vr.pg.app.innerHTML);
+  ok('16.10c refused: the Thai words, and the sheet\'s button is pressable again (not stuck on กำลังส่ง…)', vr.pg.toasts.some(t => t.err && t.text === 'คำขอนี้ตัดสินไปแล้ว ยกเลิกไม่ได้') && !/กำลังส่ง/.test(vt) && /ยกเลิกคำขอ/.test(vt));
+
   const b = sbDevice('account', { settings: ST(OFF, OFF, ON), fake: { rpc: { bill_review: (args, T) => Object.assign(JSON.parse(JSON.stringify(T.bills.filter(x => x.id === args.bill_id)[0])), { reviewed: args.reviewed }) } } });
   await tick(150);
   b.pg.tap('zone', 'bills');
