@@ -56,7 +56,7 @@ function bootPage(SRC, o) {
       try { const b = JSON.parse(opts.body); fn = b.fn; payload = b.payload; } catch (e) { fn = ''; }
       log.fns.push(fn);
       log.calls.push({ fn, payload });
-      return (swap.fetch || o.fetch)(fn, opts, payload);
+      return (swap.fetch || o.fetch)(fn, opts, payload, url);
     },
   };
   ctx.window = ctx;

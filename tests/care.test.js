@@ -14,6 +14,7 @@ vm.createContext(ctx);
 vm.runInContext(slice('/* LOGIC START */', '/* LOGIC END */'), ctx);
 vm.runInContext(slice('/* CARE START */', '/* CARE END */'), ctx);
 vm.runInContext(slice('/* PWA START */', '/* PWA END */'), ctx);
+vm.runInContext(slice('/* SB START */', '/* SB END */'), ctx);
 const C = ctx;
 let fails = 0, n = 0;
 function eq(label, got, want) {
@@ -604,7 +605,83 @@ async function section11() {
   ok('11.24 another LINE person on this phone: the Supabase session is signed out and the link forgotten', other.fake.log.auth.indexOf('signOut') >= 0 && !other.pg.local.get('davisCare.sb'));
 }
 
-section9().then(section10).then(section11).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 12. phase 2: every zone drawn from rows = the v7.1 drawing of the engine's answer --------------
+safe('12', () => {
+  const { tables: T12, uidOf: uid12, personOf } = require('./sb-fixture');
+  const { matches } = require('./fake-sb');
+  const T = T12(), NOW12 = Date.UTC(2026, 9, 20, 5, 0), SLA = T.lists[0].doc.slaRules, HOT = T.lists[0].doc.hotels;
+  const meOf = role => C.sbMe(personOf(role), T.lists[0].doc, NOW12);
+  const run = q => T[q.table].filter(r => Object.keys(q.params).every(k => ['select', 'order', 'limit', 'offset'].indexOf(k) >= 0 || matches(r, k, q.params[k])));
+  const ans = (role, k) => { const a = JSON.parse(JSON.stringify(R(role).calls[k])); delete a.ok; delete a.serverNow; return a; };
+  const byTime = (a, b) => (a.createdMs || 0) - (b.createdMs || 0) || (a.id < b.id ? -1 : 1);
+  ['manager', 'venue_manager'].forEach(role => {
+    const me = meOf(role);
+    const rows = C.sbQueryFor('repair', me, {}, NOW12).map(run).reduce((a, b) => a.concat(b), []).filter(r => role !== 'venue_manager' || me.venues.indexOf(r.venue) >= 0);
+    const want = ans(role, 'bdRepairLive{}');
+    // Ties in time go by tickets.seq (the sheet row), as the engine: the answer as it came.
+    eq('12.1 ' + role + ': งานซ่อม from rows draws byte for byte as v7.1', C.renderRepair(C.sbRepairLive(rows, '', 200, NOW12, SLA, HOT), {}, NOW12, me), C.renderRepair(want, {}, NOW12, me));
+  });
+  const acc = meOf('account');
+  const list = ans('account', 'bdTickets{"status":"","venue":"","offset":0}');
+  list.rows.sort((a, b) => b.createdMs - a.createdMs || (a.id < b.id ? 1 : -1));
+  const page = run(C.sbQueryFor('tickets', acc, {}, NOW12)[0]).sort((a, b) => b.created_ms - a.created_ms || (a.id < b.id ? 1 : -1));
+  eq('12.2 งานทั้งหมด from rows draws as v7.1', C.renderTicketList(C.sbTicketList(page, page.length, 0), {}), C.renderTicketList(list, {}));
+  const bad = Object.keys(R('manager').calls).filter(k => k.indexOf('bdTicket{') === 0).filter(k => {
+    const id = JSON.parse(k.slice(8)).id, row = T.tickets.filter(r => r.id === id)[0];
+    const spot = run(C.sbQueryFor('spot', meOf('manager'), { venue: row.venue, location: row.card.location }, NOW12)[0]);
+    return C.renderTicket(C.sbTicket(row, spot, SLA), NOW12) !== C.renderTicket(ans('manager', k), NOW12);
+  });
+  eq('12.3 every job page from rows draws as v7.1', bad, []);
+  ['account', 'manager'].forEach(role => {
+    const me = meOf(role), q = C.sbQueryFor('approvals', me, {}, NOW12);
+    const got = C.sbApprovals(run(q[0]), run(q[1]).sort((a, b) => (a.created_at < b.created_at ? 1 : -1) || (a.id < b.id ? 1 : -1)), uid12(role), NOW12);
+    eq('12.4 ' + role + ': รออนุมัติ from rows draws as v7.1', C.renderApprovals(got, me, { branchHtml: '' }), C.renderApprovals(ans(role, 'bdApprovals{}'), me, { branchHtml: '' }));
+  });
+  [0, -1].forEach(off => {
+    const want = ans('account', 'bdBills{"weekOffset":' + off + '}');
+    const got = C.sbBillsWeek(run(C.sbQueryFor('bills', acc, { week: off }, NOW12)[0]), run(C.sbQueryFor('bills', acc, { week: off }, NOW12)[1])[0].doc);
+    // The page link carries the reader's token: minted on the tap (bdExecLink page=billweek); the rest is the rows'.
+    got.docUrl = want.docUrl;
+    eq('12.5 บิล week ' + off + ' from rows draws as v7.1', C.renderBills(got, {}), C.renderBills(want, {}));
+  });
+  [['overview', 'bdOverview{"window":7,"venue":"","tech":""}', 'manager', {}], ['overview', 'bdOverview{"window":30,"venue":"","tech":""}', 'manager', { window: 30 }],
+    ['overview', 'bdOverview{"window":7,"venue":"HOS","tech":""}', 'manager', { venue: 'HOS' }], ['techs', 'bdTechs{"window":7}', 'manager', { window: 7 }]].forEach(c => {
+    const st = run(C.sbQueryFor(c[0], meOf(c[2]), c[3], NOW12)[0])[0];
+    const want = ans(c[2], c[1]); delete want.pageUrl;
+    const draw = c[0] === 'overview' ? C.renderOverview : C.renderTechs;
+    eq('12.6 ' + c[1] + ' from its stats row draws as v7.1 (the page link is the tap)', draw(C.sbStat(st).data, c[3]), draw(want, c[3]));
+  });
+  const tst = run(C.sbQueryFor('tech', meOf('manager'), { name: 'นัท', window: 7 }, NOW12)[0])[0];
+  eq('12.7 one technician from the stats row draws as v7.1', C.renderTech(C.sbStat(tst).data), C.renderTech(ans('manager', 'bdTech{"name":"นัท","window":7}')));
+});
+
+// ---- 13. phase 2: ?demo=1 runs on Supabase rows (demo-sb.json) -------------------------------
+async function section13() {
+  const SBJ = fs.readFileSync(path.join(__dirname, '..', 'demo-sb.json'), 'utf8');
+  const BDJ = fs.readFileSync(path.join(__dirname, '..', 'demo-bd.json'), 'utf8');
+  const files = (fn, opts, payload, url) => url === 'demo-sb.json' ? answer(JSON.parse(SBJ)) : url === 'demo-bd.json' ? answer(JSON.parse(BDJ)) : offline();
+  const who = { manager: 'คุณพร · ผู้บริหาร', account: 'หมีน้อย · บัญชี', venue_manager: 'นิค · ผู้จัดการสาขา (24BLVD)', purchasing: 'จัดซื้อแอน · จัดซื้อ' };
+  const first = { manager: 'ต้องดู', account: 'รออนุมัติ', venue_manager: 'ต้องดู', purchasing: 'PR_20261020_0' };
+  for (const role of Object.keys(who)) {
+    const pg = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=' + role, fetch: files });
+    await tick(300);
+    const t = textOf(pg.app.innerHTML);
+    ok('13.1 ?demo=1&as=' + role + ': the demo-sb person (' + who[role] + '), the first zone drawn from rows, no error',
+      t.indexOf(who[role]) >= 0 && t.indexOf(first[role]) >= 0 && t.indexOf('ตัวอย่างไม่มีข้อมูล') < 0 && t.indexOf('เปิดบอร์ดไม่สำเร็จ') < 0);
+    if (role === 'venue_manager') ok('13.2 the demo clock is the fixture\'s (12:00 · 20 ต.ค.), not the old sample\'s 18 ต.ค.', t.indexOf('12:00 · 20 ต.ค.') >= 0 && t.indexOf('18 ต.ค.') < 0);
+  }
+  const ad = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=account', fetch: files });
+  await tick(300);
+  const n0 = +((/รออนุมัติ (\d+)/.exec(textOf(ad.app.innerHTML)) || [])[1]);
+  ad.tap('bdApprove', 'Fairway_20261020_02');
+  ad.tap('bdConfirm');
+  await tick(400);
+  const n1 = +((/รออนุมัติ (\d+)/.exec(textOf(ad.app.innerHTML)) || [])[1]);
+  eq('13.3 a demo approval reaches the rows and Realtime draws it: รออนุมัติ one fewer', n0 - n1, 1);
+  ok('13.4 BUILD v8.0 · Supabase', /var BUILD = 'care-board v8\.0 · 2026-10-2\d · Supabase';/.test(SRC));
+}
+
+section9().then(section10).then(section11).then(section13).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });

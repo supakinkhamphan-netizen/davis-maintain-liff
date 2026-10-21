@@ -88,16 +88,15 @@ safe('2', () => {
   eq('2.6 the spot: the same venue and spot', Q('spot', 'manager', { venue: 'HOS', location: 'ครัว' }), [
     { table: 'tickets', params: { select: 'id,status,card', venue: 'eq.HOS', 'card->>location': 'eq.ครัว' } }]);
   eq('2.7 a venue manager never asks for another venue\'s spot', Q('spot', 'venue_manager', { venue: 'HOS', location: 'ครัว' }), []);
-  eq('2.8 รออนุมัติ: tickets waiting on a purchase + branch requests pending', Q('approvals', 'account'), [
-    { table: 'tickets', params: { select: 'id,venue,status,card,events', 'card->purchase->>pending': 'eq.true' } },
+  // Phase 2: every ticket that ever asked to buy (a REQUEST_PURCHASE makes card.purchase): the pending ones,
+  // จุดนี้เคยอนุมัติ and the approval history all come from these rows.
+  eq('2.8 รออนุมัติ: tickets that asked to buy + branch requests pending', Q('approvals', 'account'), [
+    { table: 'tickets', params: { select: 'id,venue,status,created_ms,card,events', 'card->purchase': 'not.is.null' } },
     { table: 'purchase', params: { select: '*', status: 'eq.pending', order: 'created_at.desc' } }]);
-  eq('2.9 ขอซื้อ per v5 tab (manager): pending, tobuy, all, mine', ['pending', 'tobuy', 'all', 'mine'].map(t => Q('purchase', 'manager', { tab: t })[0].params), [
-    { select: '*', status: 'eq.pending', order: 'created_at.desc' },
-    { select: '*', 'doc->>fulfilment': 'in.("awaiting","ordered")', order: 'created_at.desc' },
-    { select: '*', order: 'created_at.desc' },
-    { select: '*', by: 'eq.' + me('manager').uid, order: 'created_at.desc' },
-  ]);
-  eq('2.10 ขอซื้อ (venue manager): their venues, the tabs split on the page', ['active', 'done'].map(t => Q('purchase', 'venue_manager', { tab: t })[0].params),
+  // Phase 2: one read of every request the person may see; the v5 tabs, counts, chips and ตามร้าน are counted on the page.
+  eq('2.9 ขอซื้อ (manager): one read, whatever the tab', ['pending', 'tobuy', 'all', 'mine', 'byshop'].map(t => Q('purchase', 'manager', { tab: t })[0].params),
+    Array(5).fill({ select: '*', order: 'created_at.desc' }));
+  eq('2.10 ขอซื้อ (venue manager): their venues', ['active', 'done'].map(t => Q('purchase', 'venue_manager', { tab: t })[0].params),
     [{ select: '*', order: 'created_at.desc', venue: 'in.("24BLVD")' }, { select: '*', order: 'created_at.desc', venue: 'in.("24BLVD")' }]);
   eq('2.11 ภาพรวม: the stats row of the window and venue', [Q('overview', 'manager', {})[0], Q('overview', 'manager', { window: 30, venue: 'HOS' })[0]], [
     { table: 'stats', params: { select: 'id,doc,computed_at', id: 'eq.overview|all|7' } }, { table: 'stats', params: { select: 'id,doc,computed_at', id: 'eq.overview|HOS|30' } }]);
@@ -116,8 +115,10 @@ safe('2', () => {
   eq('2.19 Realtime per zone: tickets for งานซ่อม (venue filter for a venue manager), the stats row for ภาพรวม/ช่าง, nothing for Apps Script zones', [
     P.sbSubsFor('repair', me('manager'), {}), P.sbSubsFor('repair', me('venue_manager'), {}), P.sbSubsFor('overview', me('manager'), { window: 30 }),
     P.sbSubsFor('techs', me('manager'), {}), P.sbSubsFor('tickets', me('account'), {}), P.sbSubsFor('approvals', me('account'), {}), P.sbSubsFor('overview', me('manager'), { tech: 'นัท' }),
+    P.sbSubsFor('purchase', me('venue_manager'), {}), P.sbSubsFor('bills', me('account'), { week: -1 }),
   ], [[{ table: 'tickets', filter: '' }], [{ table: 'tickets', filter: 'venue=in.(24BLVD)' }], [{ table: 'stats', filter: 'id=eq.overview|all|30' }],
-    [{ table: 'stats', filter: 'id=eq.techs|1' }], [{ table: 'tickets', filter: '' }], [], []]);
+    [{ table: 'stats', filter: 'id=eq.techs|1' }], [{ table: 'tickets', filter: '' }], [{ table: 'tickets', filter: '' }, { table: 'purchase', filter: '' }], [],
+    [{ table: 'purchase', filter: 'venue=in.(24BLVD)' }], [{ table: 'bills', filter: 'week_off=eq.-1' }]]);
 });
 
 // ---- 3. the ported rules = the engine's answers ------------------------------------------
@@ -135,8 +136,7 @@ safe('3', () => {
     const got = P.sbRepairLive(rows, '', 200, NOW, SLA, HOTELS), want = strip(R(role).calls['bdRepairLive{}']);
     // ruling (1): total, closed and cancelled count every ticket ever; the live rows cannot, and nothing reads them.
     ['total', 'closed', 'cancelled'].forEach(k => delete want.counts[k]);
-    // The engine breaks a tie in time by the sheet's row order, which rows do not carry: by id here.
-    Object.keys(want.groups).forEach(k => want.groups[k].sort(byTime));
+    // Ties in time: the sheet row (tickets.seq, WO#20 E3), as the engine: no normalising.
     eq('3.3 ' + role + ': งานซ่อม from rows = bdRepairLive (counts the renderer reads, groups, ต้องดู, venues)', got, want);
   });
   const all = live('manager');
@@ -171,6 +171,7 @@ safe('3', () => {
   eq('3.8 บิล: the week\'s totals and reviewed count from rows = bdBillsWeek_', w0.week, b0.week);
   eq('3.9 บิล: the groups as bdBillsWeek_ shows them', w0.groups, b0.groups);
   eq('3.10 บิล: the companies from the stats row', w0.companies, b0.companies);
+  eq('3.10b บิล: ทั้งหมด (every bill) from the stats row (WO#20 E3)', w0.all, b0.all);
   const st = T.stats.filter(s => s.id === 'overview|all|7')[0];
   const ov = P.sbStat(st);
   const wantOv = strip(R('manager').calls['bdOverview{"window":7,"venue":"","tech":""}']); delete wantOv.pageUrl;
@@ -178,6 +179,45 @@ safe('3', () => {
   const pr = { id: 'PR-1', venue: 'HOS', status: 'pending', by: uidOf('manager'), created_at: '2026-10-20T03:00:00+00:00', doc: {} };
   eq('3.12 a purchase row: mine from by, the age from created_at', [P.sbPurchaseFacts(pr, uidOf('manager'), NOW), P.sbPurchaseFacts(pr, 'U-x', NOW)],
     [{ mine: true, ageMinutes: 120 }, { mine: false, ageMinutes: 120 }]);
+});
+
+// ---- 6. phase 2: ขอซื้อ and รออนุมัติ from rows -------------------------------------------------
+safe('6', () => {
+  eq('6.0 the phase-2 functions', ['sbPrRow', 'sbPrBoard', 'sbPrDetail', 'sbApprovals'].filter(f => typeof P[f] !== 'function'), []);
+  const acc = R('account').calls['bdApprovals{}'];
+  const pend = run(P.sbQueryFor('approvals', me('account'), {}, NOW)[1]).sort((a, b) => (a.created_at < b.created_at ? 1 : -1) || (a.id < b.id ? 1 : -1));
+  eq('6.1 a purchase row as the board lists it = prPublicRow_ (bdApprovals.branch, the reader account)', pend.map(r => P.sbPrRow(r, uidOf('account'), NOW)), acc.branch);
+  const vmRow = T.purchase.filter(r => r.venue === '24BLVD')[0];
+  eq('6.2 mine from by, the age floored as prPublicRow_', [P.sbPrRow(vmRow, uidOf('venue_manager'), NOW).mine, P.sbPrRow(vmRow, 'x', NOW + 119 * 1000).ageMinutes, P.sbPrRow(vmRow, 'x', NOW + 61 * 60000).ageMinutes],
+    [true, 1, 61]);
+  const tq = P.sbQueryFor('approvals', me('account'), {}, NOW);
+  const got = P.sbApprovals(run(tq[0]), pend, uidOf('account'), NOW);
+  const want = strip(acc);
+  eq('6.3 รออนุมัติ from rows = bdApprovals: the repair cards (estimate, จุดนี้เคยอนุมัติ)', got.repair, want.repair);
+  eq('6.4 … the branch requests', got.branch, want.branch);
+  eq('6.5 … the approval history (newest first, 50 at most)', got.history, want.history);
+  eq('6.6 … the count, and nothing else', got, want);
+  const mgr = R('manager').calls['bdApprovals{}'];
+  eq('6.7 the manager\'s รออนุมัติ (mine from by) = bdApprovals', P.sbApprovals(run(tq[0]), pend, uidOf('manager'), NOW), strip(mgr));
+  // ขอซื้อ: prApiBoard_ on the rows (prListFor_ scopes, the Hotels-order chips, the strip).
+  const all = T.purchase;
+  const B = (role, scope, venue, month) => P.sbPrBoard(all, me(role), scope, venue || '', month || '', HOTELS, NOW);
+  const m = B('manager', 'pending');
+  eq('6.8 manager pending: the rows newest first, counts for every scope, chips in Hotels order, the strip',
+    [m.rows.map(r => r.id), m.counts, m.byVenue, m.totals], [['PR_20261020_02', 'PR_20261020_01'], { mine: 0, pending: 2, tobuy: 0, all: 2 }, { '24BLVD': 1, Fairway: 1 }, { count: 2, venues: 2, baht: 540 }]);
+  eq('6.9 a chip filters the rows and the strip, never the chips', (b => [b.rows.map(r => r.id), b.byVenue, b.totals])(B('manager', 'pending', 'Fairway')),
+    [['PR_20261020_02'], { '24BLVD': 1, Fairway: 1 }, { count: 1, venues: 1, baht: 270 }]);
+  eq('6.10 venue manager: only their venue; mine = everything they see', (b => [b.rows.map(r => r.id), b.counts])(B('venue_manager', 'mine')),
+    [['PR_20261020_01'], { mine: 1, pending: 1, tobuy: 0, all: 1 }]);
+  eq('6.11 a month outside the rows: nothing', B('manager', 'all', '', '2026-09').rows.length, 0);
+  const d = P.sbPrDetail(vmRow, uidOf('venue_manager'), NOW);
+  eq('6.12 one request: the row and its audit as prDetail answers', [d.row, d.audit], [P.sbPrRow(vmRow, uidOf('venue_manager'), NOW), vmRow.doc.audit]);
+  const tie = [{ id: 'B', created_ms: 5, seq: 1, card: { id: 'B', createdMs: 5 }, status: 'รอดำเนินการ', venue: 'HOS' },
+    { id: 'A', created_ms: 5, seq: 2, card: { id: 'A', createdMs: 5 }, status: 'รอดำเนินการ', venue: 'HOS' }];
+  const third = { id: 'C', created_ms: 5, seq: null, card: { id: 'C', createdMs: 5 }, status: 'รอดำเนินการ', venue: 'HOS' };
+  eq('6.13 jobs made in the same minute: by the sheet row (seq); an archived row (seq null) last; no seq at all: by id',
+    [P.sbRepairLive(tie.concat([third]), '', 200, 10, SLA, HOTELS).groups.open.map(c => c.id), P.sbRepairLive(tie.map(r => Object.assign({}, r, { seq: undefined })), '', 200, 10, SLA, HOTELS).groups.open.map(c => c.id)],
+    [['B', 'A', 'C'], ['A', 'B']]);
 });
 
 // ---- 4. Realtime: the local row set -------------------------------------------------------

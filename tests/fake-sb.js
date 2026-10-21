@@ -16,6 +16,7 @@ function inList(s) {
 }
 function matches(row, key, cond) {
   const v = valueOf(row, key), i = cond.indexOf('.'), op = cond.slice(0, i), arg = cond.slice(i + 1);
+  if (op === 'not') return !matches(row, key, arg);
   if (op === 'eq') return String(v) === arg;
   if (op === 'is') return arg === 'null' ? v == null : String(v) === arg;
   if (op === 'in') return inList(arg).indexOf(String(v)) >= 0;
