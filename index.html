@@ -3475,6 +3475,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     sbUnsubAll();
     S.sbRows = {}; S.serverSkew = DEMO.now() - Date.now();
     S.sbLists = lists; S.sb = true; sbPhase = 'on';
+    sbReadSettings();   // WO#23: the demo's row puts every domain on Supabase
     startWith(sbMe(person, lists, DEMO.now()));
   }
   if (DEMO_MODE) {
