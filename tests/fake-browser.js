@@ -9,7 +9,7 @@ const vm = require('vm');
  * Timers are shortened to at most 30 ms (the 15 s LINE wait, the 12 s fetch abort).
  */
 function bootPage(SRC, o) {
-  if (o.sbOn) SRC = SRC.replace("var SB_URL = '';", "var SB_URL = 'https://x.supabase.co';").replace("var SB_ANON = '';", "var SB_ANON = 'ANON';");
+  if (o.sbOn) SRC = SRC.replace(/var SB_ANON = '[^']*';/, "var SB_ANON = 'ANON';");
   const script = SRC.slice(SRC.lastIndexOf('<script>') + '<script>'.length, SRC.lastIndexOf('</script>'));
   const els = {};
   const el = id => (els[id] = els[id] || {

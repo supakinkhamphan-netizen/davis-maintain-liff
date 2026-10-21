@@ -85,5 +85,9 @@ ok('#18 F1 … the screens with no header (notice, loading) clear the status bar
   /\.notice\{padding-top:calc\(60px \+ env\(safe-area-inset-top\)\)\}/.test(STANDALONE));
 ok('#18 F1 every sticky top rule is covered (header top:0, .tabs and .zones top:var(--head-h), nothing else)',
   JSON.stringify((SRC.match(/(^|\n)[^{}\n]*\{[^}]*position:sticky;top:[^;}]*/g) || []).map(r => r.trim().split('{')[0]).sort()) === JSON.stringify(['.tabs', '.zones', 'header']));
+// WO#21: the one Supabase project the board may name (reviewer, 21 Oct): "davis-care".
+ok('WO#21 SB_URL is the davis-care project, and no other Supabase host appears', /var SB_URL = 'https:\/\/xrnaxhgdfqcquxpookpr\.supabase\.co';/.test(SRC) &&
+  (SRC.match(/[a-z0-9]+\.supabase\.co/g) || []).every(h => h === 'xrnaxhgdfqcquxpookpr.supabase.co'));
+ok('WO#21 the anon key stays empty until the release (Supabase off)', /var SB_ANON = '';/.test(SRC));
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
 process.exit(fails ? 1 : 0);
