@@ -239,6 +239,52 @@ safe('6', () => {
     [['B', 'A', 'C'], ['A', 'B']]);
 });
 
+// ---- 7. v9 (WO#23): actions through Supabase RPC, routed by the settings row -------------------------
+safe('7', () => {
+  eq('7.0 the v9 functions', ['actionRoute', 'needLine', 'sbSettingsOf', 'sbRpcFailure'].filter(f => typeof P[f] !== 'function'), []);
+  ok('7.0b every board action and its RPC in one map (SB_ACTIONS)', P.SB_ACTIONS && Object.keys(P.SB_ACTIONS).sort().join() ===
+    ['bdApprove', 'bdBillCompany', 'bdBillReviewed', 'bdReject', 'prCancel', 'prCreate', 'prDecide', 'prDelivered', 'prOrdered', 'prReceived'].join());
+  const ON = 'supabase', OFF = 'sheets';
+  const st = (t, p, b) => ({ tickets: t, purchase: p, bills: b });
+  const A = {
+    bdApprove: [{ ticketId: 'T1' }, 'tickets', 'approve_purchase', { id: 'T1', cap: null }],
+    bdApproveCap: [{ ticketId: 'T1', cap: 2000 }, 'tickets', 'approve_purchase', { id: 'T1', cap: 2000 }],
+    bdReject: [{ ticketId: 'T1', reason: 'ใช้ของในสต๊อก' }, 'tickets', 'reject_purchase', { id: 'T1', reason: 'ใช้ของในสต๊อก' }],
+    prDecide: [{ id: 'PR1', lines: [{ n: 1, ok: true }], note: '' }, 'purchase', 'pr_decide', { id: 'PR1', lines: [{ n: 1, ok: true }], note: '' }],
+    prOrdered: [{ id: 'PR1', actualTotal: 950, eta: '19 ต.ค.' }, 'purchase', 'pr_ordered', { id: 'PR1', total: 950, eta: '19 ต.ค.' }],
+    prDelivered: [{ id: 'PR1' }, 'purchase', 'pr_delivered', { id: 'PR1' }],
+    prReceived: [{ id: 'PR1' }, 'purchase', 'pr_received', { id: 'PR1' }],
+    prCancel: [{ id: 'PR1' }, 'purchase', 'pr_cancel', { id: 'PR1' }],
+    prCreate: [{ venue: 'HOS', buyer: 'self', category: 'ของใช้สิ้นเปลือง', items: [{ name: 'สบู่', qty: 1 }], reason: 'หมด' }, 'purchase', 'pr_create',
+      { venue: 'HOS', buyer: 'self', category: 'ของใช้สิ้นเปลือง', items: [{ name: 'สบู่', qty: 1 }], reason: 'หมด' }],
+    bdBillReviewed: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', reviewed: true }, 'bills', 'bill_review', { bill_id: '2026-10-19 15:00:00_อาร์ม', reviewed: true }],
+    bdBillCompany: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', company: 'House of Savoy Co., Ltd.' }, 'bills', 'bill_company', { bill_id: '2026-10-19 15:00:00_อาร์ม', company: 'House of Savoy Co., Ltd.' }],
+  };
+  const combos = [];
+  [ON, OFF].forEach(t => [ON, OFF].forEach(p => [ON, OFF].forEach(b => combos.push(st(t, p, b)))));
+  const bad = [];
+  combos.forEach(set => Object.keys(A).forEach(k => {
+    const [payload, domain, fn, args] = A[k], action = k.replace(/Cap$/, '');
+    const got = P.actionRoute({ action, payload, settings: set });
+    const want = set[domain] === ON ? { via: 'rpc', fn, args } : { via: 'api', fn: action, payload };
+    if (JSON.stringify(got) !== JSON.stringify(want)) bad.push([set, k, got]);
+  }));
+  eq('7.1 every action in the 8 domain states: supabase → the RPC with its arguments, sheets → api() as v8.2', bad.slice(0, 3), []);
+  eq('7.2 no settings at all: every action through api()', Object.keys(A).filter(k => P.actionRoute({ action: k.replace(/Cap$/, ''), payload: A[k][0], settings: null }).via !== 'api'), []);
+  eq('7.3 a request with photos goes through Apps Script even on Supabase (no Storage in this stage; the engine uploads, then calls the RPC)',
+    P.actionRoute({ action: 'prCreate', payload: { venue: 'HOS', photoDataUrls: ['data:image/jpeg;base64,AA'] }, settings: st(ON, ON, ON) }).via, 'api');
+  eq('7.4 the settings row: each domain\'s record of truth, sheets unless it says supabase', [
+    P.sbSettingsOf({ record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'sheets' }), P.sbSettingsOf(null), P.sbSettingsOf({ record_of_truth_bills: 'SUPABASE' }),
+  ], [st(ON, OFF, OFF), st(OFF, OFF, OFF), st(OFF, OFF, OFF)]);
+  const L_ = o => P.needLine(Object.assign({ session: { user: { id: 'a' } }, linked: true, intent: '' }, o));
+  eq('7.5 the LINE SDK: not on a warm open; on a first open (no session / no link) and on each of the three intents', [
+    L_({}), L_({ session: null }), L_({ linked: false }), L_({ intent: 'chat' }), L_({ intent: 'openWindow' }), L_({ intent: 'install' }), L_({ intent: 'api' }),
+  ], [false, true, true, true, true, true, true]);
+  eq('7.6 an RPC failure: NOT_CUT_OVER (the engine\'s safety net) vs a refusal in Thai', [
+    P.sbRpcFailure({ status: 400, code: 'P0001', message: 'NOT_CUT_OVER' }), P.sbRpcFailure({ status: 400, code: 'P0001', message: 'คุณไม่มีสิทธิ์ทำขั้นนี้' }), P.sbRpcFailure({ status: 0, name: 'TypeError' }),
+  ], [{ kind: 'notCutOver' }, { kind: 'refused', message: 'คุณไม่มีสิทธิ์ทำขั้นนี้' }, { kind: 'network' }]);
+});
+
 // ---- 4. Realtime: the local row set -------------------------------------------------------
 safe('4', () => {
   const rows = [{ id: 'A', v: 1 }, { id: 'B', v: 1 }];
@@ -299,6 +345,16 @@ async function section5() {
   eq('5.11 a change reaches the page as {type, row, old}', seen, [{ type: 'UPDATE', row: { id: 'A', v: 2 }, old: { id: 'A' } }, { type: 'DELETE', row: null, old: { id: 'B' } }]);
   SB.unsubscribe(h);
   eq('5.12 unsubscribe removes the channel; the client was loaded once', [client.removed.length, loaded.length], [1, 1]);
+  answer = { status: 200, body: { id: 'T1', status: 'กำลังดำเนินการ' } };
+  const rr = await SB.rpc('approve_purchase', { id: 'T1', cap: null });
+  const last = sent[sent.length - 1];
+  eq('5.14 rpc: POST <url>/rest/v1/rpc/<fn> with the arguments as JSON, the session, Content-Profile care', [last.url, last.opts.method, JSON.parse(last.opts.body),
+    last.opts.headers.Authorization, last.opts.headers['Content-Profile'], last.opts.headers['Content-Type'], rr], ['https://x.supabase.co/rest/v1/rpc/approve_purchase', 'POST',
+    { id: 'T1', cap: null }, 'Bearer JWT2', 'care', 'application/json', { id: 'T1', status: 'กำลังดำเนินการ' }]);
+  answer = { status: 400, body: { code: 'P0001', message: 'NOT_CUT_OVER' } };
+  let rerr = null;
+  try { await SB.rpc('approve_purchase', { id: 'T1' }); } catch (e) { rerr = e; }
+  eq('5.15 a function that raises: the error carries status, code and the message', rerr && [rerr.status, rerr.code, rerr.message], [400, 'P0001', 'NOT_CUT_OVER']);
   await SB.signOut();
   eq('5.13 sign-out (another LINE person on this phone)', [auth.calls.indexOf('signOut') >= 0, await SB.session()], [true, null]);
 }

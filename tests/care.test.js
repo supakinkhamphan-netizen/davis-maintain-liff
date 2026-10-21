@@ -493,9 +493,11 @@ const apiSb = (role, fake) => (fn, opts, payload) => {
 /** A device that has opened v8 before: an anonymous session, linked to the role's person. */
 function sbDevice(role, o) {
   o = o || {};
-  const fake = makeFakeSb(sbTables(), o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: uidOf(role) } });
+  const tbl = sbTables();
+  if (o.settings) tbl.settings = [Object.assign({ id: 'main' }, o.settings)];
+  const fake = makeFakeSb(tbl, Object.assign(o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: uidOf(role) } }, o.fake || {}));
   const local = Object.assign(o.fresh ? {} : { 'davisCare.sb': JSON.stringify({ linked: !o.notLinked, uid: uidOf(role) }) }, o.local || {});
-  const pg = bootPage(SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, fetch: apiSb(role, fake) });
+  const pg = bootPage(SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, ua: o.ua, fetch: apiSb(role, fake) });
   return { fake, pg };
 }
 const tablesOf = f => f.log.selects.map(q => q.table);
@@ -759,6 +761,106 @@ async function section15() {
   eq('15.3 another person\'s sub: the session is signed out and not linked (the next open links a fresh one)', [f2.log.auth.indexOf('signOut') >= 0, p2.log.fns.indexOf('bdSupabaseLink')], [true, -1]);
 }
 
+// ---- 16. v9 (WO#23 phase 1): actions through Supabase RPC; LINE's SDK only when needed ----------------
+async function section16() {
+  const ON = 'supabase', OFF = 'sheets';
+  const ST = (t, p, b) => ({ record_of_truth_tickets: t, record_of_truth_purchase: p, record_of_truth_bills: b });
+  // approve_purchase as team B's function answers: the ticket row after the write.
+  const approveRow = (args, T) => { const r = JSON.parse(JSON.stringify(T.tickets.filter(x => x.id === args.id)[0])); r.status = r.card.status = 'กำลังดำเนินการ'; r.card.purchase.pending = false; return r; };
+  const nApprovals = h => +((/รออนุมัติ (\d+)/.exec(textOf(h)) || [])[1]);
+  const a = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow }, rpcDelay: 80 } });
+  await tick(150);
+  eq('16.1 a warm open: no LINE SDK on the page, the settings row read, no Apps Script call', [!!a.pg.sdk, a.fake.log.selects.some(q => q.table === 'settings'), a.pg.log.fns], [false, true, []]);
+  const n0 = nApprovals(a.pg.app.innerHTML), sel0 = a.fake.log.selects.length;
+  a.pg.tap('bdApprove', 'Fairway_20261020_02');
+  a.pg.tap('bdConfirm');
+  await tick(20);
+  ok('16.2 mid-flight: the pressed button says it is sending', /กำลังส่ง/.test(textOf(a.pg.app.innerHTML)));
+  await tick(150);
+  eq('16.3 approve on tickets=supabase: approve_purchase {id, cap: null}, nothing to Apps Script, no SDK', [a.fake.log.rpc, a.pg.log.fns, !!a.pg.sdk],
+    [[{ fn: 'approve_purchase', args: { id: 'Fairway_20261020_02', cap: null } }], [], false]);
+  eq('16.4 the returned row is applied at once: รออนุมัติ one fewer, no read', [n0 - nApprovals(a.pg.app.innerHTML), a.fake.log.selects.length - sel0], [1, 0]);
+  const before = a.pg.app.innerHTML;
+  a.fake.emit('tickets', { type: 'UPDATE', row: approveRow({ id: 'Fairway_20261020_02' }, sbTables()) });
+  await tick(30);
+  eq('16.5 the Realtime echo of that row changes nothing here and reads nothing', [a.pg.app.innerHTML === before, a.fake.log.selects.length - sel0], [true, 0]);
+
+  const s = sbDevice('account', { settings: ST(OFF, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
+  await tick(150);
+  s.pg.tap('bdApprove', 'Fairway_20261020_02');
+  s.pg.tap('bdConfirm');
+  await tick(20);
+  ok('16.6 tickets=sheets: the tap loads LINE\'s SDK (api() needs the LINE token)', !!s.pg.sdk);
+  s.pg.lineLoads();
+  await tick(200);
+  eq('16.7 … then bdApprove through Apps Script exactly as v8.2; no RPC', [s.pg.log.fns, s.fake.log.rpc.length], [['bdApprove'], 0]);
+
+  const nc = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { message: 'NOT_CUT_OVER' }; } } } });
+  await tick(150);
+  const ncSet = nc.fake.log.selects.filter(q => q.table === 'settings').length;
+  nc.pg.tap('bdApprove', 'Fairway_20261020_02');
+  nc.pg.tap('bdConfirm');
+  await tick(60);
+  nc.pg.lineLoads();
+  await tick(200);
+  eq('16.8 NOT_CUT_OVER: one fallback to api(), and the settings row read again', [nc.fake.log.rpc.length, nc.pg.log.fns, nc.fake.log.selects.filter(q => q.table === 'settings').length - ncSet],
+    [1, ['bdApprove'], 1]);
+
+  const no = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: () => { throw { message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }; } } } });
+  await tick(150);
+  no.pg.tap('bdApprove', 'Fairway_20261020_02');
+  no.pg.tap('bdConfirm');
+  await tick(120);
+  eq('16.9 a refusal: the function\'s Thai message where v8.2 shows the API\'s, nothing else called', [no.pg.toast.textContent, /err/.test(no.pg.toast.className), no.pg.log.fns],
+    ['งานนี้ไม่ได้รออนุมัติแล้ว', true, []]);
+
+  const v = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: (args, T) => Object.assign(JSON.parse(JSON.stringify(T.purchase.filter(x => x.id === args.id)[0])), { status: 'cancelled' }) } } });
+  await tick(150);
+  v.pg.tap('zone', 'purchase');
+  await tick(120);
+  v.pg.tap('cancel', 'PR_20261020_01');
+  v.pg.tap('confirmCancel');
+  await tick(150);
+  eq('16.10 purchase=supabase: a branch request cancelled through pr_cancel {id}', [v.fake.log.rpc, v.pg.log.fns], [[{ fn: 'pr_cancel', args: { id: 'PR_20261020_01' } }], []]);
+
+  const b = sbDevice('account', { settings: ST(OFF, OFF, ON), fake: { rpc: { bill_review: (args, T) => Object.assign(JSON.parse(JSON.stringify(T.bills.filter(x => x.id === args.bill_id)[0])), { reviewed: args.reviewed }) } } });
+  await tick(150);
+  b.pg.tap('zone', 'bills');
+  await tick(120);
+  const bill = sbTables().bills.filter(x => x.week_off === 0)[0];
+  b.pg.change({ 'data-act': 'billTick', 'data-ts': '2026-10-19 15:00:00', 'data-sub': bill.submitter }, { checked: false });
+  await tick(120);
+  eq('16.11 bills=supabase: the tick through bill_review {bill_id, reviewed}', [b.fake.log.rpc, b.pg.log.fns], [[{ fn: 'bill_review', args: { bill_id: bill.id, reviewed: false } }], []]);
+
+  const r = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
+  await tick(150);
+  const flip = Object.assign({ id: 'main' }, ST(OFF, ON, ON));
+  r.fake.emit('settings', { type: 'UPDATE', row: flip });
+  await tick(30);
+  r.pg.tap('bdApprove', 'Fairway_20261020_02');
+  r.pg.tap('bdConfirm');
+  await tick(30);
+  r.pg.lineLoads();
+  await tick(200);
+  eq('16.12 a rollback flips settings by Realtime: the next action goes to api(), no RPC', [r.fake.log.rpc.length, r.pg.log.fns], [0, ['bdApprove']]);
+
+  const LIFFUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.10.0 LIFF';
+  const l = sbDevice('manager', { ua: LIFFUA, settings: ST(ON, ON, ON) });
+  await tick(150);
+  ok('16.13 inside LINE on a warm open: the install line shows, and no SDK yet', /ติดตั้งเป็นแอป ›/.test(textOf(l.pg.app.innerHTML)) && !l.pg.sdk);
+  l.pg.tap('installLine');
+  await tick(20);
+  ok('16.14 the tap loads LINE\'s SDK', !!l.pg.sdk);
+  l.pg.lineLoads({ isInClient: () => true });
+  await tick(60);
+  eq('16.15 … and opens the phone\'s browser (liff.openWindow, external)', l.pg.log.opened.map(o => o.external), [true]);
+  const off = sbDevice('manager', { href: 'https://davis.example/davis-maintain-liff/?sb=0' });
+  const fresh = sbDevice('manager', { fresh: true });
+  await tick(80);
+  eq('16.16 the escape hatch (?sb=0) and a first open still load LINE\'s SDK at once (the v7.1 boot)', [!!off.pg.sdk, !!fresh.pg.sdk], [true, true]);
+  ok('16.17 no action waits for LINE: the RPC route never touches authReady', /function doAction\(/.test(SRC) && !/authReady/.test((/function doAction\([\s\S]*?\n  \}/.exec(SRC) || [''])[0]));
+}
+
 // ---- 17. v8.3 (WO#23 §5, ahead of v9): the worker found a newer page behind the cached one --------------
 async function section17() {
   const nb = sbDevice('manager');
@@ -767,7 +869,7 @@ async function section17() {
   await tick(20);
   eq('17.1 a newer build behind the cache: "มีรุ่นใหม่ · แตะเพื่อโหลด", and no reload', [/มีรุ่นใหม่ · แตะเพื่อโหลด/.test(textOf(nb.pg.app.innerHTML)), nb.pg.log.reloads], [true, 0]);
 }
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section17).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });
