@@ -492,6 +492,7 @@ const PAGE_URL = 'https://script.google.com/macros/s/TEST/exec?page=exec&t=new';
 const apiSb = (role, fake) => (fn, opts, payload) => {
   if (fn === 'bdSupabaseLink') { fake.link(payload.authUid, uidOf(role)); return answer({ ok: true, uid: uidOf(role), url: 'https://xrnaxhgdfqcquxpookpr.supabase.co' }); }
   if (fn === 'bdExecLink') return answer({ ok: true, pageUrl: PAGE_URL });
+  if (fn === 'bdApprove' || fn === 'bdReject') return answer({ ok: true, decision: fn === 'bdApprove' ? 'approve' : 'reject', ticketId: payload.ticketId });
   return answerOf(role)(fn, opts, payload);
 };
 /** A device that has opened v8 before: an anonymous session, linked to the role's person. */

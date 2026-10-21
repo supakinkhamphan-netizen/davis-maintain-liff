@@ -1587,20 +1587,26 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function sbStat(row) { return { data: row.doc, at: Date.parse(row.computed_at) }; }
   // ---- WO#23 (v9): actions through Supabase RPC, routed by the settings row ----
   /**
-   * Every board action and the database function that does it once its domain is on Supabase.
-   * Argument names are design §3.2's until team B's SQL lands: this map is the one place to change.
+   * Every board action and the database function that does it once its domain is on Supabase:
+   * team B's E1 contract (schema.sql 96807d4). Arguments are p_-prefixed; the board never sends
+   * p_actor* or p_source (the database takes the actor from the session; either → 42501).
+   * p_cap is the typed text (the function strips commas, refuses words in Thai). A bill is its
+   * uuid (p_bill_id) or, until phase 2, p_legacy_id = timestamp + '_' + submitter.
    */
+  function sbBillKey(p) { return p.billId ? { p_bill_id: p.billId } : { p_legacy_id: p.timestamp + '_' + p.submitter }; }
   var SB_ACTIONS = {
-    bdApprove: { domain: 'tickets', fn: 'approve_purchase', args: function (p) { return { id: p.ticketId, cap: p.cap === undefined ? null : p.cap }; } },
-    bdReject: { domain: 'tickets', fn: 'reject_purchase', args: function (p) { return { id: p.ticketId, reason: p.reason }; } },
-    prCreate: { domain: 'purchase', fn: 'pr_create', args: function (p) { return { venue: p.venue, buyer: p.buyer, category: p.category, items: p.items, reason: p.reason }; } },
-    prDecide: { domain: 'purchase', fn: 'pr_decide', args: function (p) { return { id: p.id, lines: p.lines, note: p.note }; } },
-    prOrdered: { domain: 'purchase', fn: 'pr_ordered', args: function (p) { return { id: p.id, total: p.actualTotal, eta: p.eta }; } },
-    prDelivered: { domain: 'purchase', fn: 'pr_delivered', args: function (p) { return { id: p.id }; } },
-    prReceived: { domain: 'purchase', fn: 'pr_received', args: function (p) { return { id: p.id }; } },
-    prCancel: { domain: 'purchase', fn: 'pr_cancel', args: function (p) { return { id: p.id }; } },
-    bdBillReviewed: { domain: 'bills', fn: 'bill_review', args: function (p) { return { bill_id: p.billId || p.timestamp + '_' + p.submitter, reviewed: !!p.reviewed }; } },
-    bdBillCompany: { domain: 'bills', fn: 'bill_company', args: function (p) { return { bill_id: p.billId || p.timestamp + '_' + p.submitter, company: p.company }; } },
+    bdApprove: { domain: 'tickets', fn: 'approve_purchase', args: function (p) {
+      return { p_id: p.ticketId, p_cap: p.capText !== undefined ? String(p.capText) : (p.cap === undefined || p.cap === null ? null : String(p.cap)) };
+    } },
+    bdReject: { domain: 'tickets', fn: 'reject_purchase', args: function (p) { return { p_id: p.ticketId, p_reason: p.reason }; } },
+    prCreate: { domain: 'purchase', fn: 'pr_create', args: function (p) { return { p_venue: p.venue, p_buyer: p.buyer, p_category: p.category, p_items: p.items, p_reason: p.reason }; } },
+    prDecide: { domain: 'purchase', fn: 'pr_decide', args: function (p) { return { p_id: p.id, p_lines: p.lines, p_note: p.note }; } },
+    prOrdered: { domain: 'purchase', fn: 'pr_ordered', args: function (p) { return { p_id: p.id, p_actual_total: p.actualTotal, p_eta: p.eta }; } },
+    prDelivered: { domain: 'purchase', fn: 'pr_delivered', args: function (p) { return { p_id: p.id }; } },
+    prReceived: { domain: 'purchase', fn: 'pr_received', args: function (p) { return { p_id: p.id }; } },
+    prCancel: { domain: 'purchase', fn: 'pr_cancel', args: function (p) { return { p_id: p.id }; } },
+    bdBillReviewed: { domain: 'bills', fn: 'bill_review', args: function (p) { return Object.assign(sbBillKey(p), { p_reviewed: !!p.reviewed }); } },
+    bdBillCompany: { domain: 'bills', fn: 'bill_company', args: function (p) { return Object.assign(sbBillKey(p), { p_company: p.company }); } },
   };
   /** The settings row: each domain's record of truth; anything but 'supabase' is the sheets. */
   function sbSettingsOf(row) {
@@ -1620,7 +1626,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   /** LINE's SDK: only on a first open (no session, no link) or for something that needs LINE. */
   function needLine(o) { return !o.session || !o.linked || ['chat', 'openWindow', 'install', 'api'].indexOf(o.intent) >= 0; }
   /**
-   * WO#23 addendum (engine 4e0d1c7): a function returns the truth columns at once, while card,
+   * WO#23 addendum (engine 4e0d1c7): a function returns the truth columns at once ({row, events}), while card,
    * detail and doc are rebuilt by the engine 1–3 s later and come by Realtime. So the local row is
    * patched only where the action changed it; everything else waits for the engine's row.
    * Nothing here ports bdCard_. null when there is no local row (the Realtime row will come).
@@ -1648,10 +1654,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     }
     return out;
   }
-  /** What a failed function call means: the engine's NOT_CUT_OVER, a refusal (its Thai words), or no network. */
+  /**
+   * What a failed function call means, by PostgREST's code: DC001 = the engine's NOT_CUT_OVER;
+   * 42501 = NOT_ALLOWED, shown in the board's words, never raw; P0001 / DC003 and the rest carry
+   * the engine's Thai; 401 = the session (refresh once); no status = no network.
+   */
   function sbRpcFailure(e) {
     if (!e || !e.status) return { kind: 'network' };
-    if (/NOT_CUT_OVER/.test(e.message || '')) return { kind: 'notCutOver' };
+    if (e.status === 401) return { kind: 'auth' };
+    if (e.code === 'DC001' || /NOT_CUT_OVER/.test(e.message || '')) return { kind: 'notCutOver' };
+    if (e.code === '42501' || /NOT_ALLOWED/.test(e.message || '')) return { kind: 'refused', message: L.err.notAllowed };
     return { kind: 'refused', message: e.message };
   }
   /**
@@ -2151,15 +2163,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       /** A function call: the demo's own action, then the row it changed, as the database would answer it. */
       rpc: function (fn, args) {
         var action = Object.keys(SB_ACTIONS).filter(function (k) { return SB_ACTIONS[k].fn === fn; })[0];
-        var a = args || {}, cut = String(a.bill_id || '').lastIndexOf('_');
-        var payload = { ticketId: a.id, id: a.id, cap: a.cap === null ? undefined : a.cap, reason: a.reason, lines: a.lines, note: a.note, actualTotal: a.total, eta: a.eta,
-          venue: a.venue, buyer: a.buyer, category: a.category, items: a.items, reviewed: a.reviewed, company: a.company,
-          timestamp: cut > 0 ? a.bill_id.slice(0, cut) : undefined, submitter: cut > 0 ? a.bill_id.slice(cut + 1) : undefined };
+        var a = args || {}, key = String(a.p_legacy_id || ''), cut = key.lastIndexOf('_');
+        var payload = { ticketId: a.p_id, id: a.p_id, cap: a.p_cap === null || a.p_cap === undefined ? undefined : Number(String(a.p_cap).replace(/,/g, '')),
+          reason: a.p_reason, lines: a.p_lines, note: a.p_note, actualTotal: a.p_actual_total, eta: a.p_eta,
+          venue: a.p_venue, buyer: a.p_buyer, category: a.p_category, items: a.p_items, reviewed: a.p_reviewed, company: a.p_company,
+          timestamp: cut > 0 ? key.slice(0, cut) : undefined, submitter: cut > 0 ? key.slice(cut + 1) : undefined };
         return new Promise(function (resolve) { setTimeout(resolve, 700); }).then(function () { return demo.call(action, payload); }).then(function (res) {
           if (!res.ok) { var e = new Error(res.error); e.status = 400; throw e; }
-          var dom = SB_ACTIONS[action].domain, id = dom === 'bills' ? a.bill_id : (a.id || res.id);
+          var dom = SB_ACTIONS[action].domain, id = dom === 'bills' ? key : (a.p_id || res.id);
           var rows = dom === 'tickets' ? T.tickets : dom === 'bills' ? T.bills : demo.sbPurchaseRows();
-          return JSON.parse(JSON.stringify(rows.filter(function (r) { return r.id === id; })[0] || { id: id }));
+          return { row: JSON.parse(JSON.stringify(rows.filter(function (r) { return r.id === id; })[0] || { id: id })), events: [] };   // team B's shape
         });
       },
       subscribe: function (table, filter, cb) { var h = 'demo' + (++next); subs[h] = { table: table, filter: filter || '', cb: cb }; return h; },
@@ -2928,8 +2941,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     if (a) all = all.concat(a.repair);
     return all.filter(function (c) { return c.id === id; })[0] || null;
   }
-  function careDone(promise, okText) {
-    return promise.then(function (res) { toast(okText); S.csheet = null; S.openMenu = ''; render(); if (!(res && res.__rpc)) loadZone(true); },
+  /** okText as v8.2; on the function path the LINE card follows through the outbox, so it is not promised. */
+  function careDone(promise, okText, rpcText) {
+    return promise.then(function (res) { toast(res && res.__rpc && rpcText ? rpcText : okText); S.csheet = null; S.openMenu = ''; render(); if (!(res && res.__rpc)) loadZone(true); },
       function (e) { toast(e.message, true); if (S.csheet) S.csheet.busy = false; render(); });
   }
   function openTicket(id) {
@@ -3015,20 +3029,20 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'bdConfirm':
         if (S.csheet.busy) return true;
         S.csheet.busy = true; el.disabled = true; render();
-        careDone(doAction('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+        careDone(doAction('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว', 'อนุมัติแล้ว · ' + S.csheet.id); return true;
       case 'bdConfirmCap': {
         var cap = priceOf(S.csheet.cap);
         if (cap === null || isNaN(cap) || cap <= 0) { S.csheet.err = 'ใส่วงเงินเป็นตัวเลขมากกว่า 0'; render(); return true; }
         if (S.csheet.busy) return true;
         S.csheet.busy = true; el.disabled = true; render();
-        careDone(doAction('bdApprove', { ticketId: S.csheet.id, cap: cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
+        careDone(doAction('bdApprove', { ticketId: S.csheet.id, cap: cap, capText: S.csheet.cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
       }
       case 'bdConfirmReject': {
         var why = String(S.csheet.reason || '').trim();
         if (!why) { S.csheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return true; }
         if (S.csheet.busy) return true;
         S.csheet.busy = true; el.disabled = true; render();
-        careDone(doAction('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+        careDone(doAction('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว', 'ไม่อนุมัติ · ' + S.csheet.id); return true;
       }
     }
     return false;
@@ -3417,15 +3431,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function doAction(action, payload) {
     var route = actionRoute({ action: action, payload: payload, settings: S.sb ? S.settings : null });
     if (route.via === 'api') return apiWithLine(action, payload);
-    return SB.rpc(route.fn, route.args).then(function (row) {
+    var call = function () { return SB.rpc(route.fn, route.args); };
+    return call().catch(function (e) {   // a stale session: refresh once and call again, as the reads do
+      if (sbRpcFailure(e).kind === 'auth') return SB.refresh().then(call);
+      throw e;
+    }).then(function (ans) {
+      // Team B's answer: {row: <truth columns>, events: [<lines written>], …}, never the bare row.
+      var row = ans && ans.row && typeof ans.row === 'object' ? ans.row : null;
       sbTakeRow(action, row, route.args);
-      var out = row && typeof row === 'object' ? row : {};
+      var out = row ? JSON.parse(JSON.stringify(row)) : {};
       out.__rpc = true;
       return out;
     }, function (e) {
       var f = sbRpcFailure(e);
       if (f.kind === 'notCutOver') { sbReadSettings(); return apiWithLine(action, payload); }
-      throw new Error(f.kind === 'network' ? L.err.network : f.message);
+      throw new Error(f.kind === 'refused' ? f.message : L.err.network);
     });
   }
   /** A function's row, as a patch of what the action changed (sbPatchFor), into every local set holding it. */
