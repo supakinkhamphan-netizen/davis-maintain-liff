@@ -172,6 +172,15 @@ safe('3', () => {
   eq('3.9 บิล: the groups as bdBillsWeek_ shows them', w0.groups, b0.groups);
   eq('3.10 บิล: the companies from the stats row', w0.companies, b0.companies);
   eq('3.10b บิล: ทั้งหมด (every bill) from the stats row (WO#20 E3)', w0.all, b0.all);
+  // Ruling (WO#20 E4): two bills by one person in the same second share one id, so the mirror keeps one row
+  // while the engine counts both. The week's figures and ทั้งหมด are the stats row's; the list is the rows'.
+  const doc0 = JSON.parse(JSON.stringify(T.stats.filter(s => s.id === 'billweek|0')[0].doc));
+  doc0.week.total += 500; doc0.week.count += 1;
+  const wx = P.sbBillsWeek(T.bills.filter(b => b.week_off === 0), doc0);
+  eq('3.10c บิล: a week whose stats total exceeds the rows shows the stats figures; the list stays the rows', [wx.week.total, wx.week.count, wx.groups.reduce((n, g) => n + g.count, 0)],
+    [doc0.week.total, doc0.week.count, T.bills.filter(b => b.week_off === 0).length]);
+  const wn = P.sbBillsWeek(T.bills.filter(b => b.week_off === 0), null);
+  eq('3.10d … no stats row: the rows summed', [wn.week.total, wn.week.count, wn.week.reviewed], [120, 1, 1]);
   const st = T.stats.filter(s => s.id === 'overview|all|7')[0];
   const ov = P.sbStat(st);
   const wantOv = strip(R('manager').calls['bdOverview{"window":7,"venue":"","tech":""}']); delete wantOv.pageUrl;
