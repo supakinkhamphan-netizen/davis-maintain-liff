@@ -838,6 +838,8 @@ async function section16() {
   await tick(120);
   v.pg.tap('cancel', 'PR_20261020_01');
   v.pg.tap('confirmCancel');
+  await tick(2);
+  ok('16.10b mid-flight on a v5 sheet: the pressed button says it is sending', /กำลังส่ง/.test(textOf(v.pg.app.innerHTML)));
   await tick(150);
   eq('16.10 purchase=supabase: a branch request cancelled through pr_cancel {id}', [v.fake.log.rpc, v.pg.log.fns], [[{ fn: 'pr_cancel', args: { id: 'PR_20261020_01' } }], []]);
 
