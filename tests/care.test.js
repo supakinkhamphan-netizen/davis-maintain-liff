@@ -837,7 +837,8 @@ async function section16() {
   eq('16.11 bills=supabase: the tick through bill_review {bill_id, reviewed}', [b.fake.log.rpc, b.pg.log.fns], [[{ fn: 'bill_review', args: { bill_id: bill.id, reviewed: false } }], []]);
 
   // Addendum: the function's row carries the new status but the OLD card; the engine's card comes later by Realtime.
-  const stale = (args, T) => { const x = JSON.parse(JSON.stringify(T.tickets.filter(t => t.id === args.id)[0])); x.status = 'กำลังดำเนินการ'; return x; };
+  // From an untouched copy of the fixture: the fake's emit writes into its own tables, and the function's row must stay stale.
+  const stale = args => { const x = JSON.parse(JSON.stringify(sbTables().tickets.filter(t => t.id === args.id)[0])); x.status = 'กำลังดำเนินการ'; return x; };
   const st2 = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: stale }, rpcDelay: 150 } });
   await tick(150);
   const m0 = nApprovals(st2.pg.app.innerHTML), sel2 = st2.fake.log.selects.length;
