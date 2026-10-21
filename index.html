@@ -3111,6 +3111,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   if ('serviceWorker' in navigator) {
     hadWorker = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').catch(function () { /* the board works without it */ });
+    // WO#23 §5: the worker serves the cached page at once; it found a newer one behind it.
+    navigator.serviceWorker.addEventListener('message', function (ev) {
+      if (!ev.data || ev.data.type !== 'newBuild') return;
+      S.updateReady = true;
+      if (!busyNow() && !S.csheet) render();
+    });
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       if (!hadWorker) { hadWorker = true; return; }   // the first install, not a new build
       S.updateReady = true;
