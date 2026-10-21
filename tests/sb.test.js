@@ -75,8 +75,8 @@ safe('2', () => {
   const Q = (zone, role, ui) => P.sbQueryFor(zone, me(role), ui || {}, NOW);
   const D7 = NOW - 7 * 86400000;
   eq('2.1 งานซ่อม (manager): every live ticket + every ticket closed in the last 7 days, card + events only', Q('repair', 'manager'), [
-    { table: 'tickets', params: { select: 'id,venue,status,live,created_ms,close_ms,card,events', live: 'is.true' } },
-    { table: 'tickets', params: { select: 'id,venue,status,live,created_ms,close_ms,card,events', close_ms: 'gte.' + D7 } },
+    { table: 'tickets', params: { select: 'id,venue,status,live,created_ms,close_ms,seq,card,events', live: 'is.true' } },
+    { table: 'tickets', params: { select: 'id,venue,status,live,created_ms,close_ms,seq,card,events', close_ms: 'gte.' + D7 } },
   ]);
   eq('2.2 งานซ่อม (venue manager): both carry their venues', Q('repair', 'venue_manager').map(q => q.params.venue), ['in.("24BLVD")', 'in.("24BLVD")']);
   eq('2.3 งานทั้งหมด: a status, newest first, 50 a page, the total counted', Q('tickets', 'account', { status: 'เสร็จสิ้น', offset: 50 }), [
@@ -91,7 +91,7 @@ safe('2', () => {
   // Phase 2: every ticket that ever asked to buy (a REQUEST_PURCHASE makes card.purchase): the pending ones,
   // จุดนี้เคยอนุมัติ and the approval history all come from these rows.
   eq('2.8 รออนุมัติ: tickets that asked to buy + branch requests pending', Q('approvals', 'account'), [
-    { table: 'tickets', params: { select: 'id,venue,status,created_ms,card,events', 'card->purchase': 'not.is.null' } },
+    { table: 'tickets', params: { select: 'id,venue,status,created_ms,seq,card,events', 'card->purchase': 'not.is.null' } },
     { table: 'purchase', params: { select: '*', status: 'eq.pending', order: 'created_at.desc' } }]);
   // Phase 2: one read of every request the person may see; the v5 tabs, counts, chips and ตามร้าน are counted on the page.
   eq('2.9 ขอซื้อ (manager): one read, whatever the tab', ['pending', 'tobuy', 'all', 'mine', 'byshop'].map(t => Q('purchase', 'manager', { tab: t })[0].params),
