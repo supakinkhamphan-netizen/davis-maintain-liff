@@ -2535,12 +2535,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       h += '<div class="quick" role="group" aria-label="เหตุผลที่ใช้บ่อย">' + (S.me.quickReasons || L.quickReasons).map(function (q) {
         return '<button type="button" class="shopChip" data-act="quick" data-k="' + esc(q) + '">' + esc(q) + '</button>';
       }).join('') + '</div>';
-      h += '<button type="button" class="actionBtn danger" data-act="confirmReject">' + (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button>';
+      h += '<button type="button" class="actionBtn danger" data-act="confirmReject"' + (sh.busy ? ' disabled>กำลังส่ง…</button>' : '>' + (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button>');
     } else if (sh.kind === 'high') {
       var p2 = decisionPlan(r, checksOf(r), S.me.highAmount);
       h += '<div class="sheetTitle" id="sheetTitle">ยืนยันอนุมัติยอดสูง</div><div class="sheetHint">' + esc(r.id) + ' · ' + esc(r.venue) + ' · ' + esc(r.requester) + '</div>' +
         '<div class="promise soon">🟡 ยอดที่อนุมัติ ' + fmtBaht(p2.checkedTotal) + ' บาท · ' + fmtBaht(S.me.highAmount) + ' บาทขึ้นไป</div>';
-      h += '<button type="button" class="actionBtn" data-act="confirmApprove">✓ ยืนยันอนุมัติ</button>';
+      h += '<button type="button" class="actionBtn" data-act="confirmApprove"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>✓ ยืนยันอนุมัติ') + '</button>';
     } else if (sh.kind === 'ordered') {
       var f = S.fields[r.id] || (S.fields[r.id] = { actual: '', eta: '' });
       h += '<div class="sheetTitle" id="sheetTitle">🛒 สั่งซื้อแล้ว</div><div class="sheetHint">' + esc(r.id) + ' · ' + esc(r.venue) + ' · อนุมัติ ' + fmtBaht(r.approvedTotal) + ' บาท</div>';
@@ -2550,7 +2550,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       h += '<button type="button" class="actionBtn" data-act="confirmOrdered" data-k="' + esc(r.id) + '">🛒 บันทึกสั่งซื้อแล้ว</button>';
     } else if (sh.kind === 'cancel') {
       h += '<div class="sheetTitle" id="sheetTitle">✖️ ยกเลิกคำขอ ' + esc(r.id) + '</div><div class="sheetHint">ยกเลิกแล้วจะตัดสินไม่ได้อีก ถ้ายังต้องการของ ส่งคำขอใหม่</div>';
-      h += '<button type="button" class="actionBtn danger" data-act="confirmCancel">ยกเลิกคำขอ</button>';
+      h += '<button type="button" class="actionBtn danger" data-act="confirmCancel"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>ยกเลิกคำขอ') + '</button>';
     }
     return h + '<button type="button" class="sheetBtn cancel" data-act="closeSheet">กลับ</button></section></div>';
   }
@@ -2769,12 +2769,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'confirmReject': {
         var why = String(S.sheet.reason || '').trim();
         if (!why) { S.sheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return; }
-        el.disabled = true;
+        el.disabled = true; S.sheet.busy = true; render();
         sendDecision(findRow(S.sheet.id), S.sheet.whole, why); return;
       }
-      case 'confirmApprove': el.disabled = true; sendDecision(findRow(S.sheet.id), false, ''); return;
+      case 'confirmApprove': el.disabled = true; S.sheet.busy = true; render(); sendDecision(findRow(S.sheet.id), false, ''); return;
       case 'cancel': S.sheet = { kind: 'cancel', id: k }; render(); return;
-      case 'confirmCancel': el.disabled = true; after(doAction('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
+      case 'confirmCancel': el.disabled = true; S.sheet.busy = true; render(); after(doAction('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
       case 'ordered': S.sheet = { kind: 'ordered', id: k }; render(); return;
       case 'confirmOrdered': {
         var fl = S.fields[k] || {};
