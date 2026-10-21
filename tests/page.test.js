@@ -63,7 +63,7 @@ ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
 // v7.1 (fa1aa0d) pin retired by WO#21:
 // ok('build v7.1', /var BUILD = 'care-board v7\.1 · 2026-10-2\d · เปิดครั้งเดียว';/.test(SRC));
 ok('build v8.0', /var BUILD = 'care-board v8\.0 · 2026-10-2\d · Supabase';/.test(SRC));
-ok('WO#21 the demo never writes the real cache (davisPurchase.v1)', (SRC.match(/store\(false, cacheZone\(/g) || []).length === (SRC.match(/if \(!DEMO\) store\(false, cacheZone\(/g) || []).length);
+ok('WO#21 the demo never writes the real cache (davisPurchase.v1)', (SRC.match(/store\(false, cacheZone\(/g) || []).length === (SRC.match(/!DEMO\) store\(false, cacheZone\(/g) || []).length);
 // Work order #18 §2.1: an installable app.
 const HEAD = SRC.slice(0, SRC.indexOf('</head>'));
 ok('#18 title is Davis Care (the LIFF header and the app name)', /<title>Davis Care<\/title>/.test(HEAD));

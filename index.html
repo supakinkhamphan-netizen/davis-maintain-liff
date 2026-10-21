@@ -306,7 +306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v7.1 · 2026-10-20 · เปิดครั้งเดียว';
+  var BUILD = 'care-board v8.0 · 2026-10-21 · Supabase';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -1698,17 +1698,22 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
    * the server (purchase-liff-api.js) in shape and wording, so a review of the
    * demo is a review of the screens. Nothing leaves the page.
    */
-  function makeDemo(roleKey) {
-    var NOW = new Date('2026-10-18T04:12:00Z').getTime(); // 11:12 in Bangkok
-    var people = {
+  /**
+   * The demo's world. With a seed (WO#21: from demo-sb.json) the people, the requests, the
+   * Hotels and the clock are the engine fixture's, so every zone shows one world; without
+   * one, the sample below (logic.test walks it).
+   */
+  function makeDemo(roleKey, seed) {
+    var NOW = seed ? seed.now : new Date('2026-10-18T04:12:00Z').getTime(); // 11:12 in Bangkok
+    var people = seed ? seed.people : {
       venue_manager: { userId: 'demo-vm', actorName: 'สมหญิง', role: 'venue_manager', venues: ['HOS'] },
       purchasing: { userId: 'demo-pur', actorName: 'คุณเอ', role: 'purchasing', venues: [] },
       manager: { userId: 'demo-mgr', actorName: 'คุณบี', role: 'manager', venues: [] },
       account: { userId: 'demo-acc', actorName: 'หมีน้อย', role: 'account', venues: [] },
     };
-    var others = { 'demo-nat': 'นัท', 'demo-nick': 'นิค' };
-    var hotels = ['HOS', 'Upperhouse', '24BLVD', 'Davis'];
-    var cats = ['ของใช้สิ้นเปลือง', 'อุปกรณ์/เครื่องใช้', 'ซ่อมบำรุง', 'ตกแต่ง/อีเวนต์', 'อื่น ๆ'];
+    var others = seed ? seed.names : { 'demo-nat': 'นัท', 'demo-nick': 'นิค' };
+    var hotels = seed ? seed.hotels : ['HOS', 'Upperhouse', '24BLVD', 'Davis'];
+    var cats = seed ? seed.categories : ['ของใช้สิ้นเปลือง', 'อุปกรณ์/เครื่องใช้', 'ซ่อมบำรุง', 'ตกแต่ง/อีเวนต์', 'อื่น ๆ'];
     var me = people[roleKey] || people.venue_manager;
     function item(n, name, qty, unit, price, from, status, reason) {
       return { n: n, name: name, qty: qty, unit: unit, unitPrice: price, lineTotal: price === null ? null : round2(qty * price), from: from || '', status: status || 'pending', reason: reason || '' };
@@ -1728,7 +1733,18 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       for (var k in people) if (people[k].userId === uid) return people[k].actorName;
       return others[uid] || '';
     }
-    var rows = [
+    /** A purchase row of the mirror back into the demo's own shape. */
+    function fromSb(r) {
+      var d = r.doc || {};
+      return { id: r.id, createdAt: d.createdAt, venue: r.venue, requesterId: r.by, buyer: d.buyer, category: d.category || '',
+        items: (d.items || []).map(function (i) { var o = JSON.parse(JSON.stringify(i)); delete o.reasonShown; return o; }),
+        reason: d.reason || '', photos: (d.photos || []).slice(), status: r.status, fulfilment: d.fulfilment || '',
+        decidedBy: d.decidedBy || '', decidedAt: d.decidedAt || '', note: d.note || '', orderedAt: d.orderedAt || '', orderedBy: d.orderedBy || '',
+        actualTotal: d.actualTotal === undefined ? null : d.actualTotal, eta: d.eta || '', deliveredAt: d.deliveredAt || '',
+        receivedAt: d.receivedAt || '', cancelledAt: d.cancelledAt || '',
+        audit: (d.audit || []).map(function (a) { return { action: a.action, actor: a.actor, detail: a.detail, at: a.at }; }) };
+    }
+    var rows = seed ? seed.rows.map(fromSb) : [
       req({ id: 'PR_20261018_03', createdAt: '2026-10-18 09:12', venue: 'HOS', requesterId: 'demo-vm', buyer: 'purchasing', category: 'ของใช้สิ้นเปลือง',
         items: [item(1, 'สบู่ล้างมือ', 12, 'ขวด', 45, 'Makro สาขาพระราม 3'), item(2, 'ทิชชู่ม้วนใหญ่', 6, 'แพ็ค', 75, 'https://shopee.co.th/product/88213'), item(3, 'โคมไฟตั้งโต๊ะ', 1, 'ตัว', null, 'Makro สาขาพระราม 3')],
         reason: 'ของเดิมจะหมดภายในสัปดาห์นี้ ใช้ในห้องน้ำลูกค้า 3 จุด โคมไฟของเดิมเสีย' }),
@@ -1950,21 +1966,118 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
         if (p.status) { hit.rows = hit.rows.filter(function (c) { return c.status === p.status; }); hit.total = hit.rows.length; }
       }
       if (!hit && fn === 'bdBills') hit = calls[key({ weekOffset: 0 })];
+      if (!hit && fn === 'bdExecLink') throw new Error('(ตัวอย่าง) หน้าเว็บเดิมเปิดได้เมื่อใช้งานจริง');
       if (!hit) throw new Error('ตัวอย่างไม่มีข้อมูลชุดนี้');
       return JSON.parse(JSON.stringify(hit));
     }
     return {
       as: function (key) { me = people[key] || me; },
       roleKey: function () { return me.role; },
+      me: function () { return me; },
+      now: function () { return NOW; },
+      /** The requests as the mirror writes them (WO#21), for the demo's window.SB. */
+      sbPurchaseRows: function () {
+        return rows.map(function (r) {
+          var o = pub(r);
+          delete o.mine; delete o.ageMinutes;
+          o.audit = r.audit.map(function (a) { return { action: a.action, label: L.action[a.action] || a.action, actor: a.actor, detail: a.detail, at: a.at }; });
+          return { id: r.id, venue: r.venue, status: r.status, by: r.requesterId, created_at: new Date(mins(r.createdAt) * 60000).toISOString(), doc: o };
+        });
+      },
       call: function (fn, payload) {
         return new Promise(function (resolve) {
           var out;
           try {
             var res = /^bd/.test(fn) ? bd(fn, payload || {}) : (FN[fn] ? FN[fn](payload || {}) : null);
             out = res ? Object.assign({ ok: true }, res) : { ok: false, error: 'ไม่รู้จักคำสั่ง' };
+            if (out.ok && seed && seed.onWrite) seed.onWrite(fn, payload || {});   // the demo's Supabase shows it
           } catch (e) { out = { ok: false, error: e.message }; }
           setTimeout(function () { resolve(JSON.parse(JSON.stringify(out))); }, 120);
         });
+      },
+    };
+  }
+  /**
+   * The demo's window.SB (WO#21): demo-sb.json as PostgREST answers it, for the person the
+   * demo is showing; purchase rows come from makeDemo (its actions change them); a demo
+   * write is pushed to the subscriptions as Realtime would.
+   */
+  function makeDemoSb(tables, demo) {
+    var T = JSON.parse(JSON.stringify(tables)), subs = {}, next = 0;
+    function val(row, key) {
+      var parts = key.split('->'), text = /->>/.test(key), v = row[parts[0]];
+      parts.slice(1).forEach(function (p) { p = p.replace(/^>/, ''); v = v === null || v === undefined ? v : v[p]; });
+      return v === null || v === undefined ? null : (text ? String(v) : v);
+    }
+    function hit(row, key, cond) {
+      var v = val(row, key), i = cond.indexOf('.'), op = cond.slice(0, i), arg = cond.slice(i + 1);
+      if (op === 'not') return !hit(row, key, arg);
+      if (op === 'eq') return String(v) === arg;
+      if (op === 'is') return arg === 'null' ? v === null : String(v) === arg;
+      if (op === 'in') return arg.replace(/^\(|\)$/g, '').split(',').map(function (x) { return x.replace(/^"|"$/g, ''); }).indexOf(String(v)) >= 0;
+      if (op === 'gte') return v !== null && Number(v) >= Number(arg);
+      if (op === 'lte') return v !== null && Number(v) <= Number(arg);
+      return false;
+    }
+    function seen(table, r) {
+      var me = demo.me(), vm = me.role === 'venue_manager', mine = vm && me.venues.indexOf(r.venue) >= 0;
+      if (table === 'tickets') return me.role === 'manager' || me.role === 'account' || mine;
+      if (table === 'purchase') return !vm || mine;
+      if (table === 'people') return r.uid === me.userId;
+      if (table === 'bills') return me.role === 'account';
+      if (table === 'stats' && vm) return me.venues.some(function (v) { return r.id.indexOf('overview|' + v + '|') === 0; });
+      return true;
+    }
+    function rowsOf(table) { return table === 'purchase' ? demo.sbPurchaseRows() : (T[table] || []); }
+    function emit(table, change) {
+      var row = change.row || change.old;
+      Object.keys(subs).forEach(function (h) {
+        var x = subs[h], i = x.filter.indexOf('=');
+        if (x.table !== table || (x.filter && !hit(row, x.filter.slice(0, i), x.filter.slice(i + 1)))) return;
+        x.cb(JSON.parse(JSON.stringify(change)));
+      });
+    }
+    var session = { user: { id: 'demo' }, access_token: 'demo' };
+    var ok = function () { return Promise.resolve(session); };
+    return {
+      session: ok, signInAnon: ok, refresh: ok, signOut: function () { return Promise.resolve(); },
+      from: function (table) {
+        return {
+          select: function (params, opts) {
+            var rows = rowsOf(table).filter(function (r) { return seen(table, r); });
+            Object.keys(params || {}).forEach(function (k) {
+              if (['select', 'order', 'limit', 'offset'].indexOf(k) < 0) rows = rows.filter(function (r) { return hit(r, k, params[k]); });
+            });
+            var count = rows.length;
+            if (params && params.order) {
+              var o = params.order.split('.'), dir = o[1] === 'desc' ? -1 : 1;
+              rows = rows.slice().sort(function (a, b) { return dir * ((a[o[0]] > b[o[0]]) - (a[o[0]] < b[o[0]])); });
+            }
+            var off = Number((params || {}).offset) || 0, lim = params && params.limit ? Number(params.limit) : rows.length;
+            rows = JSON.parse(JSON.stringify(rows.slice(off, off + lim)));
+            return new Promise(function (resolve) { setTimeout(function () { resolve({ rows: rows, count: opts && opts.count ? count : null }); }, 60); });
+          },
+        };
+      },
+      subscribe: function (table, filter, cb) { var h = 'demo' + (++next); subs[h] = { table: table, filter: filter || '', cb: cb }; return h; },
+      unsubscribe: function (h) { delete subs[h]; },
+      /** A demo write, as the mirror would write it and Realtime push it. */
+      touch: function (fn, p) {
+        if (/^pr(Create|Cancel|Decide|Ordered|Delivered|Received)$/.test(fn)) {
+          demo.sbPurchaseRows().forEach(function (r) { emit('purchase', { type: 'UPDATE', row: r }); });
+        } else if (fn === 'bdApprove' || fn === 'bdReject') {
+          var t = T.tickets.filter(function (x) { return x.id === p.ticketId; })[0];
+          if (!t) return;
+          t.status = t.card.status = 'กำลังดำเนินการ';
+          if (t.card.purchase) t.card.purchase.pending = false;
+          t.events = [{ ms: demo.now(), at: '', action: fn === 'bdApprove' ? 'APPROVE_PURCHASE' : 'REJECT_PURCHASE', actor: demo.me().actorName, detail: p.reason || '' }].concat(t.events || []);
+          emit('tickets', { type: 'UPDATE', row: JSON.parse(JSON.stringify(t)) });
+        } else if (fn === 'bdBillReviewed' || fn === 'bdBillCompany') {
+          var b = T.bills.filter(function (x) { return x.id === p.timestamp + '_' + p.submitter; })[0];
+          if (!b) return;
+          if (fn === 'bdBillReviewed') { b.reviewed = !!p.reviewed; b.reviewed_by = p.reviewed ? demo.me().actorName : ''; } else b.company = p.company || b.company;
+          emit('bills', { type: 'UPDATE', row: JSON.parse(JSON.stringify(b)) });
+        }
       },
     };
   }
@@ -2510,7 +2623,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     if (careClick(act, k, el)) return;
     var f = S.form;
     switch (act) {
-      case 'as': DEMO.as(k); S.zone = ''; S.z = {}; S.zui = {}; S.view = 'list'; S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; S.openMenu = ''; S.counts = {}; S.tab = ''; boot(); return;
+      case 'as': DEMO.as(k); S.zone = ''; S.z = {}; S.zui = {}; S.view = 'list'; S.me = null; S.board = null; S.shops = null; S.checks = {}; S.fields = {}; S.view = 'list'; S.sheet = null; S.openMenu = ''; S.counts = {}; S.tab = ''; if (DEMO_SB) demoSbStart(); else boot(); return;
       case 'tab':
         S.tab = k; S.venue = ''; S.board = null; S.shops = null; S.openMenu = '';
         if (k === 'byshop' && !S.month) S.month = (S.me.serverNow || '').slice(0, 7);
@@ -3059,7 +3172,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       if (S.zone && S.zone !== 'purchase') return;
       S.sbRows.purchase = r.rows;
       sbPurchaseView();
-      if (S.tab !== 'byshop' && S.board) store(false, cacheZone(store(true) || {}, S.me, S.tab, S.venue, S.board, Date.now()));
+      if (S.tab !== 'byshop' && S.board && !DEMO) store(false, cacheZone(store(true) || {}, S.me, S.tab, S.venue, S.board, Date.now()));
       sbSubscribe('purchase', {});
     }, function (e) {
       S.busy = false;
@@ -3108,7 +3221,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       else { if (!res[0].rows[0]) throw SB_NOROW; var st = sbStat(res[0].rows[0]); data = st.data; at = st.at; }
       S.z[z] = data; S.statsAt = at; S.cachedAt = 0; S.offline = false; S.lastLoad = Date.now();
       if (z === 'approvals') S.board = { rows: data.branch };   // the v5 detail and decide work on these rows
-      store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', data, Date.now(), u));
+      if (!DEMO) store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', data, Date.now(), u));
       sbSubscribe(z, u);
       if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
     }).catch(function (e) {
@@ -3173,11 +3286,39 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     }, function () { /* the next open tries again */ });
   }
 
+  // WO#21: ?demo=1 runs on demo-sb.json through the demo's window.SB (the engine fixture's world).
+  var DEMO_SB = null;
+  function demoSeed(t) {
+    var people = {}, names = {}, lists = t.lists[0].doc;
+    ['venue_manager', 'purchasing', 'manager', 'account'].forEach(function (role) {
+      var p = t.people.filter(function (x) { return x.role === role && x.active; })[0];
+      if (p) people[role] = { userId: p.uid, actorName: p.name, role: role, venues: p.venues || [] };
+    });
+    t.people.forEach(function (p) { names[p.uid] = p.name; });
+    return { now: Date.parse(t.sync_meta[0].last_run), people: people, names: names, hotels: lists.hotels, categories: lists.categories, rows: t.purchase };
+  }
+  function demoSbStart() {
+    var me0 = DEMO.me(), lists = DEMO_SB.lists[0].doc;
+    var person = DEMO_SB.people.filter(function (p) { return p.uid === me0.userId; })[0];
+    sbUnsubAll();
+    S.sbRows = {}; S.serverSkew = DEMO.now() - Date.now();
+    S.sbLists = lists; S.sb = true; sbPhase = 'on';
+    startWith(sbMe(person, lists, DEMO.now()));
+  }
   if (DEMO_MODE) {
     var as = (/[?&]as=(\w+)/.exec(QS) || [])[1];
-    DEMO = makeDemo(as || 'venue_manager');
     S.hint = pwaHint(false);
-    fetch('demo-bd.json').then(function (r) { return r.json(); }).then(function (j) { DEMO_BD = j; }, function () { DEMO_BD = null; }).then(boot);
+    var getJson = function (u) { return fetch(u).then(function (r) { return r.json(); }).then(null, function () { return null; }); };
+    Promise.all([getJson('demo-bd.json'), getJson('demo-sb.json')]).then(function (j) {
+      DEMO_BD = j[0];
+      DEMO_SB = j[1] && j[1].tables;
+      if (!DEMO_SB) { DEMO = makeDemo(as || 'venue_manager'); boot(); return; }
+      var seed = demoSeed(DEMO_SB);
+      DEMO = makeDemo(as || 'venue_manager', seed);
+      SB = window.SB = makeDemoSb(DEMO_SB, DEMO);
+      seed.onWrite = function (fn, p) { SB.touch(fn, p); };
+      demoSbStart();
+    });
     return;
   }
   // #18 §2.6: the last answer of the person's zone, painted before LINE answers, every role.

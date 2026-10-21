@@ -695,7 +695,8 @@ async function section13() {
     const t = textOf(pg.app.innerHTML);
     ok('13.1 ?demo=1&as=' + role + ': the demo-sb person (' + who[role] + '), the first zone drawn from rows, no error',
       t.indexOf(who[role]) >= 0 && t.indexOf(first[role]) >= 0 && t.indexOf('ตัวอย่างไม่มีข้อมูล') < 0 && t.indexOf('เปิดบอร์ดไม่สำเร็จ') < 0);
-    if (role === 'venue_manager') ok('13.2 the demo clock is the fixture\'s (12:00 · 20 ต.ค.), not the old sample\'s 18 ต.ค.', t.indexOf('12:00 · 20 ต.ค.') >= 0 && t.indexOf('18 ต.ค.') < 0);
+    // The v7.1 demo drew the fixture's jobs on the old sample's clock (11:13 · 18 ต.ค., every job "รอมา 0 นาที").
+    if (role === 'venue_manager') ok('13.2 the demo clock is the fixture\'s (12:00 · 20 ต.ค.), so the ages are real', t.indexOf('12:00 · 20 ต.ค.') >= 0 && t.indexOf('11:13 · 18 ต.ค.') < 0 && t.indexOf('รอมา 0 นาที') < 0);
   }
   const ad = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=account', fetch: files });
   await tick(300);
