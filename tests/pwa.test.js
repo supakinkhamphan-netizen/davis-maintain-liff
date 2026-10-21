@@ -70,13 +70,12 @@ safe('3', () => {
     S({ url: 'https://davis.example/davis-maintain-liff/demo-bd.json' }),
     S({ url: 'https://davis.example/davis-maintain-liff/icons/icon-192.png' }),
     S({ url: 'https://davis.example/davis-maintain-liff/x', method: 'POST' }),
-  ], ['passthrough', 'passthrough', 'passthrough', 'network-first', 'network-first', 'network-first', 'passthrough']);
+  ], ['passthrough', 'passthrough', 'passthrough', 'stale-while-revalidate', 'stale-while-revalidate', 'stale-while-revalidate', 'passthrough']);   // WO#23: paint from the cache at once
   const build = (/var BUILD = 'care-board (v[\d.]+) /.exec(SRC) || [])[1];
   ok('3.3 the cache name carries the page build (care-board-' + build + ')', build && SW.indexOf("'care-board-" + build + "'") >= 0);
   ok('3.4 activate deletes every other cache', /addEventListener\('activate'/.test(SW) && /caches\.delete\(/.test(SW));
-  ok('3.5 a good network answer goes into the cache; the cache answers only when the network fails',
-    /\.put\(/.test(SW) && /\.catch\(function \(\) \{[^}]*caches\.match\(/.test(SW));
-  ok('3.6 passthrough is a plain return (the browser fetches it, the worker never answers)', /if \(swStrategyFor\([^)]*\) !== 'network-first'\) return;/.test(SW));
+  ok('3.5 (v9: §7 runs the worker) a good network answer goes into the cache', /\.put\(/.test(SW));
+  ok('3.6 passthrough is a plain return (the browser fetches it, the worker never answers)', /if \(swStrategyFor\([^)]*\) !== 'stale-while-revalidate'\) return;/.test(SW));
   ok('3.7 the worker never reloads a page', !/reload|navigate\(/.test(SW));
 });
 
@@ -177,41 +176,62 @@ safe('6', () => {
 
 // ---- 7. the worker running: network first, the cache when the network fails -------------------
 async function section7() {
-  const store = new Map();   // url -> response
-  const listeners = {};
-  let online = true;
+  // WO#23 §5: stale-while-revalidate. The installed app paints from the cache at once on any network;
+  // the network answer refreshes the cache behind it; a page whose BUILD changed says so (never a reload).
+  const store = new Map(), listeners = {}, posted = [], waits = [];
+  let online = true, served = 0;
+  let netHtml = "<script>var BUILD = 'care-board v9.0 · x';</script>";
   const strip = u => u.split('?')[0];
   const base = 'https://davis.example/davis-maintain-liff/';
-  const caches = {
-    open: () => Promise.resolve({ put: (req, res) => { store.set(new URL(typeof req === 'string' ? req : req.url, base).href, res); return Promise.resolve(); }, addAll: () => Promise.resolve() }),
+  const res = (body, from) => ({ ok: true, from, body, clone() { return res(body, from); }, text: () => Promise.resolve(body) });
+  const cache = {
+    put: (req, r) => { store.set(new URL(typeof req === 'string' ? req : req.url, base).href, r); return Promise.resolve(); },
     match: (req, opt) => {
       const url = new URL(typeof req === 'string' ? req : req.url, base).href;
       if (store.has(url)) return Promise.resolve(store.get(url));
       if (opt && opt.ignoreSearch) { for (const [k, v] of store) if (strip(k) === strip(url)) return Promise.resolve(v); }
       return Promise.resolve(undefined);
     },
-    keys: () => Promise.resolve([]), delete: () => Promise.resolve(true),
+    addAll: () => Promise.resolve(),
   };
-  const ctx7 = { self: { addEventListener: (t, f) => { listeners[t] = f; }, location: { origin: 'https://davis.example' }, skipWaiting() {}, clients: { claim() {} } },
+  const caches = { open: () => Promise.resolve(cache), match: (r, o) => cache.match(r, o), keys: () => Promise.resolve([]), delete: () => Promise.resolve(true) };
+  const ctx7 = { self: { addEventListener: (t, f) => { listeners[t] = f; }, location: { origin: 'https://davis.example' }, skipWaiting() {},
+      clients: { claim() {}, matchAll: () => Promise.resolve([{ postMessage: m => posted.push(m) }]) } },
     caches, URL, Promise, console, Response: { error: () => 'NETWORK-ERROR' },
-    fetch: req => online ? Promise.resolve({ ok: true, body: 'net:' + req.url, clone() { return { body: 'cached:' + req.url }; } }) : Promise.reject(new TypeError('offline')) };
+    fetch: req => { served++; return online ? Promise.resolve(res(/\.json$/.test(req.url) ? '{"n":' + served + '}' : netHtml, 'net')) : Promise.reject(new TypeError('offline')); } };
   vm.createContext(ctx7);
   vm.runInContext(SW, ctx7);
-  const go = req => new Promise(res => {
+  const go = req => new Promise(r => {
     let answered = false;
-    listeners.fetch({ request: Object.assign({ method: 'GET', mode: 'cors' }, req), respondWith: p => { answered = true; p.then(res); } });
-    if (!answered) res('PASSTHROUGH');
+    listeners.fetch({ request: Object.assign({ method: 'GET', mode: 'cors' }, req), respondWith: p => { answered = true; Promise.resolve(p).then(r); }, waitUntil: p => waits.push(p) });
+    if (!answered) r('PASSTHROUGH');
   });
-  const r1 = await go({ url: base + '?src=pwa', mode: 'navigate' });
-  await new Promise(r => setTimeout(r, 10));
-  eq('7.1 online: the network answers, and the page goes into the cache once, under ./ (not one copy per query)',
-    [r1.body, (store.get(base) || {}).body, store.has(base + '?src=pwa')], ['net:' + base + '?src=pwa', 'cached:' + base + '?src=pwa', false]);
+  const settle = () => Promise.all(waits.splice(0)).then(() => new Promise(r => setTimeout(r, 10)));
+  const nav = { url: base + '?src=pwa', mode: 'navigate' };
+  const r1 = await go(nav);
+  await settle();
+  eq('7.1 nothing cached yet: the network answers, and the page is cached once, under ./', [r1.from, store.has(base), store.has(base + '?src=pwa')], ['net', true, false]);
   eq('7.2 a cross-origin call is never answered by the worker', await go({ url: 'https://script.google.com/macros/s/X/exec', method: 'POST' }), 'PASSTHROUGH');
+  store.set(base, Object.assign(res("<script>var BUILD = 'care-board v9.0 · x';</script>", 'cache')));
+  const before = served;
+  const r2 = await go(nav);
+  eq('7.3 cached: the page comes from the cache at once, whatever the network', r2.from, 'cache');
+  await settle();
+  eq('7.4 … and the network is asked behind it, the cache refreshed', [served - before, store.get(base).from], [1, 'net']);
+  eq('7.5 the same build: no line to the page', posted, []);
+  store.set(base, res("<script>var BUILD = 'care-board v9.0 · x';</script>", 'cache'));
+  netHtml = "<script>var BUILD = 'care-board v9.1 · y';</script>";
+  await go(nav);
+  await settle();
+  eq('7.6 the fetched page carries another BUILD: the page is told (it shows มีรุ่นใหม่ · แตะเพื่อโหลด; nothing reloads)', posted, [{ type: 'newBuild', build: 'care-board v9.1 · y' }]);
   online = false;
-  eq('7.3 offline: the icon\'s ./?src=pwa comes from the cache', (await go({ url: base + '?src=pwa', mode: 'navigate' })).body, 'cached:' + base + '?src=pwa');
-  store.set(base, { body: 'cached:root' });
-  eq('7.4 offline, another query on the page: the cached page (search ignored)', (await go({ url: base + '?src=pwa&x=1', mode: 'navigate' })).body, 'cached:root');
-  eq('7.5 offline, a file never cached: a network error, never the page in its place', await go({ url: base + 'demo-bd.json' }), 'NETWORK-ERROR');
+  eq('7.7 offline: the cached page, any query', (await go({ url: base + '?src=pwa&x=1', mode: 'navigate' })).from, 'net');
+  eq('7.8 offline, a file never cached: a network error, never the page in its place', await go({ url: base + 'nothing.json' }), 'NETWORK-ERROR');
+  store.set(base + 'demo-sb.json', res('{"n":0}', 'cache'));
+  online = true;
+  const j = await go({ url: base + 'demo-sb.json' });
+  await settle();
+  eq('7.9 a same-origin file: the cache too, refreshed behind', [j.from, store.get(base + 'demo-sb.json').from], ['cache', 'net']);
 }
 
 section7().catch(e => { fails++; n++; console.log('FAIL 7 crashed: ' + e.stack); }).then(() => {

@@ -759,7 +759,15 @@ async function section15() {
   eq('15.3 another person\'s sub: the session is signed out and not linked (the next open links a fresh one)', [f2.log.auth.indexOf('signOut') >= 0, p2.log.fns.indexOf('bdSupabaseLink')], [true, -1]);
 }
 
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 17. v8.3 (WO#23 §5, ahead of v9): the worker found a newer page behind the cached one --------------
+async function section17() {
+  const nb = sbDevice('manager');
+  await tick(150);
+  nb.pg.sw.message && nb.pg.sw.message({ data: { type: 'newBuild', build: 'care-board v8.4' } });
+  await tick(20);
+  eq('17.1 a newer build behind the cache: "มีรุ่นใหม่ · แตะเพื่อโหลด", and no reload', [/มีรุ่นใหม่ · แตะเพื่อโหลด/.test(textOf(nb.pg.app.innerHTML)), nb.pg.log.reloads], [true, 0]);
+}
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section17).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });
