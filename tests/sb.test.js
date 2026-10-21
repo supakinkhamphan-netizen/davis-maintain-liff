@@ -125,7 +125,7 @@ safe('3', () => {
   ['manager', 'account', 'venue_manager'].forEach((role, i) => {
     const got = P.sbMe(T.people[i], T.lists[0].doc, NOW), want = strip(me(role));
     delete want.build;
-    eq('3.1 ' + role + ': me from people + lists = bdWhoAmI (but build)', Object.assign({}, got, { uid: undefined }), Object.assign(want, { uid: undefined }));
+    eq('3.1 ' + role + ': me from people + lists = bdWhoAmI (but build; serverNow is 3.2)', Object.assign({}, got, { uid: undefined, serverNow: undefined }), Object.assign(want, { uid: undefined }));
   });
   eq('3.2 me carries the uid (for mine) and serverNow from the phone in Bangkok time', [meM.uid, meM.serverNow], ['U-manager', '2026-10-20 12:00:00']);
   const live = role => P.sbQueryFor('repair', me(role), {}, NOW).map(run).reduce((a, b) => a.concat(b), []);
