@@ -306,7 +306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v8.3 · 2026-10-21 · Supabase';
+  var BUILD = 'care-board v9.0 · 2026-10-21 · Supabase RPC';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -1594,6 +1594,18 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
    * uuid (p_bill_id) or, until phase 2, p_legacy_id = timestamp + '_' + submitter.
    */
   function sbBillKey(p) { return p.billId ? { p_bill_id: p.billId } : { p_legacy_id: p.timestamp + '_' + p.submitter }; }
+  /**
+   * v9 phase 2: the bill a card shows (its time + who sent it) as its uuid, once the mirror carries
+   * bill_id; '' until then (the call goes by p_legacy_id). The old key is the row's id, or legacy_id
+   * once the id is the uuid.
+   */
+  function sbBillIdFor(rows, timestamp, submitter) {
+    var key = timestamp + '_' + submitter;
+    var r = (rows || []).filter(function (x) {
+      return x.id === key || x.legacy_id === key || (x.ts && sbBkkText(Date.parse(x.ts)) + '_' + x.submitter === key);
+    })[0];
+    return (r && r.bill_id) || '';
+  }
   var SB_ACTIONS = {
     bdApprove: { domain: 'tickets', fn: 'approve_purchase', args: function (p) {
       return { p_id: p.ticketId, p_cap: p.capText !== undefined ? String(p.capText) : (p.cap === undefined || p.cap === null ? null : String(p.cap)) };
@@ -1649,7 +1661,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       out.doc.status = ret.status;
       if (ret.fulfilment !== undefined) out.doc.fulfilment = ret.fulfilment;
       else if (ret.doc && ret.doc.fulfilment !== undefined) out.doc.fulfilment = ret.doc.fulfilment;
-    } else if (a.domain === 'bills') {
+    } else if (a.domain === 'bills') {   // the local id stays (it is the key the card was drawn with)
       ['reviewed', 'reviewed_by', 'company'].forEach(function (k) { if (ret[k] !== undefined) out[k] = ret[k]; });
     }
     return out;
@@ -2806,8 +2818,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var el = ev.target;
     if (el.getAttribute('data-act') === 'billTick' || el.getAttribute('data-act') === 'billCompany') {
       var isTick = el.getAttribute('data-act') === 'billTick';
-      var call = isTick ? doAction('bdBillReviewed', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), reviewed: el.checked })
-        : doAction('bdBillCompany', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), company: el.value });
+      var bts = el.getAttribute('data-ts'), bsub = el.getAttribute('data-sub'), bid = sbBillIdFor(S.sbRows.bills, bts, bsub) || undefined;
+      var call = isTick ? doAction('bdBillReviewed', { timestamp: bts, submitter: bsub, billId: bid, reviewed: el.checked })
+        : doAction('bdBillCompany', { timestamp: bts, submitter: bsub, billId: bid, company: el.value });
       el.disabled = true;
       call.then(function (res) { toast(isTick ? (el.checked ? 'ตรวจแล้ว' : 'ยกเลิกตรวจแล้ว') : 'บันทึกบริษัทแล้ว'); if (!(res && res.__rpc)) loadZone(true); },
         function (e) { toast(e.message, true); loadZone(true); });
@@ -3455,7 +3468,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var patch = function (key) {
       var set = S.sbRows[key];
       if (!set) return;
-      var local = set.filter(function (r) { return r.id === row.id; })[0], p = sbPatchFor(action, local, row, args);
+      // A bill's answer may carry the uuid as its id: the local row is the same bill_id.
+      var local = set.filter(function (r) { return r.id === row.id || (row.bill_id && r.bill_id === row.bill_id); })[0], p = sbPatchFor(action, local, row, args);
       if (p) S.sbRows[key] = sbApply(set, { type: 'UPDATE', row: p });
     };
     if (domain === 'tickets') { patch('repair'); patch('apT'); }

@@ -909,6 +909,9 @@ async function section16() {
   bu.pg.change({ 'data-act': 'billTick', 'data-ts': '2026-10-19 15:00:00', 'data-sub': w0.submitter }, { checked: false });
   await tick(120);
   eq('16.11e bills cut over and the row carries bill_id: the tick goes by p_bill_id', bu.fake.log.rpc.map(x => x.args), [{ p_bill_id: UUID, p_reviewed: false }]);
+  // The week's ตรวจแล้ว x / y is the stats row's (WO#20 E4); the bill's own tick is the row's.
+  ok('16.11f … and the answer (its id the uuid) is drawn on that bill at once: its tick unchecked', /data-act="billTick" data-ts="2026-10-19 15:00:00"[^>]*>/.test(bu.pg.app.innerHTML) &&
+    !/data-act="billTick" data-ts="2026-10-19 15:00:00"[^>]* checked>/.test(bu.pg.app.innerHTML));
 
   const r = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: approveRow } } });
   await tick(150);
