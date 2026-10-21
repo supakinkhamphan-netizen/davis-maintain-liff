@@ -1567,10 +1567,13 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       g.total += Number(b.amount) || 0; g.count++;
       if (b.reviewed) g.reviewed++;
     });
-    var w = (doc && doc.week) || {};
+    // The week's figures are the stats row's (the engine's own): two bills by one person in the same
+    // second share one id, so the mirror keeps one row while the engine counts both (WO#20 E4).
+    // The rows' sums only when there is no stats row.
+    var w = (doc && doc.week) || {}, has = !!(doc && doc.week);
+    var sum = function (k) { return groups.reduce(function (s, g) { return s + g[k]; }, 0); };
     var out = { week: { offset: w.offset, start: w.start, end: w.end, payDate: w.payDate,
-      total: groups.reduce(function (s, g) { return s + g.total; }, 0), count: groups.reduce(function (s, g) { return s + g.count; }, 0),
-      reviewed: groups.reduce(function (s, g) { return s + g.reviewed; }, 0) }, groups: groups };
+      total: has ? w.total : sum('total'), count: has ? w.count : sum('count'), reviewed: has ? w.reviewed : sum('reviewed') }, groups: groups };
     if (doc && doc.all) out.all = doc.all;
     out.companies = (doc && doc.companies) || [];
     return out;
