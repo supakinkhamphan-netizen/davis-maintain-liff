@@ -1306,7 +1306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function sbQueryFor(zone, me, ui, nowMs) {
     ui = ui || {};
     var vm = !!me && me.role === 'venue_manager', q;
-    var TK = 'id,venue,status,live,created_ms,close_ms,card,events';
+    var TK = 'id,venue,status,live,created_ms,close_ms,seq,card,events';
     if (zone === 'me') return [{ table: 'people', params: { select: '*' } }, { table: 'lists', params: { select: 'doc', id: 'eq.main' } }];
     if (zone === 'repair') q = [{ table: 'tickets', params: { select: TK, live: 'is.true' } }, { table: 'tickets', params: { select: TK, close_ms: 'gte.' + (nowMs - 7 * SB_DAY) } }];
     else if (zone === 'tickets') {
@@ -1318,16 +1318,13 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     else if (zone === 'spot') {
       if (vm && me.venues.indexOf(ui.venue) < 0) return [];
       q = [{ table: 'tickets', params: { select: 'id,status,card', venue: 'eq.' + ui.venue, 'card->>location': 'eq.' + ui.location } }];
-    } else if (zone === 'approvals') q = [{ table: 'tickets', params: { select: 'id,venue,status,card,events', 'card->purchase->>pending': 'eq.true' } },
-      { table: 'purchase', params: { select: '*', status: 'eq.pending', order: 'created_at.desc' } }];
-    else if (zone === 'purchase') {
-      var pp = { select: '*' };
-      if (!vm && ui.tab === 'pending') pp.status = 'eq.pending';
-      if (!vm && ui.tab === 'tobuy') pp['doc->>fulfilment'] = 'in.("awaiting","ordered")';
-      if (!vm && ui.tab === 'mine') pp.by = 'eq.' + me.uid;
-      pp.order = 'created_at.desc';
-      q = [{ table: 'purchase', params: pp }];
-    } else if (zone === 'overview') {
+    } else if (zone === 'approvals') {
+      // Every ticket that ever asked to buy (a REQUEST_PURCHASE makes card.purchase): the pending ones,
+      // จุดนี้เคยอนุมัติ and the approval history all come from these rows.
+      q = [{ table: 'tickets', params: { select: 'id,venue,status,created_ms,seq,card,events', 'card->purchase': 'not.is.null' } },
+        { table: 'purchase', params: { select: '*', status: 'eq.pending', order: 'created_at.desc' } }];
+    } else if (zone === 'purchase') q = [{ table: 'purchase', params: { select: '*', order: 'created_at.desc' } }];   // the v5 tabs are counted here
+    else if (zone === 'overview') {
       if (ui.tech) return null;   // ruling (2): no stats row per technician; Apps Script answers
       q = [sbStatQ('overview|' + (ui.venue || (vm ? me.venues[0] : 'all')) + '|' + (ui.window || 7))];
     } else if (zone === 'techs') q = [sbStatQ('techs|' + (ui.window || 1))];
@@ -1344,7 +1341,11 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function sbSubsFor(zone, me, ui) {
     ui = ui || {};
     var vm = !!me && me.role === 'venue_manager';
-    if (zone === 'repair' || zone === 'tickets') return [{ table: 'tickets', filter: vm ? 'venue=in.(' + me.venues.join(',') + ')' : '' }];
+    var vf = vm ? 'venue=in.(' + me.venues.join(',') + ')' : '';
+    if (zone === 'repair' || zone === 'tickets') return [{ table: 'tickets', filter: vf }];
+    if (zone === 'approvals') return [{ table: 'tickets', filter: vf }, { table: 'purchase', filter: vf }];
+    if (zone === 'purchase') return [{ table: 'purchase', filter: vf }];
+    if (zone === 'bills') return [{ table: 'bills', filter: 'week_off=eq.' + (ui.week || 0) }];
     var q = zone === 'overview' || zone === 'techs' || zone === 'tech' ? sbQueryFor(zone, me, ui, 0) : null;
     return q ? [{ table: 'stats', filter: 'id=' + q[0].params.id }] : [];
   }
@@ -1372,6 +1373,15 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     return out;
   }
   function sbLive(s) { return s !== SB_ST.closed && s !== SB_ST.cancelled; }
+  /** The sheet's order: made first, then the Tickets row (seq; an archived row's is null: last), then the id. */
+  function sbOrder(a, b) {
+    var d = (a.created_ms || 0) - (b.created_ms || 0);
+    if (d) return d;
+    var na = typeof a.seq === 'number', nb = typeof b.seq === 'number';
+    if (na && nb) return a.seq - b.seq;
+    if (na !== nb && (a.seq === null || b.seq === null)) return na ? -1 : 1;
+    return a.id < b.id ? -1 : 1;
+  }
   function sbAge(fromMs, nowMs) { return isNaN(fromMs) || fromMs === null || fromMs === undefined ? null : Math.max(0, Math.round((nowMs - fromMs) / 60000)); }
   /** One ticket's audit rows, oldest first, with their time in ms. */
   function sbEvents(row) {
@@ -1380,8 +1390,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   /**
    * bdRepairLive_ on the rows of the two reads (live, closed in the last 7 days).
-   * Order where the engine reads the sheet's: cards made in the same minute by id, and the
-   * venue chips in the Hotels tab's order (lists.doc.hotels), as the purchase chips are.
+   * The sheet's order comes from sbOrder (seq); the venue chips go in the Hotels tab's order
+   * (lists.doc.hotels), as the purchase chips do.
    * counts: ruling (1): ticketStatusCounts_'s total, closed and cancelled count every
    * ticket ever, which these rows cannot; nothing on the page reads them, so they are left out.
    */
@@ -1391,7 +1401,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var today = Math.floor((nowMs + 7 * 3600000) / SB_DAY) * SB_DAY - 7 * 3600000;
     var seen = {}, all = [];
     (rows || []).forEach(function (r) { if (!seen[r.id]) { seen[r.id] = true; all.push(r); } });
-    all.sort(function (a, b) { return (a.created_ms || 0) - (b.created_ms || 0) || (a.id < b.id ? -1 : 1); });
+    all.sort(sbOrder);
     var tally = {}, venues = {};
     all.forEach(function (r) { if (sbLive(r.status)) tally[r.venue] = (tally[r.venue] || 0) + 1; });
     (hotels || []).concat(Object.keys(tally)).forEach(function (v) { if (tally[v] && !(v in venues)) venues[v] = tally[v]; });
@@ -1434,7 +1444,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     });
     var order = { emergency: 0, claimLate: 1, overCap: 2, repeat: 3, openLong: 4 };
     mustSee.sort(function (a, b) { return order[a.kind] - order[b.kind] || (b.minutes || 0) - (a.minutes || 0); });
-    Object.keys(groups).forEach(function (k) { groups[k].sort(function (a, b) { return (a.createdMs || 0) - (b.createdMs || 0) || (a.id < b.id ? -1 : 1); }); });
+    Object.keys(groups).forEach(function (k) { groups[k].sort(function (a, b) { return (a.createdMs || 0) - (b.createdMs || 0); }); });   // stable: ties keep sbOrder
     counts.closedToday = groups.closedToday.length;
     var left = cap, more = false;
     ['open', 'approval', 'inProgress', 'contractor', 'other', 'closedToday', 'routine'].forEach(function (k) {
@@ -1473,6 +1483,77 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   /** A purchase row's reader-relative facts, computed here (the engine never stores them). */
   function sbPurchaseFacts(row, uid, nowMs) {
     return { mine: !!uid && row.by === uid, ageMinutes: Math.max(0, Math.round((nowMs - Date.parse(row.created_at)) / 60000)) };
+  }
+  /** prPublicRow_: the row's doc as the board lists it, with the reader's mine and the age (floored, as the engine). */
+  function sbPrRow(row, uid, nowMs) {
+    var doc = row.doc || {}, out = {}, created = Date.parse(row.created_at);
+    Object.keys(doc).forEach(function (k) {
+      if (k === 'audit') return;
+      out[k] = doc[k];
+      if (k === 'requester') out.mine = !!uid && row.by === uid;
+    });
+    out.ageMinutes = isNaN(created) ? null : Math.max(0, Math.floor((nowMs - created) / 60000));
+    return out;
+  }
+  function sbPrDetail(row, uid, nowMs) { return { row: sbPrRow(row, uid, nowMs), audit: (row.doc && row.doc.audit) || [] }; }
+  function sbPrNewest(a, b) { return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.id < b.id ? 1 : -1); }
+  /** prApiBoard_ on the rows: prListFor_'s scopes, the chips in Hotels order, the strip. */
+  function sbPrBoard(rows, me, scope, venue, month, hotels, nowMs) {
+    var vm = me.role === 'venue_manager';
+    var seen = (rows || []).filter(function (r) { return vm ? me.venues.indexOf(r.venue) >= 0 : SB_ROLES.read.indexOf(me.role) >= 0; })
+      .filter(function (r) { return !month || String((r.doc || {}).createdAt || '').slice(0, 7) === month; }).slice().sort(sbPrNewest);
+    var inScope = function (r, s) {
+      var f = (r.doc || {}).fulfilment;
+      if (s === 'mine') return vm || r.by === me.uid;
+      if (s === 'pending') return r.status === 'pending';
+      if (s === 'tobuy') return f === 'awaiting' || f === 'ordered';
+      return true;
+    };
+    var counts = {};
+    ['mine', 'pending', 'tobuy', 'all'].forEach(function (s) { counts[s] = seen.filter(function (r) { return inScope(r, s); }).length; });
+    var unfiltered = seen.filter(function (r) { return inScope(r, scope); }).map(function (r) { return sbPrRow(r, me.uid, nowMs); });
+    var tally = {}, byVenue = {};
+    unfiltered.forEach(function (r) { tally[r.venue] = (tally[r.venue] || 0) + 1; });
+    (hotels || []).concat(Object.keys(tally)).forEach(function (v) { if (tally[v] && !(v in byVenue)) byVenue[v] = tally[v]; });
+    var list = venue ? unfiltered.filter(function (r) { return r.venue === venue; }) : unfiltered;
+    var vs = {};
+    list.forEach(function (r) { vs[r.venue] = true; });
+    var baht = list.reduce(function (a, r) { return a + (r.status === 'pending' ? r.estTotal : r.approvedTotal); }, 0);
+    return { rows: list, counts: counts, byVenue: byVenue, totals: { count: list.length, venues: Object.keys(vs).length, baht: Math.round(baht * 100) / 100 } };
+  }
+  var SB_PURCHASE_LABELS = { REQUEST_PURCHASE: 'ขอซื้อของ', APPROVE_PURCHASE: 'อนุมัติซื้อ', REJECT_PURCHASE: 'ไม่อนุมัติ' };   // BD_ACTION_LABELS_
+  /**
+   * bdApprovals_ on the rows: tickets that asked to buy (pending ones + จุดนี้เคยอนุมัติ + the
+   * history), and the pending branch requests.
+   */
+  function sbApprovals(ticketRows, purchaseRows, uid, nowMs) {
+    var rows = (ticketRows || []).slice().sort(sbOrder);
+    var repair = rows.filter(function (r) { return r.status === SB_ST.purchase; }).map(function (t) {
+      var card = JSON.parse(JSON.stringify(t.card)), before = null;
+      rows.forEach(function (o) {
+        if (o.id === t.id || o.venue !== t.venue || o.card.location !== t.card.location) return;
+        sbEvents(o).forEach(function (e) {
+          if (e.action !== 'APPROVE_PURCHASE') return;
+          if (!before || e.ms > before.ms) {
+            var m = /วงเงิน: ([\d,]+)/.exec(e.detail);
+            before = { ms: e.ms, at: e.at, id: o.id, baht: m ? Number(m[1].replace(/,/g, '')) : 0, by: e.actor };
+          }
+        });
+      });
+      card.approvedBefore = before ? { at: before.at, id: before.id, baht: before.baht, by: before.by } : null;
+      card.estimate = Number(card.cost) > 0 ? Number(card.cost) : 0;   // purchaseEstimate_
+      return card;
+    });
+    var branch = (purchaseRows || []).filter(function (r) { return r.status === 'pending'; }).slice().sort(sbPrNewest)
+      .map(function (r) { return sbPrRow(r, uid, nowMs); });
+    var history = [];
+    rows.forEach(function (r) {
+      sbEvents(r).forEach(function (e) {
+        if (SB_PURCHASE_LABELS[e.action]) history.push({ ms: e.ms, item: { at: e.at, id: r.id, action: e.action, label: SB_PURCHASE_LABELS[e.action], actor: e.actor || '', detail: String(e.detail || '') } });
+      });
+    });
+    history = history.sort(function (a, b) { return b.ms - a.ms; }).slice(0, 50).map(function (h) { return h.item; });
+    return { repair: repair, branch: branch, history: history, count: repair.length + branch.length };
   }
   /** bdBillsWeek_ from the week's rows (already shaped) and its stats row: groups by the resolved company. */
   function sbBillsWeek(rows, doc) {

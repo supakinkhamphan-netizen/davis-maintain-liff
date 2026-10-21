@@ -5,6 +5,11 @@
 const JSONPATH = /^(\w+)((?:->\w+)*)->>(\w+)$/;
 function valueOf(row, key) {
   const m = JSONPATH.exec(key);
+  if (!m && key.indexOf('->') > 0) {   // col->a->b: the json value itself (is.null / not.is.null)
+    let v = row[key.split('->')[0]];
+    key.split('->').slice(1).forEach(p => { v = v == null ? v : v[p]; });
+    return v == null ? null : v;
+  }
   if (!m) return row[key];
   let v = row[m[1]];
   m[2].split('->').filter(Boolean).forEach(p => { v = v == null ? v : v[p]; });
