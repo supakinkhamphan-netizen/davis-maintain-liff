@@ -720,9 +720,9 @@ async function section13() {
   const d0 = +((/รออนุมัติ (\d+)/.exec(textOf(dv.app.innerHTML)) || [])[1]);
   dv.tap('bdApprove', 'Fairway_20261020_02');
   dv.tap('bdConfirm');
-  await tick(200);
+  await tick(10);   // the fake browser cuts the demo's 0.7 s to 30 ms
   const mid = textOf(dv.app.innerHTML);
-  await tick(900);
+  await tick(300);
   eq('13.5 a demo approval through the demo\'s function: กำลังส่ง… mid-flight, then one fewer', [/กำลังส่ง/.test(mid), d0 - +((/รออนุมัติ (\d+)/.exec(textOf(dv.app.innerHTML)) || [])[1])], [true, 1]);
   ok('13.4 BUILD v8.x · Supabase', /var BUILD = 'care-board v8\.\d · 2026-10-2\d · Supabase';/.test(SRC));
 }
