@@ -43,7 +43,11 @@ function bootPage(SRC, o) {
     clearTimeout, setInterval: (f, ms) => { intervals.push({ f, ms }); return intervals.length; }, clearInterval: () => {},
     // A script the page adds: LINE's SDK waits for the test (lineLoads); the vendored supabase-js
     // fails to load unless the test says 'hang' (never answers) — the v7.1 path, as on a phone without it.
-    document: { getElementById: el, createElement: () => ({}), activeElement: null,
+    // A photo as the form reads it: FileReader -> Image -> canvas (the page scales it to a JPEG).
+    FileReader: class { readAsDataURL() { this.result = 'data:image/png;base64,AA'; setTimeout(() => this.onload && this.onload(), 0); } },
+    Image: class { set src(v) { this.width = 100; this.height = 80; setTimeout(() => this.onload && this.onload(), 0); } },
+    document: { getElementById: el, activeElement: null,
+      createElement: t => (t === 'canvas' ? { getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/jpeg;base64,AA' } : {}),
       head: { appendChild: x => {
         appended.push(x);
         if (/vendor\/supabase-js/.test(x.src || '') && o.vendor !== 'hang') setTimeout(() => { if (x.onerror) x.onerror(new Error('fake: no supabase-js')); }, 0);
@@ -86,7 +90,8 @@ function bootPage(SRC, o) {
     },
     /** A change on an input carrying data-act (and other data-* attributes), checked / value as given. */
     change(attrs, extra, type) {
-      const target = Object.assign({ tagName: 'INPUT', disabled: false, getAttribute: a => (a in attrs ? attrs[a] : null) }, extra || {});
+      const target = Object.assign({ tagName: 'INPUT', disabled: false, getAttribute: a => (a in attrs ? attrs[a] : null), hasAttribute: a => a in attrs,
+        classList: { add() {}, remove() {}, contains: () => false }, closest: () => null }, extra || {});
       els.app.listeners[type || 'change']({ target });
     },
     /** LINE's SDK arrives: a fake liff, then the page's own onload. */

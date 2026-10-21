@@ -725,6 +725,21 @@ async function section13() {
   const mid = textOf(dv.app.innerHTML);
   await tick(300);
   eq('13.5 a demo approval through the demo\'s function: กำลังส่ง… mid-flight, then one fewer', [/กำลังส่ง/.test(mid), d0 - +((/รออนุมัติ (\d+)/.exec(textOf(dv.app.innerHTML)) || [])[1])], [true, 1]);
+  // R24 (mutation record, 21 Oct): a demo action that goes to api() — a request with a photo stays on Apps
+  // Script even on Supabase — must not load LINE's SDK (the demo has no LINE).
+  const ph = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=venue_manager', fetch: files });
+  await tick(300);
+  ph.tap('zone', 'purchase');
+  await tick(150);
+  ph.tap('new');
+  ph.tap('buyer', 'self');
+  ph.change({ 'data-item': '0', 'data-f': 'name' }, { value: 'ถุงมือยาง' }, 'input');
+  ph.change({ 'data-f': 'reason' }, { value: 'ถุงมือในครัวหมด ต้องใช้ทุกกะ' }, 'input');
+  ph.change({ 'data-act': 'photo' }, { files: [{ name: 'a.jpg' }] });
+  await tick(60);
+  ph.tap('submit');
+  await tick(300);
+  eq('13.6 a demo request with a photo goes to api() and adds no LINE script', [!!ph.sdk, ph.toasts.some(t => !t.err && /^ส่งคำขอแล้ว · PR_/.test(t.text))], [false, true]);
   ok('13.5b the demo\'s settings row puts all three domains on Supabase (the demo reviews v9\'s path)',
     /T\.settings = \[\{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' \}\];/.test(SRC));
   ok('13.5c … and the demo reads that row at its start, as the Supabase boot does (else every demo action took api())',
