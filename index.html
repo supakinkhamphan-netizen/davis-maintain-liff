@@ -1619,6 +1619,35 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   /** LINE's SDK: only on a first open (no session, no link) or for something that needs LINE. */
   function needLine(o) { return !o.session || !o.linked || ['chat', 'openWindow', 'install', 'api'].indexOf(o.intent) >= 0; }
+  /**
+   * WO#23 addendum (engine 4e0d1c7): a function returns the truth columns at once, while card,
+   * detail and doc are rebuilt by the engine 1–3 s later and come by Realtime. So the local row is
+   * patched only where the action changed it; everything else waits for the engine's row.
+   * Nothing here ports bdCard_. null when there is no local row (the Realtime row will come).
+   */
+  function sbPatchFor(action, local, ret, args) {
+    if (!local || !ret) return null;
+    var out = JSON.parse(JSON.stringify(local)), a = SB_ACTIONS[action] || {};
+    if (a.domain === 'tickets') {
+      out.status = ret.status;
+      if (out.card) {
+        out.card.status = ret.status;
+        if (out.card.purchase) {
+          out.card.purchase.pending = false;
+          if (action === 'bdApprove' && args && args.cap !== null && args.cap !== undefined) out.card.purchase.cap = args.cap;
+        }
+      }
+    } else if (a.domain === 'purchase') {
+      out.status = ret.status;
+      out.doc = out.doc || {};
+      out.doc.status = ret.status;
+      if (ret.fulfilment !== undefined) out.doc.fulfilment = ret.fulfilment;
+      else if (ret.doc && ret.doc.fulfilment !== undefined) out.doc.fulfilment = ret.doc.fulfilment;
+    } else if (a.domain === 'bills') {
+      ['reviewed', 'reviewed_by', 'company'].forEach(function (k) { if (ret[k] !== undefined) out[k] = ret[k]; });
+    }
+    return out;
+  }
   /** What a failed function call means: the engine's NOT_CUT_OVER, a refusal (its Thai words), or no network. */
   function sbRpcFailure(e) {
     if (!e || !e.status) return { kind: 'network' };
@@ -3373,7 +3402,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var route = actionRoute({ action: action, payload: payload, settings: S.sb ? S.settings : null });
     if (route.via === 'api') return apiWithLine(action, payload);
     return SB.rpc(route.fn, route.args).then(function (row) {
-      sbTakeRow(SB_ACTIONS[action].domain, row);
+      sbTakeRow(action, row, route.args);
       var out = row && typeof row === 'object' ? row : {};
       out.__rpc = true;
       return out;
@@ -3383,13 +3412,19 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       throw new Error(f.kind === 'network' ? L.err.network : f.message);
     });
   }
-  /** A row a function returned, into every local set that holds its table; the zone drawn again. */
-  function sbTakeRow(domain, row) {
+  /** A function's row, as a patch of what the action changed (sbPatchFor), into every local set holding it. */
+  function sbTakeRow(action, row, args) {
     if (!row || typeof row !== 'object' || !row.id) return;
-    var c = { type: 'UPDATE', row: JSON.parse(JSON.stringify(row)) };
-    if (domain === 'tickets') { if (S.sbRows.repair) S.sbRows.repair = sbApply(S.sbRows.repair, c); if (S.sbRows.apT) S.sbRows.apT = sbApply(S.sbRows.apT, c); }
-    if (domain === 'purchase') { if (S.sbRows.purchase) S.sbRows.purchase = sbApply(S.sbRows.purchase, c); if (S.sbRows.apP) S.sbRows.apP = sbApply(S.sbRows.apP, c); }
-    if (domain === 'bills' && S.sbRows.bills) S.sbRows.bills = sbApply(S.sbRows.bills, c);
+    var domain = SB_ACTIONS[action].domain;
+    var patch = function (key) {
+      var set = S.sbRows[key];
+      if (!set) return;
+      var local = set.filter(function (r) { return r.id === row.id; })[0], p = sbPatchFor(action, local, row, args);
+      if (p) S.sbRows[key] = sbApply(set, { type: 'UPDATE', row: p });
+    };
+    if (domain === 'tickets') { patch('repair'); patch('apT'); }
+    if (domain === 'purchase') { patch('purchase'); patch('apP'); }
+    if (domain === 'bills') patch('bills');
     var z = S.zone || 'purchase';
     if (z === 'repair' && S.sbRows.repair) S.z.repair = sbRepairView();
     else if (z === 'approvals' && S.sbRows.apT) { S.z.approvals = sbApprovalsView(); S.board = { rows: S.z.approvals.branch }; }
