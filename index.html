@@ -311,6 +311,11 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
   var LIFF_ID = '2012115315-ab7oUBTb';
+  // WO#21: the "davis-care" Supabase project the board reads. Public by design (RLS is the
+  // guard); filled at the release. Empty = Supabase off = the v7.1 board (bdBoot).
+  var SB_URL = '';
+  var SB_ANON = '';
+  var SB_SCHEMA = 'care';
   var STORE_KEY = 'davisPurchase.v1';
   var POLL_MS = 30000;   // WO#19 B2: the engine caches the reads; a hidden page does not poll at all
   var QS = (function () {
@@ -1267,6 +1272,291 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
 /* PWA END */
 
+/* SB START */
+  // ---- work order #21: the board reads Supabase (stage 3) --------------------------------
+  // Pure, like LOGIC: what to ask PostgREST, and the engine's rules ported onto its rows,
+  // each pinned by tests/sb.test.js against the engine's own answers on its fixture.
+  // makeSbAdapter is the one door to Supabase (window.SB); tests replace it.
+  var SB_LIB = 'vendor/supabase-js-2.45.4.js';
+  var SB_ST = { open: 'รอดำเนินการ', approval: 'รออนุมัติ', progress: 'กำลังดำเนินการ', purchase: 'รออนุมัติซื้อของ',
+    closed: 'เสร็จสิ้น', cancelled: 'ยกเลิก', contractor: 'ส่งผู้รับเหมา' };
+  // The engine's PR_ROLES_* (purchase-request.js), for me.
+  var SB_ROLES = { read: ['venue_manager', 'purchasing', 'manager', 'account'], decide: ['purchasing', 'manager', 'account'],
+    fulfil: ['purchasing', 'manager'], byShop: ['purchasing', 'manager', 'account'] };
+  var SB_SLA = { claimWarnMin: 240, closeWarnMin: 10080 };   // TICKET_SLA_, until lists.doc.slaRules says
+  var SB_DAY = 86400000;
+  /** On when the board carries the URL and anon key, and ?sb=0 is not in the link. */
+  function sbEnabled(o) { return !!(o.url && o.anon) && !/[?&]sb=0(?:&|#|$)/.test(String(o.qs || '')); }
+  /**
+   * The device's identity (reviewer, 21 Oct): an anonymous Supabase session, linked once
+   * to the Maintain LINE id by Apps Script. me: undefined = not read yet, null = people empty.
+   */
+  function sbSessionState(o) {
+    if (!o.session) return 'anon-signin';
+    if (!o.linked || o.me === null) return 'link';
+    return 'use';
+  }
+  function sbVenueIn(venues) { return 'in.(' + (venues || []).map(function (v) { return '"' + String(v).replace(/"/g, '\\"') + '"'; }).join(',') + ')'; }
+  function sbStatQ(id) { return { table: 'stats', params: { select: 'id,doc,computed_at', id: 'eq.' + id } }; }
+  /**
+   * The PostgREST reads of one zone, [{table, params, count?}]; null when the zone (or its
+   * chips) is not on Supabase. A venue manager's ticket and purchase reads always carry
+   * their venues (RLS is the guard; the page never asks for more).
+   */
+  function sbQueryFor(zone, me, ui, nowMs) {
+    ui = ui || {};
+    var vm = !!me && me.role === 'venue_manager', q;
+    var TK = 'id,venue,status,live,created_ms,close_ms,card,events';
+    if (zone === 'me') return [{ table: 'people', params: { select: '*' } }, { table: 'lists', params: { select: 'doc', id: 'eq.main' } }];
+    if (zone === 'repair') q = [{ table: 'tickets', params: { select: TK, live: 'is.true' } }, { table: 'tickets', params: { select: TK, close_ms: 'gte.' + (nowMs - 7 * SB_DAY) } }];
+    else if (zone === 'tickets') {
+      var p = { select: 'id,card' };
+      if (ui.status) p.status = 'eq.' + ui.status;
+      p.order = 'created_ms.desc'; p.limit = '50'; p.offset = String(ui.offset || 0);
+      q = [{ table: 'tickets', params: p, count: true }];
+    } else if (zone === 'ticket') q = [{ table: 'tickets', params: { select: 'id,venue,status,card,detail,events', id: 'eq.' + ui.id } }];
+    else if (zone === 'spot') {
+      if (vm && me.venues.indexOf(ui.venue) < 0) return [];
+      q = [{ table: 'tickets', params: { select: 'id,status,card', venue: 'eq.' + ui.venue, 'card->>location': 'eq.' + ui.location } }];
+    } else if (zone === 'approvals') q = [{ table: 'tickets', params: { select: 'id,venue,status,card,events', 'card->purchase->>pending': 'eq.true' } },
+      { table: 'purchase', params: { select: '*', status: 'eq.pending', order: 'created_at.desc' } }];
+    else if (zone === 'purchase') {
+      var pp = { select: '*' };
+      if (!vm && ui.tab === 'pending') pp.status = 'eq.pending';
+      if (!vm && ui.tab === 'tobuy') pp['doc->>fulfilment'] = 'in.("awaiting","ordered")';
+      if (!vm && ui.tab === 'mine') pp.by = 'eq.' + me.uid;
+      pp.order = 'created_at.desc';
+      q = [{ table: 'purchase', params: pp }];
+    } else if (zone === 'overview') {
+      if (ui.tech) return null;   // ruling (2): no stats row per technician; Apps Script answers
+      q = [sbStatQ('overview|' + (ui.venue || (vm ? me.venues[0] : 'all')) + '|' + (ui.window || 7))];
+    } else if (zone === 'techs') q = [sbStatQ('techs|' + (ui.window || 1))];
+    else if (zone === 'tech') q = [sbStatQ('tech|' + ui.name + '|' + (ui.window || 7))];
+    else if (zone === 'bills') q = [{ table: 'bills', params: { select: '*', week_off: 'eq.' + (ui.week || 0), order: 'ts.asc' } }, sbStatQ('billweek|' + (ui.week || 0))];
+    else return null;
+    if (vm) q.forEach(function (x) { if ((x.table === 'tickets' || x.table === 'purchase') && !x.params.venue) x.params.venue = sbVenueIn(me.venues); });
+    return q;
+  }
+  function sbPath(table, params) {
+    return table + '?' + Object.keys(params || {}).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+  }
+  /** Realtime per zone: [{table, filter}] (Realtime's in-list takes no quotes). */
+  function sbSubsFor(zone, me, ui) {
+    ui = ui || {};
+    var vm = !!me && me.role === 'venue_manager';
+    if (zone === 'repair' || zone === 'tickets') return [{ table: 'tickets', filter: vm ? 'venue=in.(' + me.venues.join(',') + ')' : '' }];
+    var q = zone === 'overview' || zone === 'techs' || zone === 'tech' ? sbQueryFor(zone, me, ui, 0) : null;
+    return q ? [{ table: 'stats', filter: 'id=' + q[0].params.id }] : [];
+  }
+  function sbBkkText(ms) {
+    var t = new Date(ms + 7 * 3600000), p = function (n) { return ('0' + n).slice(-2); };
+    return t.getUTCFullYear() + '-' + p(t.getUTCMonth() + 1) + '-' + p(t.getUTCDate()) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes()) + ':' + p(t.getUTCSeconds());
+  }
+  /** me = what prApiWhoAmI_ + bdWhoAmI answer, from the people row (through the link) and lists. */
+  function sbMe(person, doc, nowMs) {
+    var role = person.role, venues = person.venues || [];
+    doc = doc || {};
+    var out = {
+      known: true, allowed: SB_ROLES.read.indexOf(role) >= 0, role: role, roleLabel: L.role[role] || '',
+      actorName: person.name, venues: venues,
+      canCreate: role === 'manager' || (role === 'venue_manager' && venues.length > 0),
+      canDecide: SB_ROLES.decide.indexOf(role) >= 0, canFulfil: SB_ROLES.fulfil.indexOf(role) >= 0,
+      canReceive: role === 'manager' || role === 'venue_manager', canByShop: SB_ROLES.byShop.indexOf(role) >= 0, readOnly: false,
+      categories: doc.categories || [], highAmount: doc.highAmount, quickReasons: doc.quickReasons || [],
+      serverNow: sbBkkText(nowMs),
+    };
+    if (role === 'manager') out.venuesAll = (person.venues_all || []).length ? person.venues_all : (doc.hotels || []);
+    out.zones = person.zones || [];
+    out.board = 'care';
+    out.uid = person.uid;
+    return out;
+  }
+  function sbLive(s) { return s !== SB_ST.closed && s !== SB_ST.cancelled; }
+  function sbAge(fromMs, nowMs) { return isNaN(fromMs) || fromMs === null || fromMs === undefined ? null : Math.max(0, Math.round((nowMs - fromMs) / 60000)); }
+  /** One ticket's audit rows, oldest first, with their time in ms. */
+  function sbEvents(row) {
+    return (row.events || []).map(function (e) { return Object.assign({}, e, { ms: e.ms === undefined || e.ms === null ? bkkMs(e.at) : e.ms }); })
+      .sort(function (a, b) { return a.ms - b.ms; });
+  }
+  /**
+   * bdRepairLive_ on the rows of the two reads (live, closed in the last 7 days).
+   * Order where the engine reads the sheet's: cards made in the same minute by id, and the
+   * venue chips in the Hotels tab's order (lists.doc.hotels), as the purchase chips are.
+   * counts: ruling (1): ticketStatusCounts_'s total, closed and cancelled count every
+   * ticket ever, which these rows cannot; nothing on the page reads them, so they are left out.
+   */
+  function sbRepairLive(rows, venue, limit, nowMs, sla, hotels) {
+    sla = sla || SB_SLA;
+    var cap = Math.max(1, Math.round(Number(limit) || 200));
+    var today = Math.floor((nowMs + 7 * 3600000) / SB_DAY) * SB_DAY - 7 * 3600000;
+    var seen = {}, all = [];
+    (rows || []).forEach(function (r) { if (!seen[r.id]) { seen[r.id] = true; all.push(r); } });
+    all.sort(function (a, b) { return (a.created_ms || 0) - (b.created_ms || 0) || (a.id < b.id ? -1 : 1); });
+    var tally = {}, venues = {};
+    all.forEach(function (r) { if (sbLive(r.status)) tally[r.venue] = (tally[r.venue] || 0) + 1; });
+    (hotels || []).concat(Object.keys(tally)).forEach(function (v) { if (tally[v] && !(v in venues)) venues[v] = tally[v]; });
+    var scoped = venue ? all.filter(function (r) { return r.venue === venue; }) : all;
+    var counts = { unfinished: 0, open: 0, inProgress: 0, contractor: 0, awaitingApproval: 0, otherOpen: 0, otherStatuses: [] };
+    var groups = { open: [], approval: [], inProgress: [], contractor: [], other: [], closedToday: [], routine: [] };
+    var mustSee = [];
+    scoped.forEach(function (r) {
+      var s = r.status, card = r.card;
+      if (sbLive(s)) {
+        counts.unfinished++;
+        if (s === SB_ST.open) counts.open++;
+        else if (s === SB_ST.progress) counts.inProgress++;
+        else if (s === SB_ST.contractor) counts.contractor++;
+        else if (s === SB_ST.approval || s === SB_ST.purchase) counts.awaitingApproval++;
+        else { counts.otherOpen++; var nm = s ? String(s) : '(ไม่มีสถานะ)'; if (counts.otherStatuses.indexOf(nm) < 0) counts.otherStatuses.push(nm); }
+      }
+      var closedToday = s === SB_ST.closed && card.closeMs !== null && card.closeMs >= today;
+      if (!sbLive(s) && !closedToday) return;
+      if (closedToday) { groups.closedToday.push(card); return; }
+      if (card.routine) { groups.routine.push(card); return; }
+      if (s === SB_ST.open) groups.open.push(card);
+      else if (s === SB_ST.approval || s === SB_ST.purchase) groups.approval.push(card);
+      else if (s === SB_ST.progress) groups.inProgress.push(card);
+      else if (s === SB_ST.contractor) groups.contractor.push(card);
+      else groups.other.push(card);
+      var age = sbAge(card.createdMs, nowMs);
+      if (s === SB_ST.open && card.claimMs === null && age > sla.claimWarnMin) mustSee.push({ kind: 'claimLate', id: card.id, minutes: age, card: card });
+      else if (age > sla.closeWarnMin) mustSee.push({ kind: 'openLong', id: card.id, minutes: age, card: card });
+      if (card.emergency && s === SB_ST.open && !card.assignee) mustSee.push({ kind: 'emergency', id: card.id, minutes: age, card: card });
+      if (card.repeat + 1 >= 3) mustSee.push({ kind: 'repeat', id: card.id, nth: card.repeat + 1, card: card });
+    });
+    // Bills over their cap in the last 7 days (PURCHASE_RECONCILE), closed jobs included.
+    scoped.forEach(function (r) {
+      sbEvents(r).forEach(function (e) {
+        if (e.action !== 'PURCHASE_RECONCILE' || !(e.ms >= nowMs - 7 * SB_DAY)) return;
+        var m = /เกินวงเงิน ([\d.,]+)/.exec(e.detail);
+        if (m) mustSee.push({ kind: 'overCap', id: r.id, baht: Number(m[1].replace(/,/g, '')), at: e.at, card: r.card });
+      });
+    });
+    var order = { emergency: 0, claimLate: 1, overCap: 2, repeat: 3, openLong: 4 };
+    mustSee.sort(function (a, b) { return order[a.kind] - order[b.kind] || (b.minutes || 0) - (a.minutes || 0); });
+    Object.keys(groups).forEach(function (k) { groups[k].sort(function (a, b) { return (a.createdMs || 0) - (b.createdMs || 0) || (a.id < b.id ? -1 : 1); }); });
+    counts.closedToday = groups.closedToday.length;
+    var left = cap, more = false;
+    ['open', 'approval', 'inProgress', 'contractor', 'other', 'closedToday', 'routine'].forEach(function (k) {
+      if (groups[k].length > left) { groups[k] = groups[k].slice(0, left); more = true; }
+      left -= groups[k].length;
+    });
+    return { counts: counts, groups: groups, mustSee: mustSee, venues: venues, venue: venue || '', limit: cap, more: more };
+  }
+  /** bdTicketList_: a page of rows (newest first) and the count PostgREST gave. */
+  function sbTicketList(rows, count, offset) {
+    var page = (rows || []).map(function (r) { return r.card; }), from = Math.max(0, Number(offset) || 0);
+    return { rows: page, total: count, offset: from, nextOffset: from + page.length < count ? from + page.length : null,
+      statuses: [SB_ST.open, SB_ST.approval, SB_ST.progress, SB_ST.purchase, SB_ST.contractor, SB_ST.closed, SB_ST.cancelled] };
+  }
+  /** bdTicket_: the row (card, detail) + the spot read; slaRules from lists. */
+  function sbTicket(row, spotRows, slaRules) {
+    var card = row.card, d = row.detail || {};
+    var history = (spotRows || []).filter(function (o) {
+      return o.id !== card.id && o.status !== SB_ST.cancelled && o.card.category === card.category;
+    }).map(function (o) {
+      return { id: o.id, at: o.card.createdAt, problem: o.card.problem, assignee: o.card.assignee || '', cost: Number(o.card.cost) || 0 };
+    }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var total = history.reduce(function (s, h) { return s + h.cost; }, 0) + card.cost;
+    return { ticket: card, photos: d.photos || [], fix: d.fix || '', cost: d.cost, timeline: d.timeline || [], sla: d.sla === undefined ? null : d.sla,
+      slaRules: slaRules, spot: { history: history, times: history.length + 1, total: total, replace: history.length + 1 >= 3 }, lineUrl: d.lineUrl || '' };
+  }
+  /** A Realtime change on a local row set: upsert or remove by id, never in place. */
+  function sbApply(rows, change) {
+    var row = change.type === 'DELETE' ? null : change.row, id = (change.row || change.old || {}).id;
+    var out = (rows || []).filter(function (r) { return r.id !== id; });
+    if (!row) return out;
+    var i = (rows || []).map(function (r) { return r.id; }).indexOf(id);
+    if (i < 0) out.push(row); else out.splice(i, 0, row);
+    return out;
+  }
+  /** A purchase row's reader-relative facts, computed here (the engine never stores them). */
+  function sbPurchaseFacts(row, uid, nowMs) {
+    return { mine: !!uid && row.by === uid, ageMinutes: Math.max(0, Math.round((nowMs - Date.parse(row.created_at)) / 60000)) };
+  }
+  /** bdBillsWeek_ from the week's rows (already shaped) and its stats row: groups by the resolved company. */
+  function sbBillsWeek(rows, doc) {
+    var groups = [], by = {};
+    (rows || []).slice().sort(function (a, b) { return a.ts < b.ts ? -1 : 1; }).forEach(function (b) {
+      var g = by[b.company];
+      if (!g) { g = by[b.company] = { company: b.company, unassigned: !!b.unassigned, total: 0, reviewed: 0, count: 0, bills: [] }; groups.push(g); }
+      g.bills.push({ timestamp: b.ts, day: b.day, submitter: b.submitter, item: b.item, amount: Number(b.amount) || 0, ticketId: b.ticket_id || '',
+        venue: b.venue || '', location: b.location || '', reviewed: !!b.reviewed, reviewedBy: b.reviewed_by || '', photo: b.photo || '', photoFull: b.photo_full || '' });
+      g.total += Number(b.amount) || 0; g.count++;
+      if (b.reviewed) g.reviewed++;
+    });
+    var w = (doc && doc.week) || {};
+    var out = { week: { offset: w.offset, start: w.start, end: w.end, payDate: w.payDate,
+      total: groups.reduce(function (s, g) { return s + g.total; }, 0), count: groups.reduce(function (s, g) { return s + g.count; }, 0),
+      reviewed: groups.reduce(function (s, g) { return s + g.reviewed; }, 0) }, groups: groups };
+    if (doc && doc.all) out.all = doc.all;
+    out.companies = (doc && doc.companies) || [];
+    return out;
+  }
+  /** A stats row: the engine's answer and when it was computed. */
+  function sbStat(row) { return { data: row.doc, at: Date.parse(row.computed_at) }; }
+  /**
+   * window.SB: supabase-js (vendored, loaded on first use) keeps the anonymous session and
+   * carries Realtime; reads are plain fetch to PostgREST with the session's token.
+   * o = {fetch, url, anon, schema, loadScript}.
+   */
+  function makeSbAdapter(o) {
+    var client = null, loading = null, token = '', chans = {}, next = 0;
+    function lib() {
+      if (!loading) {
+        loading = o.loadScript(SB_LIB).then(function (sb) {
+          client = sb.createClient(o.url, o.anon, { db: { schema: o.schema }, auth: { persistSession: true, autoRefreshToken: true, storageKey: 'davisCare.sbAuth' } });
+          client.auth.onAuthStateChange(function (ev, s) { token = (s && s.access_token) || ''; });
+          return client;
+        });
+      }
+      return loading;
+    }
+    function keep(s) { token = (s && s.access_token) || ''; return s || null; }
+    return {
+      session: function () { return lib().then(function (c) { return c.auth.getSession(); }).then(function (r) { return keep(r && r.data && r.data.session); }); },
+      signInAnon: function () {
+        return lib().then(function (c) { return c.auth.signInAnonymously(); }).then(function (r) { if (r.error) throw r.error; return keep(r.data.session); });
+      },
+      refresh: function () { return lib().then(function (c) { return c.auth.refreshSession(); }).then(function (r) { if (r.error) throw r.error; return keep(r.data.session); }); },
+      signOut: function () { token = ''; return lib().then(function (c) { return c.auth.signOut(); }); },
+      from: function (table) {
+        return {
+          select: function (params, opts) {
+            var h = { apikey: o.anon, Authorization: 'Bearer ' + token, 'Accept-Profile': o.schema };
+            if (opts && opts.count) h.Prefer = 'count=exact';
+            return o.fetch(o.url + '/rest/v1/' + sbPath(table, params), { headers: h }).then(function (r) {
+              if (!r.ok) { var e = new Error('Supabase ' + r.status); e.status = r.status; throw e; }
+              var range = r.headers.get('content-range') || '';
+              return r.json().then(function (rows) {
+                return { rows: rows, count: opts && opts.count ? Number(range.split('/')[1]) || 0 : null };
+              });
+            });
+          },
+        };
+      },
+      subscribe: function (table, filter, cb) {
+        var id = 'sb' + (++next);
+        chans[id] = 'pending';
+        lib().then(function (c) {
+          if (!chans[id]) return;   // left before the client came
+          var f = { event: '*', schema: o.schema, table: table };
+          if (filter) f.filter = filter;
+          chans[id] = c.channel('care-' + id).on('postgres_changes', f, function (p) {
+            cb({ type: p.eventType, row: p.eventType === 'DELETE' ? null : p.new, old: p.old });
+          }).subscribe();
+        });
+        return id;
+      },
+      unsubscribe: function (id) {
+        var ch = chans[id];
+        delete chans[id];
+        if (ch && ch !== 'pending' && client) client.removeChannel(ch);
+      },
+    };
+  }
+/* SB END */
+
 /* AUTH START */
   var DEMO = null;
   var DEMO_BD = null;   // demo-bd.json, fetched only with ?demo=1
@@ -1611,6 +1901,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     // #18: painted from the cache at (0 = fresh), offline, a new build waiting, the install hint and sheet.
     cachedAt: 0, offline: false, updateReady: false, hint: 'none', isheet: '',
     loginAfterSheet: false,   // v7.1: the sheet came before LINE Login; closing it logs in
+    // WO#21: the zone reads Supabase; its rows (งานซ่อม), the lists, and when a stats row was computed.
+    sb: false, sbRows: {}, sbLists: null, statsAt: 0,
   };
   var bootFirst = null;   // WO#19 B1: bdBoot's first zone, used once by startWith
 
@@ -1724,6 +2016,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   setInterval(function () {
     if (document.visibilityState === 'hidden') return;   // WO#19 B2: nobody is looking
     if (!S.me || S.view !== 'list' || busyNow() || S.csheet) return;
+    if (sbHandles(S.zone, zuiOf(S.zone))) return;   // WO#21: Realtime brings the changes, never a poll
     if (!S.zone || S.zone === 'purchase' || S.zone === 'repair') load(true);
   }, POLL_MS);
 
@@ -1747,7 +2040,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   /** #18: the lines under the header: a new build, the install line, the age of painted data. */
   function topLines() {
-    return (S.updateReady ? updateLineHtml() : '') + installLineHtml(S.hint) + staleLineHtml(S.cachedAt, S.offline);
+    return (S.updateReady ? updateLineHtml() : '') + installLineHtml(S.hint) + staleLineHtml(S.cachedAt || S.statsAt, S.offline);
   }
   function render() {
     renderPage();
@@ -2243,7 +2536,14 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   function zuiOf(z) { return S.zui[z] || (S.zui[z] = {}); }
   /** One loader per zone; an answer for a zone no longer on screen is dropped (as A1.3 does for tabs). */
+  /** WO#21: a zone on Supabase reads it; any other through Apps Script, as v7.1. */
   function loadZone(silent) {
+    if (sbHandles(S.zone, zuiOf(S.zone))) return sbLoadZone(silent);
+    sbUnsubAll();
+    S.statsAt = 0;
+    return loadZoneApi(silent);
+  }
+  function loadZoneApi(silent) {
     var z = S.zone, u = zuiOf(z), p;
     if (S.zbusy) return Promise.resolve();
     S.zbusy = true;
@@ -2290,6 +2590,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     else if (z === 'overview') body = renderOverview(d, u);
     else if (z === 'techs') body = renderTechs(d, u);
     else body = '';
+    // WO#21: a stats row has no page link (it needs the reader's token): minted on the tap.
+    if (z === 'overview' && d && S.sb && !d.pageUrl) body += '<button type="button" class="sheetBtn linkBtn" data-act="execLink">เปิดหน้าเว็บเดิม (PDF/CSV) ↗</button>';
     var open = S.openMenu;
     if (open) body = body.replace('<div class="moreMenu" data-menu="' + esc(open) + '">', '<div class="moreMenu open" data-menu="' + esc(open) + '">');
     return header() + zoneBarHtml(zonesOf(me), z, zoneCounts()) + '<main id="list" class="zone-' + z + '">' + body + '</main>';
@@ -2328,12 +2630,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function openTicket(id) {
     S.ticketFrom = S.view === 'tech' ? 'tech' : 'list';
     S.view = 'ticket'; S.ticket = null; S.openMenu = ''; render(); window.scrollTo(0, 0);
-    api('bdTicket', { id: id }).then(function (res) { if (S.view === 'ticket') { S.ticket = res; render(); } },
+    (S.sb ? sbReadTicket(id) : Promise.reject(SB_FALL)).catch(function () { return api('bdTicket', { id: id }); })
+      .then(function (res) { if (S.view === 'ticket') { S.ticket = res; render(); } },
       function (e) { toast(e.message, true); S.view = S.ticketFrom; render(); });
   }
   function openTech(name, w) {
     S.view = 'tech'; S.tech = { name: name }; render(); window.scrollTo(0, 0);
-    api('bdTech', { name: name, window: w || 7 }).then(function (res) { if (S.view === 'tech') { S.tech = res; render(); } },
+    var tq = S.sb ? sbQueryFor('tech', S.me, { name: name, window: w || 7 }, 0)[0] : null;
+    (tq ? sbRead(tq).then(function (r) { if (!r.rows[0]) throw SB_NOROW; return sbStat(r.rows[0]).data; }) : Promise.reject(SB_FALL))
+      .catch(function () { return api('bdTech', { name: name, window: w || 7 }); })
+      .then(function (res) { if (S.view === 'tech') { S.tech = res; render(); } },
       function (e) { toast(e.message, true); S.view = 'list'; S.tech = null; render(); });
   }
   /** v6 taps; anything not ours goes on to the v5 handler. True when handled. */
@@ -2364,12 +2670,22 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'tlMore': {
         var l = S.z.tickets;
         el.disabled = true;
-        api('bdTickets', { status: u.status || '', venue: '', offset: l.nextOffset }).then(function (res) {
+        var more = S.sb ? sbRead(sbQueryFor('tickets', S.me, { status: u.status || '', offset: l.nextOffset }, 0)[0])
+          .then(function (r) { return sbTicketList(r.rows, r.count, l.nextOffset); }) : api('bdTickets', { status: u.status || '', venue: '', offset: l.nextOffset });
+        more.then(function (res) {
           l.rows = l.rows.concat(res.rows); l.nextOffset = res.nextOffset; render();
         }, function (e) { toast(e.message, true); render(); });
         return true;
       }
       case 'bdMore': S.openMenu = S.openMenu === k ? '' : k; render(); return true;
+      case 'execLink': {
+        // The window opens on the tap itself (a window opened after an await is blocked).
+        var win = window.open('', '_blank'), ov = zuiOf('overview');
+        api('bdExecLink', { window: ov.window || 7, venue: ov.venue || '' }).then(function (r) {
+          if (win) win.location.href = r.pageUrl; else location.href = r.pageUrl;
+        }, function (e) { if (win) win.close(); toast(e.message, true); });
+        return true;
+      }
       case 'bdApprove': {
         var c = careCard(k) || {};
         var amt = c.purchase && c.purchase.amount ? fmtBaht(c.purchase.amount) + ' บาท' : '';
@@ -2467,6 +2783,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       }
       if (res.bindError && !(res.me && res.me.known)) toast(res.bindError, true);
       startWith(res.me);
+      if (sbNeedLink) sbLinkNow();   // WO#21: this device reads Supabase from the next open
     }, function (e) {
       var view = bootFailView({ painted: !!(S.me && S.cachedAt), msg: e.message, online: navigator.onLine, network: L.err.network });
       if (view === 'offline') { S.offline = true; render(); return; }
@@ -2521,6 +2838,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     if (cacheOwner(c, sub) === 'wipe') {
       c = {};
       S.me = null; S.zone = ''; S.tab = ''; S.z = {}; S.zui = {}; S.board = null; S.cachedAt = 0; S.offline = false;
+      // WO#21: the device's Supabase link was the other person's: sign out, link again for this one.
+      try { localStorage.removeItem(SB_STORE); } catch (e) { /* nothing kept */ }
+      if (SB_ON) { SB.signOut().catch(function () {}); sbUnsubAll(); S.sb = false; S.statsAt = 0; if (sbPhase !== 'off') sbPhase = 'fallback'; }
       render();
     }
     if (sub && c.sub !== sub) { c.sub = sub; store(false, c); }
@@ -2578,6 +2898,130 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     });
   }
 
+  // ---- work order #21: Supabase -----------------------------------------------------------
+  var SB_ON = !DEMO_MODE && sbEnabled({ url: SB_URL, anon: SB_ANON, qs: QS });
+  // Phase 1 zones on Supabase; รออนุมัติ, ขอซื้อ and บิล stay on Apps Script until phase 2 (ruling (4)).
+  var SB_PHASE1 = ['repair', 'tickets', 'overview', 'techs'];
+  var SB_STORE = 'davisCare.sb', SB_LINK_ONCE = 'davisCare.sbLink';
+  var SB_FALL = new Error('sb: v7.1 boot'), SB_NOROW = new Error('sb: no row');
+  var sbPhase = SB_ON ? 'trying' : 'off';   // trying → on, or fallback (bdBoot)
+  var sbNeedLink = null, sbLiffReady = false, sbSubs = [];
+  function sbLoadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      el.src = src;
+      el.onload = function () { if (window.supabase) resolve(window.supabase); else reject(new Error('supabase-js')); };
+      el.onerror = reject;
+      document.head.appendChild(el);
+    });
+  }
+  window.SB = window.SB || makeSbAdapter({ fetch: function (u, o) { return fetch(u, o); }, url: SB_URL, anon: SB_ANON, schema: SB_SCHEMA, loadScript: sbLoadScript });
+  var SB = window.SB;
+  function sbStoreGet() { try { return JSON.parse(localStorage.getItem(SB_STORE) || 'null') || {}; } catch (e) { return {}; } }
+  function sbSla() { return (S.sbLists && S.sbLists.slaRules) || SB_SLA; }
+  function sbHandles(z, u) { return S.sb && SB_PHASE1.indexOf(z) >= 0 && !!sbQueryFor(z, S.me, u, 0); }
+  /** One read; a 401 refreshes the session once and reads again. */
+  function sbRead(q) {
+    var go = function () { return SB.from(q.table).select(q.params, q.count ? { count: true } : undefined); };
+    return go().catch(function (e) { if (e && e.status === 401) return SB.refresh().then(go); throw e; });
+  }
+  function sbRepairView() {
+    var u = zuiOf('repair');
+    return sbRepairLive(S.sbRows.repair || [], u.venue || '', u.limit || 200, careNow(), sbSla(), (S.sbLists || {}).hotels);
+  }
+  function sbUnsubAll() { sbSubs.forEach(function (h) { SB.unsubscribe(h); }); sbSubs = []; }
+  function sbSubscribe(z, u) {
+    sbUnsubAll();
+    sbSubsFor(z, S.me, u).forEach(function (x) { sbSubs.push(SB.subscribe(x.table, x.filter, function (c) { sbChange(z, c); })); });
+  }
+  /** A Realtime change: the local rows, drawn again; never a read. */
+  function sbChange(z, c) {
+    if (S.zone !== z || !S.sb) return;
+    if (z === 'repair') { S.sbRows.repair = sbApply(S.sbRows.repair, c); S.z.repair = sbRepairView(); }
+    else if (z === 'tickets') {
+      var l = S.z.tickets;
+      if (!l || !c.row) return;
+      l.rows = l.rows.map(function (r) { return r.id === c.row.id ? c.row.card : r; });
+    } else if (c.row) { var st = sbStat(c.row); S.z[z] = st.data; S.statsAt = st.at; }
+    if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
+  }
+  function sbLoadZone(silent) {
+    var z = S.zone, u = zuiOf(z);
+    if (S.zbusy) return Promise.resolve();
+    S.zbusy = true;
+    return Promise.all(sbQueryFor(z, S.me, u, careNow()).map(sbRead)).then(function (res) {
+      S.zbusy = false;
+      if (S.zone !== z) return;
+      var data, at = 0;
+      if (z === 'repair') { S.sbRows.repair = res[0].rows.concat(res[1].rows); data = sbRepairView(); }
+      else if (z === 'tickets') data = sbTicketList(res[0].rows, res[0].count, u.offset || 0);
+      else { if (!res[0].rows[0]) throw SB_NOROW; var st = sbStat(res[0].rows[0]); data = st.data; at = st.at; }
+      S.z[z] = data; S.statsAt = at; S.cachedAt = 0; S.offline = false; S.lastLoad = Date.now();
+      store(false, cacheZone(store(true) || {}, S.me, z, u.venue || '', data, Date.now(), u));
+      sbSubscribe(z, u);
+      if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
+    }).catch(function (e) {
+      S.zbusy = false;
+      if (S.zone !== z) return;
+      if (e && e.name === 'TypeError') {   // no network: keep what is painted, the muted line
+        if (S.cachedAt) S.offline = true; else if (!silent) toast(L.err.network, true);
+        render();
+        return;
+      }
+      return loadZoneApi(silent);   // refused (401 after the refresh) or no row: this zone through Apps Script
+    });
+  }
+  /** One job: the row, then the spot read. */
+  function sbReadTicket(id) {
+    return sbRead(sbQueryFor('ticket', S.me, { id: id }, 0)[0]).then(function (r) {
+      var row = r.rows[0];
+      if (!row) throw SB_NOROW;
+      var sq = sbQueryFor('spot', S.me, { venue: row.venue, location: row.card.location }, 0);
+      return (sq.length ? sbRead(sq[0]) : Promise.resolve({ rows: [] })).then(function (sp) { return sbTicket(row, sp.rows, sbSla()); });
+    });
+  }
+  /**
+   * Boot from Supabase: the device's session → people (self, through the link) + lists → me,
+   * then the zone. No Apps Script call. Anything missing → the v7.1 boot (bdBoot), and the
+   * device is linked once LINE has answered.
+   */
+  function sbBoot() {
+    var session = null;
+    SB.session().then(function (s) {
+      session = s;
+      var st = sbSessionState({ session: s, linked: !!sbStoreGet().linked });
+      if (st === 'anon-signin') return SB.signInAnon().then(function (s2) { sbNeedLink = s2; throw SB_FALL; });
+      if (st === 'link') { sbNeedLink = s; throw SB_FALL; }
+      return Promise.all(sbQueryFor('me', null, {}, 0).map(sbRead));
+    }).then(function (res) {
+      var person = res[0].rows[0];
+      if (!person) {   // the link row is gone, or the person is off: link again, once per session
+        var tried = true;
+        try { tried = sessionStorage.getItem(SB_LINK_ONCE) === '1'; } catch (e) { tried = true; }
+        if (!tried) sbNeedLink = session;
+        throw SB_FALL;
+      }
+      S.sbLists = (res[1].rows[0] || {}).doc || {};
+      if (sbPhase !== 'trying') return;   // another LINE person came in meanwhile
+      S.sb = true; sbPhase = 'on';
+      startWith(sbMe(person, S.sbLists, Date.now()));
+    }).catch(function () {
+      S.sb = false;
+      if (sbPhase !== 'trying') return;
+      sbPhase = 'fallback';
+      if (sbLiffReady) boot();
+    });
+  }
+  function sbLinkNow() {
+    var s = sbNeedLink;
+    sbNeedLink = null;
+    if (!s || !s.user) return;
+    try { sessionStorage.setItem(SB_LINK_ONCE, '1'); } catch (e) { /* the next open asks again */ }
+    api('bdSupabaseLink', { authUid: s.user.id }).then(function (r) {
+      try { localStorage.setItem(SB_STORE, JSON.stringify({ linked: true, uid: r.uid })); } catch (e) { /* linked on the engine anyway */ }
+    }, function () { /* the next open tries again */ });
+  }
+
   if (DEMO_MODE) {
     var as = (/[?&]as=(\w+)/.exec(QS) || [])[1];
     DEMO = makeDemo(as || 'venue_manager');
@@ -2599,6 +3043,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     render();
     return;
   }
+  if (SB_ON) sbBoot();   // WO#21: Supabase first; LINE loads beside it, for the actions
   var sdk = document.createElement('script');
   sdk.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
   sdk.onload = function () {
@@ -2615,8 +3060,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       // The LINE profile picture, top left like Order's header; the initial stays if LINE says no.
       try { liff.getProfile().then(function (p) { if (p && p.pictureUrl) { S.avatar = p.pictureUrl; if (S.view === 'list' && !S.sheet) render(); } }, function () {}); } catch (e) { /* keep the initial */ }
       authReadyResolve();
-      boot();
-    }, function () { S.hint = pwaHint(false); authReadyResolve(); boot(); });
+      sbLiffReady = true;
+      if (sbPhase !== 'trying' && sbPhase !== 'on') boot();   // on Supabase, LINE is for the actions only
+    }, function () { S.hint = pwaHint(false); authReadyResolve(); sbLiffReady = true; if (sbPhase !== 'trying' && sbPhase !== 'on') boot(); });
   };
   sdk.onerror = function () {
     if (S.me && S.cachedAt) { S.offline = true; render(); return; }

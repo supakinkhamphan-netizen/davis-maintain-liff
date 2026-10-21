@@ -30,11 +30,13 @@ const T = tables();
 const NOW = bkkMs('2026-10-20 12:00:00');   // the fixture's clock
 const R = role => DEMO.roles[role];
 const strip = o => { const c = JSON.parse(JSON.stringify(o)); delete c.ok; delete c.serverNow; return c; };
-const SLA = T.lists[0].doc.slaRules;
+const SLA = T.lists[0].doc.slaRules, HOTELS = T.lists[0].doc.hotels;
+const byTime = (a, b) => (a.createdMs || 0) - (b.createdMs || 0) || (a.id < b.id ? -1 : 1);
 const me = role => Object.assign({}, R(role).bdWhoAmI, { uid: 'U-' + role });   // sbMe adds the uid (people.uid)
 // What PostgREST answers for one built query, on the fixture (RLS aside: these are the manager's).
 const run = q => T[q.table].filter(r => Object.keys(q.params).every(k => ['select', 'order', 'limit', 'offset'].indexOf(k) >= 0 || matches(r, k, q.params[k])));
 
+const SB_LIB_SHA256 = (() => { try { return fs.readFileSync(path.join(__dirname, 'fixtures', 'supabase-js-2.45.4.sha256'), 'utf8').trim(); } catch (e) { return 'missing'; } })();
 // ---- 0. the block, the vendored client ------------------------------------------------------
 safe('0', () => {
   const fns = ['sbEnabled', 'sbSessionState', 'sbVenueIn', 'sbQueryFor', 'sbPath', 'sbMe', 'sbRepairLive', 'sbTicketList', 'sbTicket', 'sbApply',
@@ -51,7 +53,6 @@ safe('0', () => {
   ok('0.5 no service key, no JWT secret in the page', !/service_role|SUPABASE_SERVICE|JWT_SECRET/i.test(SRC));
   ok('0.6 window.SB is kept when one is there (the tests\' fake)', /window\.SB = window\.SB \|\| makeSbAdapter\(/.test(SRC));
 });
-const SB_LIB_SHA256 = (() => { try { return fs.readFileSync(path.join(__dirname, 'fixtures', 'supabase-js-2.45.4.sha256'), 'utf8').trim(); } catch (e) { return 'missing'; } })();
 
 // ---- 1. on or off, and the token -------------------------------------------------------------
 safe('1', () => {
@@ -131,21 +132,27 @@ safe('3', () => {
   const live = role => P.sbQueryFor('repair', me(role), {}, NOW).map(run).reduce((a, b) => a.concat(b), []);
   ['manager', 'venue_manager'].forEach(role => {
     const rows = live(role).filter(r => role !== 'venue_manager' || me(role).venues.indexOf(r.venue) >= 0);
-    const got = P.sbRepairLive(rows, '', 200, NOW, SLA), want = strip(R(role).calls['bdRepairLive{}']);
+    const got = P.sbRepairLive(rows, '', 200, NOW, SLA, HOTELS), want = strip(R(role).calls['bdRepairLive{}']);
     // ruling (1): total, closed and cancelled count every ticket ever; the live rows cannot, and nothing reads them.
     ['total', 'closed', 'cancelled'].forEach(k => delete want.counts[k]);
+    // The engine breaks a tie in time by the sheet's row order, which rows do not carry: by id here.
+    Object.keys(want.groups).forEach(k => want.groups[k].sort(byTime));
     eq('3.3 ' + role + ': งานซ่อม from rows = bdRepairLive (counts the renderer reads, groups, ต้องดู, venues)', got, want);
   });
   const all = live('manager');
-  const hos = P.sbRepairLive(all, 'HOS', 200, NOW, SLA);
+  const hos = P.sbRepairLive(all, 'HOS', 200, NOW, SLA, HOTELS);
   ok('3.4 a venue chip filters on the page; the venue chips keep every venue', Object.keys(hos.groups).every(g => hos.groups[g].every(c => c.venue === 'HOS')) &&
     JSON.stringify(hos.venues) === JSON.stringify(R('manager').calls['bdRepairLive{}'].venues) && hos.venue === 'HOS');
-  const two = P.sbRepairLive(all, '', 2, NOW, SLA);
+  const two = P.sbRepairLive(all, '', 2, NOW, SLA, HOTELS);
   eq('3.5 the cap: 2 cards, more = true, counts whole', [Object.keys(two.groups).reduce((s, g) => s + two.groups[g].length, 0), two.more, two.counts.open], [2, true, 4]);
   const acc = R('account').calls['bdTickets{"status":"","venue":"","offset":0}'];
   const q = P.sbQueryFor('tickets', me('account'), {}, NOW)[0];
   const page = run(q).sort((a, b) => b.created_ms - a.created_ms).slice(0, 50);
-  eq('3.6 งานทั้งหมด from rows + the count = bdTickets', P.sbTicketList(page, 20, 0), strip(acc));
+  // The engine lists the sheet bottom-up; Supabase newest first (created_ms.desc, design §3.4). On the
+  // real sheet rows are appended as they are made, so the two agree; the fixture's rows are not in time order.
+  const wantL = strip(acc); wantL.rows.sort((a, b) => b.createdMs - a.createdMs || (a.id < b.id ? 1 : -1));
+  const page2 = page.slice().sort((a, b) => b.created_ms - a.created_ms || (a.id < b.id ? 1 : -1));
+  eq('3.6 งานทั้งหมด from rows + the count = bdTickets (newest first)', P.sbTicketList(page2, 20, 0), wantL);
   const ids = Object.keys(R('manager').calls).filter(k => k.indexOf('bdTicket{') === 0);
   const bad = ids.filter(k => {
     const id = JSON.parse(k.slice(8)).id, row = T.tickets.filter(r => r.id === id)[0];

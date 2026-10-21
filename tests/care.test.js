@@ -538,9 +538,8 @@ async function section11() {
   eq('11.12 venue manager: every ticket read carries their venue, the subscription too', [vq.length, vq.every(q => q.params.venue === 'in.("24BLVD")'), v.fake.log.subs.map(x => x.filter)],
     [2, true, ['venue=in.(24BLVD)']]);
   const a = sbDevice('account');
-  await tick(120);
-  a.pg.lineLoads();
-  await tick(150);
+  a.pg.lineLoads();   // within the page's LINE wait (15 s; the fake browser cuts every timer to 30 ms)
+  await tick(200);
   eq('11.13 account: me from Supabase, รออนุมัติ still through Apps Script in phase 1 (ruling (4)), never bdBoot', [tablesOf(a.fake), a.pg.log.fns], [['people', 'lists'], ['bdApprovals']]);
 
   const off = sbDevice('manager', { href: 'https://davis.example/davis-maintain-liff/?sb=0' });
