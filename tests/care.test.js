@@ -714,6 +714,16 @@ async function section13() {
   await tick(400);
   const n1 = +((/รออนุมัติ (\d+)/.exec(textOf(ad.app.innerHTML)) || [])[1]);
   eq('13.3 a demo approval reaches the rows and Realtime draws it: รออนุมัติ one fewer', n0 - n1, 1);
+  // WO#23: the demo is v9's path too: every domain on Supabase, the action a function call that takes 0.7 s.
+  const dv = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=account', fetch: files });
+  await tick(300);
+  const d0 = +((/รออนุมัติ (\d+)/.exec(textOf(dv.app.innerHTML)) || [])[1]);
+  dv.tap('bdApprove', 'Fairway_20261020_02');
+  dv.tap('bdConfirm');
+  await tick(200);
+  const mid = textOf(dv.app.innerHTML);
+  await tick(900);
+  eq('13.5 a demo approval through the demo\'s function: กำลังส่ง… mid-flight, then one fewer', [/กำลังส่ง/.test(mid), d0 - +((/รออนุมัติ (\d+)/.exec(textOf(dv.app.innerHTML)) || [])[1])], [true, 1]);
   ok('13.4 BUILD v8.x · Supabase', /var BUILD = 'care-board v8\.\d · 2026-10-2\d · Supabase';/.test(SRC));
 }
 

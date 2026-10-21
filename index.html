@@ -2091,6 +2091,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
    */
   function makeDemoSb(tables, demo) {
     var T = JSON.parse(JSON.stringify(tables)), subs = {}, next = 0;
+    // WO#23: the demo shows v9's path: every domain on Supabase, so every action is a function call.
+    T.settings = [{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' }];
     function val(row, key) {
       var parts = key.split('->'), text = /->>/.test(key), v = row[parts[0]];
       parts.slice(1).forEach(function (p) { p = p.replace(/^>/, ''); v = v === null || v === undefined ? v : v[p]; });
@@ -2145,6 +2147,20 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
             return new Promise(function (resolve) { setTimeout(function () { resolve({ rows: rows, count: opts && opts.count ? count : null }); }, 60); });
           },
         };
+      },
+      /** A function call: the demo's own action, then the row it changed, as the database would answer it. */
+      rpc: function (fn, args) {
+        var action = Object.keys(SB_ACTIONS).filter(function (k) { return SB_ACTIONS[k].fn === fn; })[0];
+        var a = args || {}, cut = String(a.bill_id || '').lastIndexOf('_');
+        var payload = { ticketId: a.id, id: a.id, cap: a.cap === null ? undefined : a.cap, reason: a.reason, lines: a.lines, note: a.note, actualTotal: a.total, eta: a.eta,
+          venue: a.venue, buyer: a.buyer, category: a.category, items: a.items, reviewed: a.reviewed, company: a.company,
+          timestamp: cut > 0 ? a.bill_id.slice(0, cut) : undefined, submitter: cut > 0 ? a.bill_id.slice(cut + 1) : undefined };
+        return new Promise(function (resolve) { setTimeout(resolve, 700); }).then(function () { return demo.call(action, payload); }).then(function (res) {
+          if (!res.ok) { var e = new Error(res.error); e.status = 400; throw e; }
+          var dom = SB_ACTIONS[action].domain, id = dom === 'bills' ? a.bill_id : (a.id || res.id);
+          var rows = dom === 'tickets' ? T.tickets : dom === 'bills' ? T.bills : demo.sbPurchaseRows();
+          return JSON.parse(JSON.stringify(rows.filter(function (r) { return r.id === id; })[0] || { id: id }));
+        });
       },
       subscribe: function (table, filter, cb) { var h = 'demo' + (++next); subs[h] = { table: table, filter: filter || '', cb: cb }; return h; },
       unsubscribe: function (h) { delete subs[h]; },
