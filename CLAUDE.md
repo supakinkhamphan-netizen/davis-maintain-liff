@@ -35,6 +35,17 @@ The board installs to the home screen as **Davis Care** (`manifest.webmanifest`,
 - v7.1 (#18 §6): `?install=1` in a browser that is not logged in shows the sheet before LINE Login (the installed app logs in once itself); closing it logs in. The cache carries the LINE `sub` and is wiped when another person logs in on the phone; `online` reloads when the offline line is up; each cached answer keeps the chips it was asked with (`ui`), and the age line reads the answer's `serverNow`.
 - Boot paints the last answer of the person's zone from `davisPurchase.v1` for every role (`cacheZone` / `cachedPaint`), with a muted "ข้อมูลเมื่อ HH:MM" line; offline (the SDK or the first call cannot load) keeps it with "ไม่มีเน็ต · แสดงข้อมูลเมื่อ HH:MM". Never red.
 
+## Reads from Supabase (work order #21, care-board v8.0)
+
+Every zone reads the Supabase project **davis-care** (`SB_URL`, schema `care`); Apps Script stays the system of record and every action still goes through `api()`. The engine mirrors its sheets into the tables (davis-maintain-engine work order #20); Realtime shows the result of an action. Never name or touch the owner's other Supabase project.
+- `SB_ANON` empty = Supabase off = the v7.1 board (bdBoot). `?sb=0` is the escape hatch. The URL and anon key are public by design; RLS is the guard.
+- Identity: an anonymous Supabase session per device (supabase-js, `vendor/supabase-js-2.45.4.js`, byte-equal to the npm tarball's dist/umd file, sha256 pinned in `tests/fixtures/`), linked once to the Maintain LINE id by `api('bdSupabaseLink', {authUid})` after LINE answers (`davisCare.sb = {linked, uid}`). No session / not linked / `people` empty (re-link once per session) / unreachable → the v7.1 boot, then the link.
+- Boot on Supabase: session → `people` (self) + `lists` → `me` (`sbMe`) → the zone → subscribe. No Apps Script call; the LINE SDK loads beside it for the actions.
+- `window.SB` (`makeSbAdapter`) is the one door: reads are plain fetch to PostgREST (apikey + the session's Bearer + `Accept-Profile: care`; `Prefer: count=exact` only for งานทั้งหมด); supabase-js only for the session and Realtime. Tests replace it (`tests/fake-sb.js`).
+- The SB block (pure): `sbQueryFor` (a venue manager always carries `venue=in.(…)`), `sbSubsFor`, and the engine's rules on its rows, each pinned against the engine's own answers: `sbRepairLive` (two reads: live + closed in 7 days; ties by `seq`), `sbTicketList`, `sbTicket`, `sbApprovals`, `sbPrRow` / `sbPrBoard` / `sbPrDetail`, `sbBillsWeek`, `sbStat`. The renderers did not change; `care.test` §12 draws every zone from rows and from the v7.1 answer and compares the HTML.
+- Realtime: subscribe on entering a zone, unsubscribe on leaving; a change is applied to the local rows (`sbApply`) and drawn, never a read. The poll skips Supabase zones. A 401 refreshes the session once, then that zone asks Apps Script. ภาพรวม/ช่าง carry "ข้อมูลเมื่อ" from `stats.computed_at`; a ช่าง chip on ภาพรวม asks Apps Script. The page links (ภาพรวม, the bill sheet) carry the reader's token: `bdExecLink` on the tap, the window opened on the tap itself.
+- `?demo=1` runs on `demo-sb.json` (team B's capture of the engine fixture) through `makeDemoSb`, with `makeDemo` seeded from it; `demo-bd.json` stays for the Apps Script paths. Copy both from the engine when its fixture changes.
+
 ## The code's lifted blocks
 
 `index.html` keeps its rules between markers so node tests run the page's own code:
@@ -42,7 +53,8 @@ The board installs to the home screen as **Davis Care** (`manifest.webmanifest`,
 - `/* AUTH START */ … /* AUTH END */` — `authReady`, `freshCreds`, `callApi`, `callApiSend`.
 - `/* CARE START */ … /* CARE END */` — the combined board's zones and renderers (work order #17).
 - `/* PWA START */ … /* PWA END */` — the install hint and sheets, the login redirect, the relogin rule, the cache paint and the top lines. Pure, like LOGIC.
-- `/* DEMO START */ … /* DEMO END */` — `makeDemo(role)`: the backend's answers on sample data for `?demo=1`. Keep its shapes and refusals in step with `purchase-liff-api.js` / `purchase-request.js`, or the demo stops being a review of the real screens.
+- `/* SB START */ … /* SB END */` — work order #21: the Supabase queries, the engine's rules on its rows, `makeSbAdapter`. Pure but the adapter's fetch.
+- `/* DEMO START */ … /* DEMO END */` — `makeDemo(role, seed)` and `makeDemoSb`: the backend's answers on sample data for `?demo=1`. Keep its shapes and refusals in step with `purchase-liff-api.js` / `purchase-request.js`, or the demo stops being a review of the real screens.
 
 ## Conventions
 
@@ -53,4 +65,4 @@ The board installs to the home screen as **Davis Care** (`manifest.webmanifest`,
 
 ## Tests
 
-`bash tests/run-all.sh` — `logic.test.js` (rules + a full demo walk), `callapi.test.js`, `page.test.js`, `shape.test.js`, `care.test.js` (the zones from `demo-bd.json`; §9 boots the whole page script in `tests/fake-browser.js`: cache paint, offline, install sheet, relogin, a new build), `pwa.test.js` (manifest, icon sizes, the worker's strategy and its offline answer, the install table). Screenshots of `?demo=1` at 390 px go to the reviewer with each `READY FOR REVIEW`; they are not committed (`*.png` is ignored, except `icons/`). `?demo=1&hint=line|android|ios|other` (plus `&install=1` for the sheet) shows each install variant.
+`bash tests/run-all.sh` — `logic.test.js` (rules + a full demo walk), `callapi.test.js`, `page.test.js`, `shape.test.js`, `care.test.js` (the zones from `demo-bd.json`; §9 boots the whole page script in `tests/fake-browser.js`: cache paint, offline, install sheet, relogin, a new build), `pwa.test.js` (manifest, icon sizes, the worker's strategy and its offline answer, the install table). `sb.test.js` (the SB block and the adapter against demo-sb.json / demo-bd.json); care §11–13 boot the page on a fake `window.SB`. Screenshots of `?demo=1` at 390 px go to the reviewer with each `READY FOR REVIEW`; they are not committed (`*.png` is ignored, except `icons/`). `?demo=1&hint=line|android|ios|other` (plus `&install=1` for the sheet) shows each install variant.
