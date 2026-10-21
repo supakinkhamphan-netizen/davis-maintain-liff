@@ -50,7 +50,11 @@ function makeFakeSb(tables, o) {
     return true;
   };
   const SB = {
-    session() { log.auth.push('session'); return Promise.resolve(state.session ? JSON.parse(JSON.stringify(state.session)) : null); },
+    session() {
+      log.auth.push('session');
+      const v = state.session ? JSON.parse(JSON.stringify(state.session)) : null;
+      return o.sessionDelay ? new Promise(r => setTimeout(() => r(v), o.sessionDelay)) : Promise.resolve(v);
+    },
     signInAnon() {
       log.auth.push('signInAnon');
       if (fail.signIn || fail.offline) return Promise.reject(new Error('Anonymous sign-ins are disabled'));

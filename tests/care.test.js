@@ -709,7 +709,32 @@ async function section13() {
   ok('13.4 BUILD v8.0 · Supabase', /var BUILD = 'care-board v8\.0 · 2026-10-2\d · Supabase';/.test(SRC));
 }
 
-section9().then(section10).then(section11).then(section13).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 14. v8.1: a Supabase boot that never ends must not hold the board (reviewer, 21 Oct) ----------
+async function section14() {
+  ok('14.0 the boot deadline is 5 s', /var SB_BOOT_MS = 5000;/.test(SRC));
+  // The released page: the real key, the real adapter; supabase-js never answers (a hung response).
+  const hang = bootPage(SRC, { vendor: 'hang', fetch: answerOf('manager') });
+  hang.pg = hang;
+  hang.lineLoads();
+  await tick(250);
+  eq('14.1 supabase-js hangs: past the deadline the board boots through LINE (bdBoot) and draws', [hang.log.fns, textOf(hang.app.innerHTML).indexOf('ต้องดู') >= 0],
+    [['bdBoot'], true]);
+  // Supabase answers, but only after the deadline: the board is already up on bdBoot; no second boot, no reads.
+  const late = makeFakeSb(sbTables(), { session: { user: { id: 'anon-manager' }, access_token: 'tok:anon-manager:1' }, links: { 'anon-manager': uidOf('manager') }, sessionDelay: 150 });
+  const lp = bootPage(SRC, { sbOn: true, sb: late.SB, local: { 'davisCare.sb': JSON.stringify({ linked: true, uid: uidOf('manager') }) }, fetch: apiSb('manager', late) });
+  lp.lineLoads();
+  await tick(400);
+  eq('14.2 Supabase late: one boot (bdBoot), and the late session leads to no read and no second drawing', [lp.log.fns, late.log.selects.length], [['bdBoot'], 0]);
+  // In time (before the deadline) it is the Supabase boot, as §11.
+  const fast = makeFakeSb(sbTables(), { session: { user: { id: 'anon-manager' }, access_token: 'tok:anon-manager:1' }, links: { 'anon-manager': uidOf('manager') } });
+  const fp = bootPage(SRC, { sbOn: true, sb: fast.SB, local: { 'davisCare.sb': JSON.stringify({ linked: true, uid: uidOf('manager') }) }, fetch: apiSb('manager', fast) });
+  await tick(20);
+  fp.lineLoads();
+  await tick(300);
+  eq('14.3 Supabase in time: no Apps Script call, past the deadline too', fp.log.fns, []);
+}
+
+section9().then(section10).then(section11).then(section13).then(section14).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });

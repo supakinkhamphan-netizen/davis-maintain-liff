@@ -38,7 +38,13 @@ function bootPage(SRC, o) {
     isFinite, isNaN, parseFloat, parseInt, encodeURIComponent, decodeURIComponent, URL,
     setTimeout: (f, ms) => { const t = setTimeout(f, Math.min(ms || 0, 30)); if (t.unref) t.unref(); return t; },
     clearTimeout, setInterval: (f, ms) => { intervals.push({ f, ms }); return intervals.length; }, clearInterval: () => {},
-    document: { getElementById: el, createElement: () => ({}), head: { appendChild: x => appended.push(x) }, activeElement: null,
+    // A script the page adds: LINE's SDK waits for the test (lineLoads); the vendored supabase-js
+    // fails to load unless the test says 'hang' (never answers) — the v7.1 path, as on a phone without it.
+    document: { getElementById: el, createElement: () => ({}), activeElement: null,
+      head: { appendChild: x => {
+        appended.push(x);
+        if (/vendor\/supabase-js/.test(x.src || '') && o.vendor !== 'hang') setTimeout(() => { if (x.onerror) x.onerror(new Error('fake: no supabase-js')); }, 0);
+      } },
       addEventListener: (t, f) => { docL[t] = f; }, get visibilityState() { return doc.visibilityState; } },
     localStorage: storage(local), sessionStorage: storage(session),
     location: { href, search: href.indexOf('?') >= 0 ? href.slice(href.indexOf('?')).split('#')[0] : '', reload: () => { log.reloads++; } },
@@ -63,7 +69,7 @@ function bootPage(SRC, o) {
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
   const pg = {
-    ctx, app: els.app, toast: els.toast, sdk: appended[0], win, sw, log, local, session, docL, intervals, clock, doc,
+    ctx, app: els.app, toast: els.toast, get sdk() { return appended.filter(x => /line-scdn/.test(x.src || ''))[0]; }, scripts: appended, win, sw, log, local, session, docL, intervals, clock, doc,
     set fetch(f) { swap.fetch = f; },
     /** A tap on the element carrying data-act (and data-k) — enough for the page's click handler. */
     tap(act, k) {
@@ -80,7 +86,7 @@ function bootPage(SRC, o) {
       init: () => Promise.resolve(), isLoggedIn: () => true, isInClient: () => false,
       getIDToken: () => 'ID', getAccessToken: () => 'AT', getDecodedIDToken: () => ({ exp: Date.now() / 1000 + 3600 }),
       getProfile: () => Promise.resolve({}), login: x => log.logins.push(x), logout: () => { log.logouts++; }, openWindow: x => log.opened.push(x),
-    }, liff || {}); appended[0].onload(); },
+    }, liff || {}); pg.sdk.onload(); },
   };
   return pg;
 }
