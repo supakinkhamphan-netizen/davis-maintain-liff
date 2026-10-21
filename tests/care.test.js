@@ -949,6 +949,12 @@ async function section16() {
   const fresh = sbDevice('manager', { fresh: true });
   await tick(80);
   eq('16.16 the escape hatch (?sb=0) and a first open still load LINE\'s SDK at once (the v7.1 boot)', [!!off.pg.sdk, !!fresh.pg.sdk], [true, true]);
+  // WO#23 §5: the worker found a newer page behind the cached one: the line, never a reload.
+  const nb = sbDevice('manager', { settings: ST(ON, ON, ON) });
+  await tick(150);
+  nb.pg.sw.message && nb.pg.sw.message({ data: { type: 'newBuild', build: 'care-board v9.1' } });
+  await tick(20);
+  eq('16.23 a newer build behind the cache: "มีรุ่นใหม่ · แตะเพื่อโหลด", and no reload', [/มีรุ่นใหม่ · แตะเพื่อโหลด/.test(textOf(nb.pg.app.innerHTML)), nb.pg.log.reloads], [true, 0]);
   ok('16.17 no action waits for LINE: the RPC route never touches authReady', /function doAction\(/.test(SRC) && !/authReady/.test((/function doAction\([\s\S]*?\n  \}/.exec(SRC) || [''])[0]));
 }
 
