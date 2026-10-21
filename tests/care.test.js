@@ -477,7 +477,134 @@ async function section10() {
   eq('10.21 … and the fresh answer is asked for the same chips', ask && ask.payload.window, 30);
 }
 
-section9().then(section10).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 11. work order #21 phase 1: the board reads Supabase (fake window.SB) ---------------------
+const { makeFakeSb } = require('./fake-sb');
+const { tables: sbTables } = require('./sb-fixture');
+const PAGE_URL = 'https://script.google.com/macros/s/TEST/exec?page=exec&t=new';
+/** Apps Script as answerOf, plus the two #21 fns: the link (the engine's people_links upsert) and the page link. */
+const apiSb = (role, fake) => (fn, opts, payload) => {
+  if (fn === 'bdSupabaseLink') { fake.link(payload.authUid, 'U-' + role); return answer({ ok: true, uid: 'U-' + role, url: 'https://x.supabase.co' }); }
+  if (fn === 'bdExecLink') return answer({ ok: true, pageUrl: PAGE_URL });
+  return answerOf(role)(fn, opts, payload);
+};
+/** A device that has opened v8 before: an anonymous session, linked to the role's person. */
+function sbDevice(role, o) {
+  o = o || {};
+  const fake = makeFakeSb(sbTables(), o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: 'U-' + role } });
+  const local = Object.assign(o.fresh ? {} : { 'davisCare.sb': JSON.stringify({ linked: !o.notLinked, uid: 'U-' + role }) }, o.local || {});
+  const pg = bootPage(SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, fetch: apiSb(role, fake) });
+  return { fake, pg };
+}
+const tablesOf = f => f.log.selects.map(q => q.table);
+const closedTodayOf = h => +((/ปิดวันนี้ (\d+)/.exec(textOf(h)) || [])[1]);
+async function section11() {
+  const m = sbDevice('manager');
+  await tick(120);
+  eq('11.1 manager, a linked device: me from people + lists, งานซ่อม from two ticket reads, no Apps Script call', [tablesOf(m.fake), m.pg.log.fns],
+    [['people', 'lists', 'tickets', 'tickets'], []]);
+  ok('11.2 … the zone is drawn from the rows (ต้องดู, the cards)', textOf(m.pg.app.innerHTML).indexOf('ต้องดู') >= 0 && textOf(m.pg.app.innerHTML).indexOf('Mandrake_20261008_01') >= 0);
+  m.pg.lineLoads();
+  await tick(120);
+  eq('11.3 LINE loads in parallel for the actions and asks nothing at boot', m.pg.log.fns, []);
+  eq('11.4 subscribed to tickets on entering งานซ่อม', m.fake.log.subs.map(x => [x.table, x.filter]), [['tickets', '']]);
+  const before = closedTodayOf(m.pg.app.innerHTML), nSel = m.fake.log.selects.length;
+  const row = JSON.parse(JSON.stringify(m.fake.SB && sbTables().tickets.filter(r => r.id === 'HOS_20261020_01')[0]));
+  row.status = row.card.status = 'เสร็จสิ้น'; row.live = false; row.close_ms = row.card.closeMs = Date.now();
+  m.fake.emit('tickets', { type: 'UPDATE', row });
+  await tick(30);
+  eq('11.5 a Realtime change re-renders from the local rows: ปิดวันนี้ +1, no read', [closedTodayOf(m.pg.app.innerHTML) - before, m.fake.log.selects.length - nSel], [1, 0]);
+  m.pg.intervals[0].f();
+  await tick(60);
+  eq('11.6 the poll never reads an SB zone', [m.fake.log.selects.length - nSel, m.pg.log.fns], [0, []]);
+  m.pg.tap('zone', 'techs');
+  await tick(80);
+  eq('11.7 leaving งานซ่อม unsubscribes; ช่าง reads its stats row and subscribes to it', [m.fake.log.unsubs, m.fake.log.selects.slice(-1)[0].params.id, m.fake.log.subs.slice(-1)[0].filter],
+    [['sub1'], 'eq.techs|1', 'id=eq.techs|1']);
+  ok('11.8 … one muted "ข้อมูลเมื่อ 11:30" from computed_at, and the technicians drawn', textOf(m.pg.app.innerHTML).indexOf('ข้อมูลเมื่อ 11:30') >= 0 && textOf(m.pg.app.innerHTML).indexOf('นัท') >= 0 && m.pg.log.fns.length === 0);
+  m.pg.tap('zone', 'overview');
+  await tick(80);
+  ok('11.9 ภาพรวม from its stats row, with the page link as a tap', m.fake.log.selects.slice(-1)[0].params.id === 'eq.overview|all|7' && /data-act="execLink"/.test(m.pg.app.innerHTML) && m.pg.log.fns.length === 0);
+  m.pg.tap('execLink');
+  const w = m.pg.log.windows[0];
+  await tick(60);
+  eq('11.10 the tap opens a window at once (no popup block) and mints the page link then (bdExecLink)', [!!w, m.pg.log.fns, w && w.location.href], [true, ['bdExecLink'], PAGE_URL]);
+  m.pg.tap('ovTech', 'นัท');
+  await tick(120);
+  ok('11.11 a ช่าง chip on ภาพรวม asks Apps Script (no stats row per tech), and the line is gone', m.pg.log.fns.indexOf('bdOverview') >= 0 && textOf(m.pg.app.innerHTML).indexOf('ข้อมูลเมื่อ') < 0);
+
+  const v = sbDevice('venue_manager');
+  await tick(120);
+  const vq = v.fake.log.selects.filter(q => q.table === 'tickets');
+  eq('11.12 venue manager: every ticket read carries their venue, the subscription too', [vq.length, vq.every(q => q.params.venue === 'in.("24BLVD")'), v.fake.log.subs.map(x => x.filter)],
+    [2, true, ['venue=in.(24BLVD)']]);
+  const a = sbDevice('account');
+  await tick(120);
+  a.pg.lineLoads();
+  await tick(150);
+  eq('11.13 account: me from Supabase, รออนุมัติ still through Apps Script in phase 1 (ruling (4)), never bdBoot', [tablesOf(a.fake), a.pg.log.fns], [['people', 'lists'], ['bdApprovals']]);
+
+  const off = sbDevice('manager', { href: 'https://davis.example/davis-maintain-liff/?sb=0' });
+  off.pg.lineLoads();
+  await tick(150);
+  eq('11.14 ?sb=0: the v7.1 board (bdBoot), Supabase never asked', [off.fake.log.auth, off.fake.log.selects.length, off.pg.log.fns], [[], 0, ['bdBoot']]);
+
+  const first = sbDevice('manager', { fresh: true });
+  await tick(80);
+  first.pg.lineLoads();
+  await tick(200);
+  eq('11.15 the first open on a device: an anonymous session, the v7.1 boot, then the link in the background', [first.fake.log.auth.slice(0, 2), first.pg.log.fns],
+    [['session', 'signInAnon'], ['bdBoot', 'bdSupabaseLink']]);
+  const link = first.pg.log.calls.filter(c => c.fn === 'bdSupabaseLink')[0];
+  eq('11.16 … the link names this device\'s anonymous user, and the device remembers it', [link && link.payload.authUid, JSON.parse(first.pg.local.get('davisCare.sb') || '{}')],
+    ['anon-1', { linked: true, uid: 'U-manager' }]);
+  const again = bootPage(SRC, { sbOn: true, sb: first.fake.SB, local: { 'davisCare.sb': first.pg.local.get('davisCare.sb') }, fetch: apiSb('manager', first.fake) });
+  await tick(120);
+  eq('11.17 the next open on that device reads Supabase only', [again.log.fns, tablesOf(first.fake).slice(-4)], [[], ['people', 'lists', 'tickets', 'tickets']]);
+
+  const gone = sbDevice('manager', { unlinked: true });
+  await tick(80);
+  gone.pg.lineLoads();
+  await tick(200);
+  eq('11.18 linked on the device but people comes back empty (link row gone): bdBoot, and link again', gone.pg.log.fns, ['bdBoot', 'bdSupabaseLink']);
+  const gone2 = sbDevice('manager', { unlinked: true, session: { 'davisCare.sbLink': '1' } });
+  await tick(80);
+  gone2.pg.lineLoads();
+  await tick(200);
+  eq('11.19 … once per session: the second time in the same session it does not link again', gone2.pg.log.fns, ['bdBoot']);
+  const noAnon = sbDevice('manager', { fresh: true });
+  noAnon.fake.fail.signIn = true;
+  await tick(80);
+  noAnon.pg.lineLoads();
+  await tick(200);
+  ok('11.20 anonymous sign-ins switched off in the project: the v7.1 board, no link', noAnon.pg.log.fns.join() === 'bdBoot' && textOf(noAnon.pg.app.innerHTML).indexOf('ต้องดู') >= 0);
+  const down = sbDevice('manager');
+  down.fake.fail.offline = true;
+  await tick(80);
+  down.pg.lineLoads();
+  await tick(200);
+  eq('11.21 Supabase unreachable at boot: the v7.1 board', down.pg.log.fns, ['bdBoot']);
+
+  const r = sbDevice('manager');
+  await tick(120);
+  r.fake.fail.status = 401; r.fake.fail.times = 1;
+  r.pg.tap('zone', 'techs');
+  await tick(120);
+  ok('11.22 a 401 on a read: refresh the session once and read again', r.fake.log.auth.indexOf('refresh') >= 0 && r.fake.log.selects.filter(q => q.table === 'stats').length === 2 && r.pg.log.fns.length === 0);
+  r.pg.lineLoads();
+  await tick(60);
+  r.fake.fail.status = 401; r.fake.fail.times = 2;
+  r.pg.tap('techWin', '7');
+  await tick(200);
+  ok('11.23 … still 401 after the refresh: that zone goes through Apps Script', r.pg.log.fns.indexOf('bdTechs') >= 0);
+
+  const other = sbDevice('manager', { local: { 'davisPurchase.v1': JSON.stringify({ sub: 'U1', me: R('manager').bdWhoAmI, boards: {} }) } });
+  await tick(120);
+  other.pg.lineLoads({ getDecodedIDToken: () => ({ sub: 'U2', exp: Date.now() / 1000 + 3600 }) });
+  await tick(80);
+  ok('11.24 another LINE person on this phone: the Supabase session is signed out and the link forgotten', other.fake.log.auth.indexOf('signOut') >= 0 && !other.pg.local.get('davisCare.sb'));
+}
+
+section9().then(section10).then(section11).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });

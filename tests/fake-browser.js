@@ -9,6 +9,7 @@ const vm = require('vm');
  * Timers are shortened to at most 30 ms (the 15 s LINE wait, the 12 s fetch abort).
  */
 function bootPage(SRC, o) {
+  if (o.sbOn) SRC = SRC.replace("var SB_URL = '';", "var SB_URL = 'https://x.supabase.co';").replace("var SB_ANON = '';", "var SB_ANON = 'ANON';");
   const script = SRC.slice(SRC.lastIndexOf('<script>') + '<script>'.length, SRC.lastIndexOf('</script>'));
   const els = {};
   const el = id => (els[id] = els[id] || {
@@ -20,7 +21,7 @@ function bootPage(SRC, o) {
   const storage = m => ({ getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); } });
   const local = new Map(Object.entries(o.local || {})), session = new Map(Object.entries(o.session || {}));
   const appended = [], win = {}, sw = {};
-  const log = { reloads: 0, replaced: [], logins: [], logouts: 0, opened: [], fns: [], calls: [] };
+  const log = { reloads: 0, replaced: [], logins: [], logouts: 0, opened: [], fns: [], calls: [], windows: [] };
   const docL = {}, intervals = [];
   // v7.1: a clock the test can move (the poll's "older than 30 s"), and the page's visibility.
   const clock = { skew: 0 };
@@ -48,6 +49,8 @@ function bootPage(SRC, o) {
     },
     matchMedia: () => ({ matches: !!o.standalone }),
     scrollTo() {}, addEventListener: (t, f) => { win[t] = f; },
+    open: (u, t) => { const w = { url: u, target: t, location: { href: '' }, closed: false, close() { this.closed = true; } }; log.windows.push(w); return w; },
+    SB: o.sb || undefined,
     fetch: (url, opts) => {
       let fn = '', payload = null;
       try { const b = JSON.parse(opts.body); fn = b.fn; payload = b.payload; } catch (e) { fn = ''; }
