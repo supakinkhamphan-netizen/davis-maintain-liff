@@ -1750,6 +1750,54 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
 /* SB END */
 
+/* HANDOFF START */
+  // ---- the install handoff (WO#23 §5, board v9.1; the app's login, WO#24 phase A) ----------------
+  // No LINE login page on the installed app. Inside LINE (already logged in) the board gets a one-use
+  // code from the engine (bdLinkCode, 10 minutes) and opens the install URL with ?link=<code>. A device
+  // with no linked session signs in anonymously and redeems it (bdRedeemLink {code, authUid}: no LINE
+  // token, no SDK), then boots linked. A spent or expired code -> the v7.1 boot, one Thai line.
+  // Pure (no DOM, no LINE): the same block in the board (pasted between these markers) and in the app.
+  var HANDOFF_SPENT = 'ลิงก์นี้หมดอายุหรือใช้ไปแล้ว เปิดจากไลน์อีกครั้งเพื่อรับลิงก์ใหม่';
+  /** The handoff code in the query (?link=…), or ''. Codes are opaque: 10–64 of [A-Za-z0-9_-]. */
+  function linkCodeFrom(qs) {
+    var m = /[?&]link=([A-Za-z0-9_-]{10,64})(?:&|#|$)/.exec(String(qs || ''));
+    return m ? m[1] : '';
+  }
+  /** 'redeem' when there is a code and no linked session on this device; else the usual boot. */
+  function handoffPlan(o) {
+    if (!linkCodeFrom(o.qs)) return 'normal';
+    return o.session && o.linked ? 'normal' : 'redeem';
+  }
+  /** The address without the code, so a reload never spends it twice; everything else kept. */
+  function dropLinkParam(url) {
+    var hash = '', q = '', u = String(url);
+    var h = u.indexOf('#'); if (h >= 0) { hash = u.slice(h); u = u.slice(0, h); }
+    var i = u.indexOf('?'); if (i >= 0) { q = u.slice(i + 1); u = u.slice(0, i); }
+    var keep = q.split('&').filter(function (kv) { return kv && kv.split('=')[0] !== 'link'; });
+    return u + (keep.length ? '?' + keep.join('&') : '') + hash;
+  }
+  /** The URL a LINE board opens in the phone's browser: this page, ?link=<code>&install=1, nothing else. */
+  function installLinkUrl(href, code) {
+    var u = String(href).split('#')[0].split('?')[0];
+    return u + '?link=' + encodeURIComponent(code) + '&install=1';
+  }
+  /**
+   * Redeem a code on this device. deps: session(), signInAnon(), redeem(code, authUid) -> {uid},
+   * storeLink({linked, uid}). Answers {result: 'linked' | 'fallback', uid, message}.
+   */
+  function redeemHandoff(code, deps) {
+    var fallback = function () { return { result: 'fallback', uid: '', message: HANDOFF_SPENT }; };
+    return deps.session().then(function (s) { return s || deps.signInAnon(); }).then(function (s) {
+      if (!s || !s.user) return fallback();
+      return deps.redeem(code, s.user.id).then(function (r) {
+        if (!r || !r.uid) return fallback();
+        deps.storeLink({ linked: true, uid: r.uid });
+        return { result: 'linked', uid: r.uid, message: '' };
+      }, fallback);
+    }, fallback);
+  }
+/* HANDOFF END */
+
 /* AUTH START */
   var DEMO = null;
   var DEMO_BD = null;   // demo-bd.json, fetched only with ?demo=1
@@ -3205,7 +3253,10 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'installLine':
         if (S.hint !== 'line') { S.isheet = S.hint; render(); return true; }
         if (DEMO) { toast('(ตัวอย่าง) เปิดเบราว์เซอร์ของเครื่อง'); return true; }
-        loadLine().then(function () { liff.openWindow({ url: installUrl(location.href), external: true }); }, function (e) { toast(e.message, true); });
+        // v9.1: a one-time code goes with it, so the installed app needs no LINE login (else the v9.0 URL).
+        loadLine().then(function () {
+          return api('bdLinkCode', {}).then(function (r) { return installLinkUrl(location.href, r.code); }, function () { return installUrl(location.href); });
+        }).then(function (url) { liff.openWindow({ url: url, external: true }); }, function (e) { toast(e.message, true); });
         return true;
       case 'installGo': {
         var ask = installPrompt;
@@ -3391,7 +3442,38 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
    * then the zone. No Apps Script call. Anything missing → the v7.1 boot (bdBoot), and the
    * device is linked once LINE has answered.
    */
+  /**
+   * v9.1 (WO#23 §5): opened with ?link=<code> on a device with no linked session (the installed app, the
+   * phone's browser, cleared storage): redeem the code first (bdRedeemLink, no LINE token, no SDK), then
+   * the Supabase boot. The deadline starts after it, so a slow redeem never pushes the board to LINE login.
+   * A spent or expired code: one Thai line and the v7.1 boot.
+   */
   function sbBoot() {
+    var code = linkCodeFrom(QS);
+    if (!code) { sbBootMain(); return; }
+    try { history.replaceState(null, '', dropLinkParam(location.href)); } catch (e) { /* a reload may try a spent code once: harmless */ }
+    SB.session().then(function (s) {
+      if (handoffPlan({ qs: QS, session: s, linked: !!sbStoreGet().linked }) !== 'redeem') return null;
+      return redeemHandoff(code, {
+        session: function () { return Promise.resolve(s); },
+        signInAnon: function () { return SB.signInAnon(); },
+        redeem: function (c, authUid) {
+          return callApiSend('bdRedeemLink', { code: c, authUid: authUid }, { idToken: '', accessToken: '' })
+            .then(function (r) { if (!r || r.ok !== true) throw new Error((r && r.error) || L.err.network); return r; });
+        },
+        storeLink: function (v) { try { localStorage.setItem(SB_STORE, JSON.stringify(v)); } catch (e) { /* asked again next open */ } },
+      });
+    }, function () { return null; }).then(function (res) {
+      if (res && res.result === 'fallback') {
+        toast(res.message, true);
+        // The v7.1 boot links this device's session afterwards (sbLinkNow), as on a first open.
+        SB.session().then(function (s2) { if (s2 && s2.user) sbNeedLink = s2; }, function () {}).then(sbGiveUp);
+        return;
+      }
+      sbBootMain();
+    });
+  }
+  function sbBootMain() {
     var session = null;
     setTimeout(function () { if (sbPhase === 'trying') sbGiveUp(); }, SB_BOOT_MS);
     SB.session().then(function (s) {
