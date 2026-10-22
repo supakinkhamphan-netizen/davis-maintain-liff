@@ -1131,6 +1131,13 @@ async function section20() {
   await until(() => /zone-overview/.test(m.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(m.pg.app.innerHTML)), 1500);
   ok('20.1 ภาพรวม tapped while งานซ่อม is still reading: it is drawn once that read finishes, never stuck on กำลังโหลด',
     /zone-overview/.test(m.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(m.pg.app.innerHTML)) && m.fake.log.selects.some(q => q.table === 'stats'));
+  // The catch path (the reviewer's mutant, 22 Oct): the first zone's read FAILS while another zone is tapped.
+  const f = sbDevice('manager', { fake: { selectDelay: { tickets: 150 }, selectFail: { tickets: 500 } } });
+  await until(() => f.fake.log.selects.some(q => q.table === 'tickets'));
+  f.pg.tap('zone', 'overview');
+  await until(() => /zone-overview/.test(f.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(f.pg.app.innerHTML)), 1500);
+  ok('20.2 the first zone\'s read FAILS while ภาพรวม is tapped: ภาพรวม is still drawn (the catch path)',
+    /zone-overview/.test(f.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(f.pg.app.innerHTML)) && f.fake.log.selects.some(q => q.table === 'stats'));
 }
 
 section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).then(section20).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {

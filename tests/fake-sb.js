@@ -84,6 +84,8 @@ function makeFakeSb(tables, o) {
           const off = Number((params || {}).offset) || 0, lim = (params || {}).limit ? Number(params.limit) : Infinity;
           rows = rows.slice(off, off + lim);
           const delay = typeof o.selectDelay === 'number' ? o.selectDelay : (o.selectDelay && o.selectDelay[table]) || 5;   // a slow read, on purpose (care 20.1)
+          const failWith = o.selectFail && o.selectFail[table];   // a read that fails after its delay, on purpose (care 20.2)
+          if (failWith) return new Promise((res, rej) => setTimeout(() => { const e = new Error('HTTP ' + failWith); e.status = failWith; rej(e); }, delay));
           return new Promise(res => setTimeout(() => res({ rows: JSON.parse(JSON.stringify(rows)), count: opts && opts.count ? count : null }), delay));
         },
       };
