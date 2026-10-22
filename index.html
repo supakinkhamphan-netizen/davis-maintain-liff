@@ -306,7 +306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v8.3 · 2026-10-21 · Supabase';
+  var BUILD = 'care-board v9.0 · 2026-10-21 · Supabase RPC';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -1312,6 +1312,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var vm = !!me && me.role === 'venue_manager', q;
     var TK = 'id,venue,status,live,created_ms,close_ms,seq,card,events';
     if (zone === 'me') return [{ table: 'people', params: { select: '*' } }, { table: 'lists', params: { select: 'doc', id: 'eq.main' } }];
+    if (zone === 'settings') return [{ table: 'settings', params: { select: '*', id: 'eq.main' } }];
     if (zone === 'repair') q = [{ table: 'tickets', params: { select: TK, live: 'is.true' } }, { table: 'tickets', params: { select: TK, close_ms: 'gte.' + (nowMs - 7 * SB_DAY) } }];
     else if (zone === 'tickets') {
       var p = { select: 'id,card' };
@@ -1584,6 +1585,99 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   /** A stats row: the engine's answer and when it was computed. */
   function sbStat(row) { return { data: row.doc, at: Date.parse(row.computed_at) }; }
+  // ---- WO#23 (v9): actions through Supabase RPC, routed by the settings row ----
+  /**
+   * Every board action and the database function that does it once its domain is on Supabase:
+   * team B's E1 contract (schema.sql 96807d4). Arguments are p_-prefixed; the board never sends
+   * p_actor* or p_source (the database takes the actor from the session; either → 42501).
+   * p_cap is the typed text (the function strips commas, refuses words in Thai). A bill is its
+   * uuid (p_bill_id) or, until phase 2, p_legacy_id = timestamp + '_' + submitter.
+   */
+  function sbBillKey(p) { return p.billId ? { p_bill_id: p.billId } : { p_legacy_id: p.timestamp + '_' + p.submitter }; }
+  /**
+   * v9 phase 2: the bill a card shows (its time + who sent it) as its uuid, once the mirror carries
+   * bill_id; '' until then (the call goes by p_legacy_id). The old key is the row's id, or legacy_id
+   * once the id is the uuid.
+   */
+  function sbBillIdFor(rows, timestamp, submitter) {
+    var key = timestamp + '_' + submitter;
+    var r = (rows || []).filter(function (x) {
+      return x.id === key || x.legacy_id === key || (x.ts && sbBkkText(Date.parse(x.ts)) + '_' + x.submitter === key);
+    })[0];
+    return (r && r.bill_id) || '';
+  }
+  var SB_ACTIONS = {
+    bdApprove: { domain: 'tickets', fn: 'approve_purchase', args: function (p) {
+      return { p_id: p.ticketId, p_cap: p.capText !== undefined ? String(p.capText) : (p.cap === undefined || p.cap === null ? null : String(p.cap)) };
+    } },
+    bdReject: { domain: 'tickets', fn: 'reject_purchase', args: function (p) { return { p_id: p.ticketId, p_reason: p.reason }; } },
+    prCreate: { domain: 'purchase', fn: 'pr_create', args: function (p) { return { p_venue: p.venue, p_buyer: p.buyer, p_category: p.category, p_items: p.items, p_reason: p.reason }; } },
+    prDecide: { domain: 'purchase', fn: 'pr_decide', args: function (p) { return { p_id: p.id, p_lines: p.lines, p_note: p.note }; } },
+    prOrdered: { domain: 'purchase', fn: 'pr_ordered', args: function (p) { return { p_id: p.id, p_actual_total: p.actualTotal, p_eta: p.eta }; } },
+    prDelivered: { domain: 'purchase', fn: 'pr_delivered', args: function (p) { return { p_id: p.id }; } },
+    prReceived: { domain: 'purchase', fn: 'pr_received', args: function (p) { return { p_id: p.id }; } },
+    prCancel: { domain: 'purchase', fn: 'pr_cancel', args: function (p) { return { p_id: p.id }; } },
+    bdBillReviewed: { domain: 'bills', fn: 'bill_review', args: function (p) { return Object.assign(sbBillKey(p), { p_reviewed: !!p.reviewed }); } },
+    bdBillCompany: { domain: 'bills', fn: 'bill_company', args: function (p) { return Object.assign(sbBillKey(p), { p_company: p.company }); } },
+  };
+  /** The settings row: each domain's record of truth; anything but 'supabase' is the sheets. */
+  function sbSettingsOf(row) {
+    var d = function (k) { return row && row['record_of_truth_' + k] === 'supabase' ? 'supabase' : 'sheets'; };
+    return { tickets: d('tickets'), purchase: d('purchase'), bills: d('bills') };
+  }
+  /**
+   * Where one action goes: {via:'rpc', fn, args} when its domain is on Supabase, else
+   * {via:'api', fn, payload} exactly as v8.2. A request with photos stays on Apps Script
+   * (no Storage this stage: the engine uploads them and calls the function itself).
+   */
+  function actionRoute(o) {
+    var a = SB_ACTIONS[o.action], p = o.payload || {};
+    if (!a || !o.settings || o.settings[a.domain] !== 'supabase' || (p.photoDataUrls && p.photoDataUrls.length)) return { via: 'api', fn: o.action, payload: p };
+    return { via: 'rpc', fn: a.fn, args: a.args(p) };
+  }
+  /** LINE's SDK: only on a first open (no session, no link) or for something that needs LINE. */
+  function needLine(o) { return !o.session || !o.linked || ['chat', 'openWindow', 'install', 'api'].indexOf(o.intent) >= 0; }
+  /**
+   * WO#23 addendum (engine 4e0d1c7): a function returns the truth columns at once ({row, events}), while card,
+   * detail and doc are rebuilt by the engine 1–3 s later and come by Realtime. So the local row is
+   * patched only where the action changed it; everything else waits for the engine's row.
+   * Nothing here ports bdCard_. null when there is no local row (the Realtime row will come).
+   */
+  function sbPatchFor(action, local, ret, args) {
+    if (!local || !ret) return null;
+    var out = JSON.parse(JSON.stringify(local)), a = SB_ACTIONS[action] || {};
+    if (a.domain === 'tickets') {
+      out.status = ret.status;
+      if (out.card) {
+        out.card.status = ret.status;
+        if (out.card.purchase) {
+          out.card.purchase.pending = false;
+          if (action === 'bdApprove' && args && args.cap !== null && args.cap !== undefined) out.card.purchase.cap = args.cap;
+        }
+      }
+    } else if (a.domain === 'purchase') {
+      out.status = ret.status;
+      out.doc = out.doc || {};
+      out.doc.status = ret.status;
+      if (ret.fulfilment !== undefined) out.doc.fulfilment = ret.fulfilment;
+      else if (ret.doc && ret.doc.fulfilment !== undefined) out.doc.fulfilment = ret.doc.fulfilment;
+    } else if (a.domain === 'bills') {   // the local id stays (it is the key the card was drawn with)
+      ['reviewed', 'reviewed_by', 'company'].forEach(function (k) { if (ret[k] !== undefined) out[k] = ret[k]; });
+    }
+    return out;
+  }
+  /**
+   * What a failed function call means, by PostgREST's code: DC001 = the engine's NOT_CUT_OVER;
+   * 42501 = NOT_ALLOWED, shown in the board's words, never raw; P0001 / DC003 and the rest carry
+   * the engine's Thai; 401 = the session (refresh once); no status = no network.
+   */
+  function sbRpcFailure(e) {
+    if (!e || !e.status) return { kind: 'network' };
+    if (e.status === 401) return { kind: 'auth' };
+    if (e.code === 'DC001' || /NOT_CUT_OVER/.test(e.message || '')) return { kind: 'notCutOver' };
+    if (e.code === '42501' || /NOT_ALLOWED/.test(e.message || '')) return { kind: 'refused', message: L.err.notAllowed };
+    return { kind: 'refused', message: e.message };
+  }
   /**
    * window.SB: supabase-js (vendored, loaded on first use) keeps the anonymous session and
    * carries Realtime; reads are plain fetch to PostgREST with the session's token.
@@ -1623,6 +1717,16 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
             });
           },
         };
+      },
+      /** WO#23: a database function; its row, or an Error carrying status, code and its message. */
+      rpc: function (fn, args) {
+        var h = { apikey: o.anon, Authorization: 'Bearer ' + token, 'Content-Profile': o.schema, 'Accept-Profile': o.schema, 'Content-Type': 'application/json' };
+        return o.fetch(o.url + '/rest/v1/rpc/' + fn, { method: 'POST', headers: h, body: JSON.stringify(args || {}) }).then(function (r) {
+          return r.json().then(null, function () { return null; }).then(function (b) {
+            if (!r.ok) { var e = new Error((b && b.message) || 'Supabase ' + r.status); e.status = r.status; e.code = b && b.code; throw e; }
+            return b;
+          });
+        });
       },
       subscribe: function (table, filter, cb) {
         var id = 'sb' + (++next);
@@ -2011,6 +2115,8 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
    */
   function makeDemoSb(tables, demo) {
     var T = JSON.parse(JSON.stringify(tables)), subs = {}, next = 0;
+    // WO#23: the demo shows v9's path: every domain on Supabase, so every action is a function call.
+    T.settings = [{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' }];
     function val(row, key) {
       var parts = key.split('->'), text = /->>/.test(key), v = row[parts[0]];
       parts.slice(1).forEach(function (p) { p = p.replace(/^>/, ''); v = v === null || v === undefined ? v : v[p]; });
@@ -2066,6 +2172,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
           },
         };
       },
+      /** A function call: the demo's own action, then the row it changed, as the database would answer it. */
+      rpc: function (fn, args) {
+        var action = Object.keys(SB_ACTIONS).filter(function (k) { return SB_ACTIONS[k].fn === fn; })[0];
+        var a = args || {}, key = String(a.p_legacy_id || ''), cut = key.lastIndexOf('_');
+        var payload = { ticketId: a.p_id, id: a.p_id, cap: a.p_cap === null || a.p_cap === undefined ? undefined : Number(String(a.p_cap).replace(/,/g, '')),
+          reason: a.p_reason, lines: a.p_lines, note: a.p_note, actualTotal: a.p_actual_total, eta: a.p_eta,
+          venue: a.p_venue, buyer: a.p_buyer, category: a.p_category, items: a.p_items, reviewed: a.p_reviewed, company: a.p_company,
+          timestamp: cut > 0 ? key.slice(0, cut) : undefined, submitter: cut > 0 ? key.slice(cut + 1) : undefined };
+        return new Promise(function (resolve) { setTimeout(resolve, 700); }).then(function () { return demo.call(action, payload); }).then(function (res) {
+          if (!res.ok) { var e = new Error(res.error); e.status = 400; throw e; }
+          var dom = SB_ACTIONS[action].domain, id = dom === 'bills' ? key : (a.p_id || res.id);
+          var rows = dom === 'tickets' ? T.tickets : dom === 'bills' ? T.bills : demo.sbPurchaseRows();
+          return { row: JSON.parse(JSON.stringify(rows.filter(function (r) { return r.id === id; })[0] || { id: id })), events: [] };   // team B's shape
+        });
+      },
       subscribe: function (table, filter, cb) { var h = 'demo' + (++next); subs[h] = { table: table, filter: filter || '', cb: cb }; return h; },
       unsubscribe: function (h) { delete subs[h]; },
       /** A demo write, as the mirror would write it and Realtime push it. */
@@ -2105,6 +2226,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     loginAfterSheet: false,   // v7.1: the sheet came before LINE Login; closing it logs in
     // WO#21: the zone reads Supabase; its rows (งานซ่อม), the lists, and when a stats row was computed.
     sb: false, sbRows: {}, sbLists: null, statsAt: 0,
+    settings: null,   // WO#23: {tickets, purchase, bills} → 'supabase' | 'sheets'; null = all sheets
   };
   var bootFirst = null;   // WO#19 B1: bdBoot's first zone, used once by startWith
 
@@ -2438,12 +2560,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       h += '<div class="quick" role="group" aria-label="เหตุผลที่ใช้บ่อย">' + (S.me.quickReasons || L.quickReasons).map(function (q) {
         return '<button type="button" class="shopChip" data-act="quick" data-k="' + esc(q) + '">' + esc(q) + '</button>';
       }).join('') + '</div>';
-      h += '<button type="button" class="actionBtn danger" data-act="confirmReject">' + (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button>';
+      h += '<button type="button" class="actionBtn danger" data-act="confirmReject"' + (sh.busy ? ' disabled>กำลังส่ง…</button>' : '>' + (sh.whole ? 'ยืนยัน · ไม่อนุมัติทั้งใบ' : 'ยืนยัน · อนุมัติ ' + plan.approved.length + ' ไม่อนุมัติ ' + plan.rejected.length) + '</button>');
     } else if (sh.kind === 'high') {
       var p2 = decisionPlan(r, checksOf(r), S.me.highAmount);
       h += '<div class="sheetTitle" id="sheetTitle">ยืนยันอนุมัติยอดสูง</div><div class="sheetHint">' + esc(r.id) + ' · ' + esc(r.venue) + ' · ' + esc(r.requester) + '</div>' +
         '<div class="promise soon">🟡 ยอดที่อนุมัติ ' + fmtBaht(p2.checkedTotal) + ' บาท · ' + fmtBaht(S.me.highAmount) + ' บาทขึ้นไป</div>';
-      h += '<button type="button" class="actionBtn" data-act="confirmApprove">✓ ยืนยันอนุมัติ</button>';
+      h += '<button type="button" class="actionBtn" data-act="confirmApprove"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>✓ ยืนยันอนุมัติ') + '</button>';
     } else if (sh.kind === 'ordered') {
       var f = S.fields[r.id] || (S.fields[r.id] = { actual: '', eta: '' });
       h += '<div class="sheetTitle" id="sheetTitle">🛒 สั่งซื้อแล้ว</div><div class="sheetHint">' + esc(r.id) + ' · ' + esc(r.venue) + ' · อนุมัติ ' + fmtBaht(r.approvedTotal) + ' บาท</div>';
@@ -2453,25 +2575,26 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       h += '<button type="button" class="actionBtn" data-act="confirmOrdered" data-k="' + esc(r.id) + '">🛒 บันทึกสั่งซื้อแล้ว</button>';
     } else if (sh.kind === 'cancel') {
       h += '<div class="sheetTitle" id="sheetTitle">✖️ ยกเลิกคำขอ ' + esc(r.id) + '</div><div class="sheetHint">ยกเลิกแล้วจะตัดสินไม่ได้อีก ถ้ายังต้องการของ ส่งคำขอใหม่</div>';
-      h += '<button type="button" class="actionBtn danger" data-act="confirmCancel">ยกเลิกคำขอ</button>';
+      h += '<button type="button" class="actionBtn danger" data-act="confirmCancel"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>ยกเลิกคำขอ') + '</button>';
     }
     return h + '<button type="button" class="sheetBtn cancel" data-act="closeSheet">กลับ</button></section></div>';
   }
   function after(promise, okText, id) {
     if (id) { S.sending[id] = true; if (!S.sheet) render(); }
-    return promise.then(function () {
+    return promise.then(function (res) {
       if (okText) toast(okText);
       S.sheet = null; S.openMenu = '';
       if (id) delete S.sending[id];
-      if (S.view === 'detail') openDetail(S.detailId); else { render(); load(true); }
-    }, function (e) { if (id) delete S.sending[id]; toast(e.message, true); render(); });
+      // WO#23: a function's row is already drawn; Apps Script's answer is read again as v8.2.
+      if (S.view === 'detail') openDetail(S.detailId); else { render(); if (!(res && res.__rpc)) load(true); }
+    }, function (e) { if (id) delete S.sending[id]; if (S.sheet) S.sheet.busy = false; toast(e.message, true); render(); });
   }
   function sendDecision(r, whole, reason) {
     var checked = whole ? {} : checksOf(r);
     var lines = buildDecideLines(r, checked, reason);
     var plan = decisionPlan(r, checked, S.me.highAmount);
     delete S.checks[r.id];
-    return after(api('prDecide', { id: r.id, lines: lines, note: whole ? String(reason || '').trim() : '' }),
+    return after(doAction('prDecide', { id: r.id, lines: lines, note: whole ? String(reason || '').trim() : '' }),
       plan.wholeReject ? 'ไม่อนุมัติ ' + r.id + ' แล้ว' : (plan.rejected.length ? 'อนุมัติบางส่วน ' + r.id + ' แล้ว' : 'อนุมัติ ' + r.id + ' แล้ว'), r.id);
   }
 
@@ -2585,7 +2708,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       items: f.items.map(function (it) { return { name: it.name, qty: Number(it.qty), unit: it.unit, unitPrice: priceOf(it.price), from: f.buyer === 'purchasing' ? it.from : '' }; }),
       reason: f.reason, photoDataUrls: f.photos,
     };
-    api('prCreate', payload).then(function (res) {
+    doAction('prCreate', payload).then(function (res) {
       var from = { tab: S.tab, venue: S.venue };
       S.form = null; S.view = 'list';
       S.tab = S.me.role === 'venue_manager' ? 'active' : 'pending'; S.venue = '';
@@ -2671,12 +2794,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'confirmReject': {
         var why = String(S.sheet.reason || '').trim();
         if (!why) { S.sheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return; }
-        el.disabled = true;
+        el.disabled = true; S.sheet.busy = true; render();
         sendDecision(findRow(S.sheet.id), S.sheet.whole, why); return;
       }
-      case 'confirmApprove': el.disabled = true; sendDecision(findRow(S.sheet.id), false, ''); return;
+      case 'confirmApprove': el.disabled = true; S.sheet.busy = true; render(); sendDecision(findRow(S.sheet.id), false, ''); return;
       case 'cancel': S.sheet = { kind: 'cancel', id: k }; render(); return;
-      case 'confirmCancel': el.disabled = true; after(api('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
+      case 'confirmCancel': el.disabled = true; S.sheet.busy = true; render(); after(doAction('prCancel', { id: S.sheet.id }), 'ยกเลิก ' + S.sheet.id + ' แล้ว', S.sheet.id); return;
       case 'ordered': S.sheet = { kind: 'ordered', id: k }; render(); return;
       case 'confirmOrdered': {
         var fl = S.fields[k] || {};
@@ -2684,21 +2807,22 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
         if (a === null || isNaN(a) || a <= 0) { fl.err = L.err.actualTotal; render(); return; }
         if (!String(fl.eta || '').trim()) { fl.err = L.err.eta; render(); return; }
         fl.err = ''; el.disabled = true; el.textContent = 'กำลังบันทึก…'; el.className = 'actionBtn busy';
-        after(api('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k, k).then(function () { delete S.fields[k]; });
+        after(doAction('prOrdered', { id: k, actualTotal: a, eta: fl.eta }), 'บันทึกสั่งซื้อแล้ว · ' + k, k).then(function () { delete S.fields[k]; });
         return;
       }
-      case 'delivered': after(api('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k, k); return;
-      case 'received': after(api('prReceived', { id: k }), 'รับของแล้ว · ' + k, k); return;
+      case 'delivered': after(doAction('prDelivered', { id: k }), 'ส่งถึงสาขาแล้ว · ' + k, k); return;
+      case 'received': after(doAction('prReceived', { id: k }), 'รับของแล้ว · ' + k, k); return;
     }
   });
   app.addEventListener('change', function (ev) {
     var el = ev.target;
     if (el.getAttribute('data-act') === 'billTick' || el.getAttribute('data-act') === 'billCompany') {
       var isTick = el.getAttribute('data-act') === 'billTick';
-      var call = isTick ? api('bdBillReviewed', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), reviewed: el.checked })
-        : api('bdBillCompany', { timestamp: el.getAttribute('data-ts'), submitter: el.getAttribute('data-sub'), company: el.value });
+      var bts = el.getAttribute('data-ts'), bsub = el.getAttribute('data-sub'), bid = sbBillIdFor(S.sbRows.bills, bts, bsub) || undefined;
+      var call = isTick ? doAction('bdBillReviewed', { timestamp: bts, submitter: bsub, billId: bid, reviewed: el.checked })
+        : doAction('bdBillCompany', { timestamp: bts, submitter: bsub, billId: bid, company: el.value });
       el.disabled = true;
-      call.then(function () { toast(isTick ? (el.checked ? 'ตรวจแล้ว' : 'ยกเลิกตรวจแล้ว') : 'บันทึกบริษัทแล้ว'); loadZone(true); },
+      call.then(function (res) { toast(isTick ? (el.checked ? 'ตรวจแล้ว' : 'ยกเลิกตรวจแล้ว') : 'บันทึกบริษัทแล้ว'); if (!(res && res.__rpc)) loadZone(true); },
         function (e) { toast(e.message, true); loadZone(true); });
       return;
     }
@@ -2810,15 +2934,15 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     var h = '<div class="sheetWrap" data-act="closeCsheet"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-stop="1">';
     if (sh.kind === 'approve') {
       h += '<h2 id="sheetTitle" class="sheetTitle">อนุมัติซื้อของ · ' + esc(sh.id) + '</h2><p class="sheetHint">' + esc(sh.text || '') + '</p>' +
-        '<button type="button" class="actionBtn" data-act="bdConfirm">✓ อนุมัติ</button>';
+        '<button type="button" class="actionBtn" data-act="bdConfirm"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>✓ อนุมัติ') + '</button>';
     } else if (sh.kind === 'cap') {
       h += '<h2 id="sheetTitle" class="sheetTitle">กำหนดวงเงิน · ' + esc(sh.id) + '</h2><p class="sheetHint">ช่างซื้อได้ไม่เกินยอดนี้ บิลที่เกินจะขึ้นแดงในกลุ่ม</p>' +
         '<div class="miniform"><input id="capIn" inputmode="decimal" data-csheet="cap" value="' + esc(sh.cap || '') + '" placeholder="เช่น 2,000"></div>' +
-        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmCap">✓ อนุมัติด้วยวงเงินนี้</button>';
+        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmCap"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>✓ อนุมัติด้วยวงเงินนี้') + '</button>';
     } else if (sh.kind === 'reject') {
       h += '<h2 id="sheetTitle" class="sheetTitle">ไม่อนุมัติ · ' + esc(sh.id) + '</h2><p class="sheetHint">เหตุผลจะส่งถึงช่างในกลุ่ม</p>' +
         '<div class="miniform"><textarea id="whyIn" data-csheet="reason" placeholder="เช่น ใช้ของในสต๊อกก่อน">' + esc(sh.reason || '') + '</textarea></div>' +
-        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmReject">ยืนยัน · ไม่อนุมัติ</button>';
+        (sh.err ? '<p class="err">' + esc(sh.err) + '</p>' : '') + '<button type="button" class="actionBtn" data-act="bdConfirmReject"' + (sh.busy ? ' disabled>กำลังส่ง…' : '>ยืนยัน · ไม่อนุมัติ') + '</button>';
     }
     return h + '<button type="button" class="sheetBtn cancel" data-act="closeCsheet">ยกเลิก</button></section></div>';
   }
@@ -2830,8 +2954,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     if (a) all = all.concat(a.repair);
     return all.filter(function (c) { return c.id === id; })[0] || null;
   }
-  function careDone(promise, okText) {
-    return promise.then(function () { toast(okText); S.csheet = null; S.openMenu = ''; render(); loadZone(true); },
+  /** okText as v8.2; on the function path the LINE card follows through the outbox, so it is not promised. */
+  function careDone(promise, okText, rpcText) {
+    return promise.then(function (res) { toast(res && res.__rpc && rpcText ? rpcText : okText); S.csheet = null; S.openMenu = ''; render(); if (!(res && res.__rpc)) loadZone(true); },
       function (e) { toast(e.message, true); if (S.csheet) S.csheet.busy = false; render(); });
   }
   function openTicket(id) {
@@ -2916,21 +3041,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'closeCsheet': S.csheet = null; render(); return true;
       case 'bdConfirm':
         if (S.csheet.busy) return true;
-        S.csheet.busy = true; el.disabled = true;
-        careDone(api('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+        S.csheet.busy = true; el.disabled = true; render();
+        careDone(doAction('bdApprove', { ticketId: S.csheet.id }), 'อนุมัติแล้ว · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว', 'อนุมัติแล้ว · ' + S.csheet.id); return true;
       case 'bdConfirmCap': {
         var cap = priceOf(S.csheet.cap);
         if (cap === null || isNaN(cap) || cap <= 0) { S.csheet.err = 'ใส่วงเงินเป็นตัวเลขมากกว่า 0'; render(); return true; }
         if (S.csheet.busy) return true;
-        S.csheet.busy = true; el.disabled = true;
-        careDone(api('bdApprove', { ticketId: S.csheet.id, cap: cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
+        S.csheet.busy = true; el.disabled = true; render();
+        careDone(doAction('bdApprove', { ticketId: S.csheet.id, cap: cap, capText: S.csheet.cap }), 'อนุมัติแล้ว · วงเงิน ' + fmtBaht(cap) + ' บาท'); return true;
       }
       case 'bdConfirmReject': {
         var why = String(S.csheet.reason || '').trim();
         if (!why) { S.csheet.err = 'ใส่เหตุผลก่อนยืนยัน'; render(); return true; }
         if (S.csheet.busy) return true;
-        S.csheet.busy = true; el.disabled = true;
-        careDone(api('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว'); return true;
+        S.csheet.busy = true; el.disabled = true; render();
+        careDone(doAction('bdReject', { ticketId: S.csheet.id, reason: why }), 'ไม่อนุมัติ · ' + S.csheet.id + ' · แจ้งกลุ่มช่างแล้ว', 'ไม่อนุมัติ · ' + S.csheet.id); return true;
       }
     }
     return false;
@@ -3080,7 +3205,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       case 'installLine':
         if (S.hint !== 'line') { S.isheet = S.hint; render(); return true; }
         if (DEMO) { toast('(ตัวอย่าง) เปิดเบราว์เซอร์ของเครื่อง'); return true; }
-        liff.openWindow({ url: installUrl(location.href), external: true });
+        loadLine().then(function () { liff.openWindow({ url: installUrl(location.href), external: true }); }, function (e) { toast(e.message, true); });
         return true;
       case 'installGo': {
         var ask = installPrompt;
@@ -3287,6 +3412,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       S.sbLists = (res[1].rows[0] || {}).doc || {};
       if (sbPhase !== 'trying') return;   // another LINE person came in meanwhile
       S.sb = true; sbPhase = 'on';
+      sbReadSettings();   // never waited for: absent = every domain on the sheets
       startWith(sbMe(person, S.sbLists, Date.now()));
     }).catch(function () {
       if (sbPhase !== 'trying') return;   // the deadline came first: no second boot
@@ -3296,7 +3422,65 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function sbGiveUp() {
     S.sb = false;
     sbPhase = 'fallback';
-    if (sbLiffReady) boot();
+    if (sbLiffReady) boot(); else loadLine();   // its onload boots (sbPhase is fallback)
+  }
+  // ---- WO#23: actions ----
+  var sbSetSub = null;
+  /** The settings row (each domain's record of truth), kept current by Realtime. */
+  function sbReadSettings() {
+    return sbRead(sbQueryFor('settings', S.me, {}, 0)[0]).then(function (r) {
+      if (!r.rows[0]) return;
+      S.settings = sbSettingsOf(r.rows[0]);
+      if (!sbSetSub) sbSetSub = SB.subscribe('settings', 'id=eq.main', function (c) { if (c.row) S.settings = sbSettingsOf(c.row); });
+    }, function () { /* the sheets, as v8.2 */ });
+  }
+  /** api() needs LINE's token: load the SDK first if this open has not. */
+  function apiWithLine(fn, payload) { return DEMO ? api(fn, payload) : loadLine().then(function () { return api(fn, payload); }); }   // the demo never needs LINE
+  /**
+   * One board action: its database function when its domain is on Supabase (the row it returns is
+   * drawn at once; the Realtime echo changes nothing), else Apps Script as v8.2. NOT_CUT_OVER (the
+   * engine's net) → api() once, and the settings row read again.
+   */
+  function doAction(action, payload) {
+    var route = actionRoute({ action: action, payload: payload, settings: S.sb ? S.settings : null });
+    if (route.via === 'api') return apiWithLine(action, payload);
+    var call = function () { return SB.rpc(route.fn, route.args); };
+    return call().catch(function (e) {   // a stale session: refresh once and call again, as the reads do
+      if (sbRpcFailure(e).kind === 'auth') return SB.refresh().then(call);
+      throw e;
+    }).then(function (ans) {
+      // Team B's answer: {row: <truth columns>, events: [<lines written>], …}, never the bare row.
+      var row = ans && ans.row && typeof ans.row === 'object' ? ans.row : null;
+      sbTakeRow(action, row, route.args);
+      var out = row ? JSON.parse(JSON.stringify(row)) : {};
+      out.__rpc = true;
+      return out;
+    }, function (e) {
+      var f = sbRpcFailure(e);
+      if (f.kind === 'notCutOver') { sbReadSettings(); return apiWithLine(action, payload); }
+      throw new Error(f.kind === 'refused' ? f.message : L.err.network);
+    });
+  }
+  /** A function's row, as a patch of what the action changed (sbPatchFor), into every local set holding it. */
+  function sbTakeRow(action, row, args) {
+    if (!row || typeof row !== 'object' || !row.id) return;
+    var domain = SB_ACTIONS[action].domain;
+    var patch = function (key) {
+      var set = S.sbRows[key];
+      if (!set) return;
+      // A bill's answer may carry the uuid as its id: the local row is the same bill_id.
+      var local = set.filter(function (r) { return r.id === row.id || (row.bill_id && r.bill_id === row.bill_id); })[0], p = sbPatchFor(action, local, row, args);
+      if (p) S.sbRows[key] = sbApply(set, { type: 'UPDATE', row: p });
+    };
+    if (domain === 'tickets') { patch('repair'); patch('apT'); }
+    if (domain === 'purchase') { patch('purchase'); patch('apP'); }
+    if (domain === 'bills') patch('bills');
+    var z = S.zone || 'purchase';
+    if (z === 'repair' && S.sbRows.repair) S.z.repair = sbRepairView();
+    else if (z === 'approvals' && S.sbRows.apT) { S.z.approvals = sbApprovalsView(); S.board = { rows: S.z.approvals.branch }; }
+    else if (z === 'bills' && S.sbRows.bills) S.z.bills = sbBillsView();
+    else if (z === 'purchase' && S.sbRows.purchase) { sbPurchaseView(); return; }
+    if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
   }
   function sbLinkNow() {
     var s = sbNeedLink;
@@ -3325,6 +3509,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     sbUnsubAll();
     S.sbRows = {}; S.serverSkew = DEMO.now() - Date.now();
     S.sbLists = lists; S.sb = true; sbPhase = 'on';
+    sbReadSettings();   // WO#23: the demo's row puts every domain on Supabase
     startWith(sbMe(person, lists, DEMO.now()));
   }
   if (DEMO_MODE) {
@@ -3357,7 +3542,12 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     render();
     return;
   }
-  if (SB_ON) sbBoot();   // WO#21: Supabase first; LINE loads beside it, for the actions
+  // WO#23: LINE's SDK only when something needs it (the v7.1 boot, a first open, an api() call, the install line).
+  var lineP = null, lineDone = null, lineFail = null;
+  function loadLine() {
+    if (lineP) return lineP;
+    lineP = new Promise(function (resolve, reject) { lineDone = resolve; lineFail = reject; });
+    lineP.catch(function () {});
   var sdk = document.createElement('script');
   sdk.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
   sdk.onload = function () {
@@ -3375,13 +3565,21 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       try { liff.getProfile().then(function (p) { if (p && p.pictureUrl) { S.avatar = p.pictureUrl; if (S.view === 'list' && !S.sheet) render(); } }, function () {}); } catch (e) { /* keep the initial */ }
       authReadyResolve();
       sbLiffReady = true;
+      lineDone();
       if (sbPhase !== 'trying' && sbPhase !== 'on') boot();   // on Supabase, LINE is for the actions only
-    }, function () { S.hint = pwaHint(false); authReadyResolve(); sbLiffReady = true; if (sbPhase !== 'trying' && sbPhase !== 'on') boot(); });
+    }, function () { S.hint = pwaHint(false); authReadyResolve(); sbLiffReady = true; lineDone(); if (sbPhase !== 'trying' && sbPhase !== 'on') boot(); });
   };
   sdk.onerror = function () {
+    lineFail(new Error(L.err.network));
+    if (S.sb) return;   // on Supabase the board is up; only the action that needed LINE says so
     if (S.me && S.cachedAt) { S.offline = true; render(); return; }
     S.notice = { title: 'เปิดบอร์ดไม่สำเร็จ', text: 'โหลดไลน์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วเปิดใหม่' }; render(); };
   document.head.appendChild(sdk);
+    return lineP;
+  }
+  // Inside LINE without the SDK yet: its browser says LIFF; the SDK confirms when it comes.
+  S.hint = pwaHint(/\bLIFF\b/.test(navigator.userAgent || ''));
+  if (SB_ON) sbBoot(); else loadLine();
 })();
 </script>
 </body>

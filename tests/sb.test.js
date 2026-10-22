@@ -239,6 +239,103 @@ safe('6', () => {
     [['B', 'A', 'C'], ['A', 'B']]);
 });
 
+// ---- 7. v9 (WO#23): actions through Supabase RPC, routed by the settings row -------------------------
+safe('7', () => {
+  eq('7.0 the v9 functions', ['actionRoute', 'needLine', 'sbSettingsOf', 'sbRpcFailure'].filter(f => typeof P[f] !== 'function'), []);
+  ok('7.0b every board action and its RPC in one map (SB_ACTIONS)', P.SB_ACTIONS && Object.keys(P.SB_ACTIONS).sort().join() ===
+    ['bdApprove', 'bdBillCompany', 'bdBillReviewed', 'bdReject', 'prCancel', 'prCreate', 'prDecide', 'prDelivered', 'prOrdered', 'prReceived'].join());
+  const ON = 'supabase', OFF = 'sheets';
+  const st = (t, p, b) => ({ tickets: t, purchase: p, bills: b });
+  // Team B's E1 contract (schema.sql 96807d4, reviewer 21 Oct): p_-prefixed; p_cap is the typed text (F2).
+  const A = {
+    bdApprove: [{ ticketId: 'T1' }, 'tickets', 'approve_purchase', { p_id: 'T1', p_cap: null }],
+    bdApproveCap: [{ ticketId: 'T1', cap: 2000, capText: '2,000' }, 'tickets', 'approve_purchase', { p_id: 'T1', p_cap: '2,000' }],
+    bdReject: [{ ticketId: 'T1', reason: 'ใช้ของในสต๊อก' }, 'tickets', 'reject_purchase', { p_id: 'T1', p_reason: 'ใช้ของในสต๊อก' }],
+    prDecide: [{ id: 'PR1', lines: [{ n: 1, ok: true }], note: '' }, 'purchase', 'pr_decide', { p_id: 'PR1', p_lines: [{ n: 1, ok: true }], p_note: '' }],
+    prOrdered: [{ id: 'PR1', actualTotal: 950, eta: '19 ต.ค.' }, 'purchase', 'pr_ordered', { p_id: 'PR1', p_actual_total: 950, p_eta: '19 ต.ค.' }],
+    prDelivered: [{ id: 'PR1' }, 'purchase', 'pr_delivered', { p_id: 'PR1' }],
+    prReceived: [{ id: 'PR1' }, 'purchase', 'pr_received', { p_id: 'PR1' }],
+    prCancel: [{ id: 'PR1' }, 'purchase', 'pr_cancel', { p_id: 'PR1' }],
+    prCreate: [{ venue: 'HOS', buyer: 'self', category: 'ของใช้สิ้นเปลือง', items: [{ name: 'สบู่', qty: 1 }], reason: 'หมด' }, 'purchase', 'pr_create',
+      { p_venue: 'HOS', p_buyer: 'self', p_category: 'ของใช้สิ้นเปลือง', p_items: [{ name: 'สบู่', qty: 1 }], p_reason: 'หมด' }],
+    bdBillReviewed: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', reviewed: true }, 'bills', 'bill_review', { p_legacy_id: '2026-10-19 15:00:00_อาร์ม', p_reviewed: true }],
+    bdBillCompany: [{ timestamp: '2026-10-19 15:00:00', submitter: 'อาร์ม', company: 'House of Savoy Co., Ltd.' }, 'bills', 'bill_company', { p_legacy_id: '2026-10-19 15:00:00_อาร์ม', p_company: 'House of Savoy Co., Ltd.' }],
+    bdBillReviewedUuid: [{ billId: '6f1c2c6e-0000-4000-8000-000000000001', reviewed: false }, 'bills', 'bill_review', { p_bill_id: '6f1c2c6e-0000-4000-8000-000000000001', p_reviewed: false }],
+  };
+  const combos = [];
+  [ON, OFF].forEach(t => [ON, OFF].forEach(p => [ON, OFF].forEach(b => combos.push(st(t, p, b)))));
+  const bad = [];
+  combos.forEach(set => Object.keys(A).forEach(k => {
+    const [payload, domain, fn, args] = A[k], action = k.replace(/Cap$|Uuid$/, '');
+    const got = P.actionRoute({ action, payload, settings: set });
+    const want = set[domain] === ON ? { via: 'rpc', fn, args } : { via: 'api', fn: action, payload };
+    if (JSON.stringify(got) !== JSON.stringify(want)) bad.push([set, k, got]);
+  }));
+  eq('7.1 every action in the 8 domain states: supabase → the RPC with its arguments, sheets → api() as v8.2', bad.slice(0, 3), []);
+  eq('7.2 no settings at all: every action through api()', Object.keys(A).filter(k => P.actionRoute({ action: k.replace(/Cap$|Uuid$/, ''), payload: A[k][0], settings: null }).via !== 'api'), []);
+  // Any of these from a board → 42501 NOT_ALLOWED: the database takes the actor from the session.
+  const sneaky = { p_actor: 'x', p_actor_name: 'x', p_actor_role: 'manager', p_actor_venues: ['HOS'], p_source: 'engine', actor: 'x' };
+  eq('7.2b the board never sends an actor or a source, even when the payload carries one', Object.keys(A).filter(k => {
+    const r = P.actionRoute({ action: k.replace(/Cap$|Uuid$/, ''), payload: Object.assign({}, A[k][0], sneaky), settings: st(ON, ON, ON) });
+    return Object.keys(r.args).some(x => /actor|source/.test(x));
+  }), []);
+  eq('7.3 a request with photos goes through Apps Script even on Supabase (no Storage in this stage; the engine uploads, then calls the RPC)',
+    P.actionRoute({ action: 'prCreate', payload: { venue: 'HOS', photoDataUrls: ['data:image/jpeg;base64,AA'] }, settings: st(ON, ON, ON) }).via, 'api');
+  eq('7.4 the settings row: each domain\'s record of truth, sheets unless it says supabase', [
+    P.sbSettingsOf({ record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'sheets' }), P.sbSettingsOf(null), P.sbSettingsOf({ record_of_truth_bills: 'SUPABASE' }),
+  ], [st(ON, OFF, OFF), st(OFF, OFF, OFF), st(OFF, OFF, OFF)]);
+  const L_ = o => P.needLine(Object.assign({ session: { user: { id: 'a' } }, linked: true, intent: '' }, o));
+  eq('7.5 the LINE SDK: not on a warm open; on a first open (no session / no link) and on each of the three intents', [
+    L_({}), L_({ session: null }), L_({ linked: false }), L_({ intent: 'chat' }), L_({ intent: 'openWindow' }), L_({ intent: 'install' }), L_({ intent: 'api' }),
+  ], [false, true, true, true, true, true, true]);
+  eq('7.6 an RPC failure by PostgREST\'s code: DC001 the engine\'s net, 42501 never shown raw, P0001/DC003 the engine\'s Thai, 401 a session refresh, no network', [
+    P.sbRpcFailure({ status: 400, code: 'DC001', message: 'NOT_CUT_OVER' }), P.sbRpcFailure({ status: 403, code: '42501', message: 'NOT_ALLOWED' }),
+    P.sbRpcFailure({ status: 400, code: 'P0001', message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }), P.sbRpcFailure({ status: 400, code: 'DC003', message: 'วงเงินต้องเป็นตัวเลข' }),
+    P.sbRpcFailure({ status: 401, code: 'PGRST301', message: 'JWT expired' }), P.sbRpcFailure({ status: 0, name: 'TypeError' }),
+  ], [{ kind: 'notCutOver' }, { kind: 'refused', message: P.L.err.notAllowed }, { kind: 'refused', message: 'งานนี้ไม่ได้รออนุมัติแล้ว' }, { kind: 'refused', message: 'วงเงินต้องเป็นตัวเลข' },
+    { kind: 'auth' }, { kind: 'network' }]);
+});
+
+// ---- 8. WO#23 addendum (engine 4e0d1c7): the returned row patches only what the action changed --------
+safe('8', () => {
+  ok('8.0 sbPatchFor', typeof P.sbPatchFor === 'function');
+  // The function returns the truth columns at once; card/detail/doc are rebuilt by the engine 1–3 s later (Realtime).
+  const local = JSON.parse(JSON.stringify(T.tickets.filter(r => r.status === 'รออนุมัติซื้อของ')[0]));
+  const ret = Object.assign(JSON.parse(JSON.stringify(local)), { status: 'กำลังดำเนินการ', updated_at: 'x' });   // card still the old one
+  const got = P.sbPatchFor('bdApprove', local, ret, { id: local.id, cap: 2000 });
+  eq('8.1 approve: the status (row and card) and the card\'s purchase block; every other field the local row\'s', [got.status, got.card.status, got.card.purchase.pending, got.card.purchase.cap,
+    got.card.problem === local.card.problem, JSON.stringify(got.detail) === JSON.stringify(local.detail), JSON.stringify(got.events) === JSON.stringify(local.events)],
+    ['กำลังดำเนินการ', 'กำลังดำเนินการ', false, 2000, true, true, true]);
+  eq('8.2 … and the local row is not touched', local.status, 'รออนุมัติซื้อของ');
+  const rj = P.sbPatchFor('bdReject', local, Object.assign({}, ret, { status: 'กำลังดำเนินการ' }), { id: local.id, reason: 'x' });
+  eq('8.3 reject: the status and the purchase block (no cap)', [rj.card.status, rj.card.purchase.pending, rj.card.purchase.cap], ['กำลังดำเนินการ', false, local.card.purchase.cap]);
+  const pr = JSON.parse(JSON.stringify(T.purchase[0]));
+  const pd = P.sbPatchFor('prOrdered', pr, Object.assign({}, pr, { status: 'approved', fulfilment: 'ordered' }), { id: pr.id });
+  eq('8.4 pr_*: the status and fulfilment it changed, row and doc; the rest of the doc the local one', [pd.status, pd.doc.status, pd.doc.fulfilment, pd.doc.items === undefined ? 'gone' : pd.doc.items.length],
+    ['approved', 'approved', 'ordered', pr.doc.items.length]);
+  const bl = JSON.parse(JSON.stringify(T.bills[0]));
+  eq('8.5 bill_review / bill_company: reviewed, reviewed_by, company', [P.sbPatchFor('bdBillReviewed', bl, Object.assign({}, bl, { reviewed: true, reviewed_by: 'หมีน้อย' }), {}).reviewed_by,
+    P.sbPatchFor('bdBillCompany', bl, Object.assign({}, bl, { company: 'House of Savoy Co., Ltd.' }), {}).company, P.sbPatchFor('bdBillCompany', bl, Object.assign({}, bl, { company: 'House of Savoy Co., Ltd.' }), {}).item],
+    ['หมีน้อย', 'House of Savoy Co., Ltd.', bl.item]);
+  eq('8.6 no local row: nothing to patch (the Realtime row will come)', P.sbPatchFor('bdApprove', null, ret, {}), null);
+});
+
+// ---- 9. v9 phase 2: a bill is its uuid once the mirror carries one (p_legacy_id until then) ---------------
+safe('9', () => {
+  ok('9.0 sbBillIdFor', typeof P.sbBillIdFor === 'function');
+  const rows = JSON.parse(JSON.stringify(T.bills));
+  const b = rows[0], ts = P.sbBkkText(Date.parse(b.ts));
+  eq('9.1 no bill_id on the row yet: none (the call goes with p_legacy_id)', P.sbBillIdFor(rows, ts, b.submitter), '');
+  b.bill_id = '6f1c2c6e-0000-4000-8000-0000000000aa';
+  eq('9.2 the row carries bill_id: that uuid, found by the legacy key the card shows', P.sbBillIdFor(rows, ts, b.submitter), b.bill_id);
+  const moved = Object.assign({}, b, { id: b.bill_id, legacy_id: b.id });
+  eq('9.3 … also when the row\'s id is the uuid and the old key sits in legacy_id', P.sbBillIdFor([moved], ts, b.submitter), b.bill_id);
+  eq('9.4 the route then: p_bill_id', P.actionRoute({ action: 'bdBillReviewed', payload: { timestamp: ts, submitter: b.submitter, billId: b.bill_id, reviewed: true }, settings: { tickets: 'sheets', purchase: 'sheets', bills: 'supabase' } }).args,
+    { p_bill_id: b.bill_id, p_reviewed: true });
+  const local = Object.assign({}, b, { reviewed: false }), ret = { id: b.bill_id, bill_id: b.bill_id, reviewed: true, reviewed_by: 'หมีน้อย' };
+  eq('9.5 the answer\'s row (uuid id) patches the local row it is (same bill_id), keeping the local id', (p => p && [p.id, p.reviewed, p.reviewed_by])(P.sbPatchFor('bdBillReviewed', local, ret, {})), [b.id, true, 'หมีน้อย']);
+});
+
 // ---- 4. Realtime: the local row set -------------------------------------------------------
 safe('4', () => {
   const rows = [{ id: 'A', v: 1 }, { id: 'B', v: 1 }];
@@ -299,6 +396,16 @@ async function section5() {
   eq('5.11 a change reaches the page as {type, row, old}', seen, [{ type: 'UPDATE', row: { id: 'A', v: 2 }, old: { id: 'A' } }, { type: 'DELETE', row: null, old: { id: 'B' } }]);
   SB.unsubscribe(h);
   eq('5.12 unsubscribe removes the channel; the client was loaded once', [client.removed.length, loaded.length], [1, 1]);
+  answer = { status: 200, body: { id: 'T1', status: 'กำลังดำเนินการ' } };
+  const rr = await SB.rpc('approve_purchase', { id: 'T1', cap: null });
+  const last = sent[sent.length - 1];
+  eq('5.14 rpc: POST <url>/rest/v1/rpc/<fn> with the arguments as JSON, the session, Content-Profile care', [last.url, last.opts.method, JSON.parse(last.opts.body),
+    last.opts.headers.Authorization, last.opts.headers['Content-Profile'], last.opts.headers['Content-Type'], rr], ['https://x.supabase.co/rest/v1/rpc/approve_purchase', 'POST',
+    { id: 'T1', cap: null }, 'Bearer JWT2', 'care', 'application/json', { id: 'T1', status: 'กำลังดำเนินการ' }]);
+  answer = { status: 400, body: { code: 'P0001', message: 'NOT_CUT_OVER' } };
+  let rerr = null;
+  try { await SB.rpc('approve_purchase', { id: 'T1' }); } catch (e) { rerr = e; }
+  eq('5.15 a function that raises: the error carries status, code and the message', rerr && [rerr.status, rerr.code, rerr.message], [400, 'P0001', 'NOT_CUT_OVER']);
   await SB.signOut();
   eq('5.13 sign-out (another LINE person on this phone)', [auth.calls.indexOf('signOut') >= 0, await SB.session()], [true, null]);
 }

@@ -18,6 +18,9 @@ function bootPage(SRC, o) {
     addEventListener(t, f) { this.listeners[t] = f; },
   });
   el('app'); el('toast');
+  // Every toast the page shows, with whether it was red (the page clears it on a timer the fake cuts to 30 ms).
+  const toasts = [];
+  (t => { let cls = ''; Object.defineProperty(t, 'className', { get: () => cls, set: v => { cls = v; if (/show/.test(v)) toasts.push({ text: t.textContent, err: /err/.test(v) }); } }); })(els.toast);
   const storage = m => ({ getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); } });
   const local = new Map(Object.entries(o.local || {})), session = new Map(Object.entries(o.session || {}));
   const appended = [], win = {}, sw = {};
@@ -40,7 +43,11 @@ function bootPage(SRC, o) {
     clearTimeout, setInterval: (f, ms) => { intervals.push({ f, ms }); return intervals.length; }, clearInterval: () => {},
     // A script the page adds: LINE's SDK waits for the test (lineLoads); the vendored supabase-js
     // fails to load unless the test says 'hang' (never answers) — the v7.1 path, as on a phone without it.
-    document: { getElementById: el, createElement: () => ({}), activeElement: null,
+    // A photo as the form reads it: FileReader -> Image -> canvas (the page scales it to a JPEG).
+    FileReader: class { readAsDataURL() { this.result = 'data:image/png;base64,AA'; setTimeout(() => this.onload && this.onload(), 0); } },
+    Image: class { set src(v) { this.width = 100; this.height = 80; setTimeout(() => this.onload && this.onload(), 0); } },
+    document: { getElementById: el, activeElement: null,
+      createElement: t => (t === 'canvas' ? { getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/jpeg;base64,AA' } : {}),
       head: { appendChild: x => {
         appended.push(x);
         if (/vendor\/supabase-js/.test(x.src || '') && o.vendor !== 'hang') setTimeout(() => { if (x.onerror) x.onerror(new Error('fake: no supabase-js')); }, 0);
@@ -69,7 +76,7 @@ function bootPage(SRC, o) {
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
   const pg = {
-    ctx, app: els.app, toast: els.toast, get sdk() { return appended.filter(x => /line-scdn/.test(x.src || ''))[0]; }, scripts: appended, win, sw, log, local, session, docL, intervals, clock, doc,
+    ctx, app: els.app, toast: els.toast, toasts, get sdk() { return appended.filter(x => /line-scdn/.test(x.src || ''))[0]; }, scripts: appended, win, sw, log, local, session, docL, intervals, clock, doc,
     set fetch(f) { swap.fetch = f; },
     /** A tap on the element carrying data-act (and data-k) — enough for the page's click handler. */
     tap(act, k) {
@@ -81,12 +88,21 @@ function bootPage(SRC, o) {
       };
       els.app.listeners.click({ target, preventDefault() {} });
     },
+    /** A change on an input carrying data-act (and other data-* attributes), checked / value as given. */
+    change(attrs, extra, type) {
+      const target = Object.assign({ tagName: 'INPUT', disabled: false, getAttribute: a => (a in attrs ? attrs[a] : null), hasAttribute: a => a in attrs,
+        classList: { add() {}, remove() {}, contains: () => false }, closest: () => null }, extra || {});
+      els.app.listeners[type || 'change']({ target });
+    },
     /** LINE's SDK arrives: a fake liff, then the page's own onload. */
     lineLoads(liff) { ctx.liff = Object.assign({
       init: () => Promise.resolve(), isLoggedIn: () => true, isInClient: () => false,
       getIDToken: () => 'ID', getAccessToken: () => 'AT', getDecodedIDToken: () => ({ exp: Date.now() / 1000 + 3600 }),
       getProfile: () => Promise.resolve({}), login: x => log.logins.push(x), logout: () => { log.logouts++; }, openWindow: x => log.opened.push(x),
-    }, liff || {}); pg.sdk.onload(); },
+    }, liff || {});
+      // WO#23: with Supabase on, the page adds LINE's SDK only when it needs it: fire it once it is there.
+      const go = () => { if (pg.sdk) pg.sdk.onload(); else setTimeout(go, 1); };
+      go(); },
   };
   return pg;
 }

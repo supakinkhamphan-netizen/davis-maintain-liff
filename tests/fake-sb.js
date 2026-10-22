@@ -31,7 +31,7 @@ function matches(row, key, cond) {
 }
 function makeFakeSb(tables, o) {
   o = o || {};
-  const log = { selects: [], subs: [], unsubs: [], auth: [] };
+  const log = { selects: [], subs: [], unsubs: [], auth: [], rpc: [] };
   const subs = {};
   let next = 0, anon = 0;
   const state = { session: o.session || null, links: Object.assign({}, o.links || {}) };
@@ -86,6 +86,16 @@ function makeFakeSb(tables, o) {
           return new Promise(res => setTimeout(() => res({ rows: JSON.parse(JSON.stringify(rows)), count: opts && opts.count ? count : null }), 5));
         },
       };
+    },
+    /** WO#23: a database function. o.rpc[fn](args, tables) answers (a row) or throws {status, code, message}. */
+    rpc(fn, args) {
+      log.rpc.push({ fn, args: JSON.parse(JSON.stringify(args)) });
+      if (fail.offline) return Promise.reject(new TypeError('Failed to fetch'));
+      const f = (o.rpc || {})[fn];
+      if (!f) { const e = new Error('function care.' + fn + ' does not exist'); e.status = 404; e.code = 'PGRST202'; return Promise.reject(e); }
+      return new Promise((res, rej) => setTimeout(() => {
+        try { res(JSON.parse(JSON.stringify(f(args, tables)))); } catch (x) { const e = new Error(x.message); e.status = x.status || 400; e.code = x.code || 'P0001'; rej(e); }
+      }, o.rpcDelay || 5));
     },
     subscribe(table, filter, cb) {
       const h = 'sub' + (++next);
