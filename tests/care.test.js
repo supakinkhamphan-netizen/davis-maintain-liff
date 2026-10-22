@@ -1096,7 +1096,22 @@ async function section19() {
   eq('19.7 a browser without crypto.subtle: today\'s target', await open({ src: withList([shaHex(uidOf('manager'))]), noSubtle: true }),
     [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
   // No LINE user id anywhere in the public repo (U + 32 hex): the source, the tests, the fixtures, the docs.
-  const files = require('child_process').execFileSync('git', ['ls-files'], { cwd: path.join(__dirname, '..') }).toString().split('\n').filter(f => f && !/\.(png|jpg|ico)$/.test(f));
+  // Every tracked file; outside a git checkout (a git archive holds tracked files only) every file on disk but .git and
+  // installs — the same fallback as pwa 2.5 and the app's secrets-scan.
+  const ROOT19 = path.join(__dirname, '..');
+  const tracked = () => {
+    try { return require('child_process').execFileSync('git', ['ls-files'], { cwd: ROOT19, stdio: ['ignore', 'pipe', 'ignore'] }).toString().split('\n').filter(Boolean); } catch (e) {
+      const out = [];
+      (function walk(dir) {
+        fs.readdirSync(path.join(ROOT19, dir || '.'), { withFileTypes: true }).forEach(d => {
+          const rel = dir ? dir + '/' + d.name : d.name;
+          if (d.isDirectory()) { if (['.git', 'node_modules'].indexOf(d.name) < 0) walk(rel); } else out.push(rel);
+        });
+      })('');
+      return out;
+    }
+  };
+  const files = tracked().filter(f => f && !/\.(png|jpg|ico)$/.test(f));
   // A real id is 32 random hex (14–16 distinct characters); the fixtures' made-up ids are a word and zeros
   // ("Uacc000…0001": 4 distinct), so at least 8 distinct characters is a real one.
   const realIds = t => (t.match(/\bU[0-9a-f]{32}\b/g) || []).filter(id => new Set(id.slice(1)).size >= 8);
