@@ -73,7 +73,8 @@ ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
 // v9.0 (5f47380) pin retired by v9.1:
 // ok('build v9.0', /var BUILD = 'care-board v9\.0 · 2026-10-2\d · Supabase RPC';/.test(SRC));
 // ok('build v9.1', /var BUILD = 'care-board v9\.1 · 2026-10-2\d · Supabase RPC';/.test(SRC));
-ok('build v9.1.1 (the pilot: the install line opens the app for pilot people)', /var BUILD = 'care-board v9\.1\.1 · 2026-10-2\d · Supabase RPC';/.test(SRC));
+// ok('build v9.1.1 (the pilot: the install line opens the app for pilot people)', /var BUILD = 'care-board v9\.1\.1 · 2026-10-2\d · Supabase RPC';/.test(SRC));
+ok('build v9.1.2 (a zone tapped while another loads is loaded)', /var BUILD = 'care-board v9\.1\.2 · 2026-10-2\d · Supabase RPC';/.test(SRC));
 ok('WO#21 the demo never writes the real cache (davisPurchase.v1)', (SRC.match(/store\(false, cacheZone\(/g) || []).length === (SRC.match(/!DEMO\) store\(false, cacheZone\(/g) || []).length);
 // Work order #18 §2.1: an installable app.
 const HEAD = SRC.slice(0, SRC.indexOf('</head>'));

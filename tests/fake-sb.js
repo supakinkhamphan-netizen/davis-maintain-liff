@@ -83,7 +83,8 @@ function makeFakeSb(tables, o) {
           }
           const off = Number((params || {}).offset) || 0, lim = (params || {}).limit ? Number(params.limit) : Infinity;
           rows = rows.slice(off, off + lim);
-          return new Promise(res => setTimeout(() => res({ rows: JSON.parse(JSON.stringify(rows)), count: opts && opts.count ? count : null }), 5));
+          const delay = typeof o.selectDelay === 'number' ? o.selectDelay : (o.selectDelay && o.selectDelay[table]) || 5;   // a slow read, on purpose (care 20.1)
+          return new Promise(res => setTimeout(() => res({ rows: JSON.parse(JSON.stringify(rows)), count: opts && opts.count ? count : null }), delay));
         },
       };
     },

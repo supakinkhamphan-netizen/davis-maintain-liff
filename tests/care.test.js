@@ -1120,7 +1120,20 @@ async function section19() {
   eq('19.8b … and the check sees one: a random id is caught, a fixture id is not', [realIds('x U' + shaHex('probe').slice(0, 32) + ' y').length, realIds('Uacc00000000000000000000000000001').length], [1, 0]);
 }
 
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 20. v9.1.2: a zone tapped while another is still loading is loaded (the managers hit it, 22 Oct) ----------------
+// sbLoadZone returned at once while busy, and the first load, finding another zone on screen, quit: ภาพรวม stayed
+// "กำลังโหลด…". Reproduced with a slow tickets read (a manager's first zone, งานซ่อม, reads tickets twice).
+async function section20() {
+  const until = async (pred, ms) => { for (let t = 0; t < (ms || 3000); t += 5) { if (pred()) return true; await tick(5); } return false; };
+  const m = sbDevice('manager', { fake: { selectDelay: { tickets: 150 } } });
+  await until(() => m.fake.log.selects.some(q => q.table === 'tickets'));
+  m.pg.tap('zone', 'overview');
+  await until(() => /zone-overview/.test(m.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(m.pg.app.innerHTML)), 1500);
+  ok('20.1 ภาพรวม tapped while งานซ่อม is still reading: it is drawn once that read finishes, never stuck on กำลังโหลด',
+    /zone-overview/.test(m.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(m.pg.app.innerHTML)) && m.fake.log.selects.some(q => q.table === 'stats'));
+}
+
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).then(section20).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });

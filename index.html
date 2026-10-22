@@ -306,7 +306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v9.1.1 · 2026-10-22 · Supabase RPC';
+  var BUILD = 'care-board v9.1.2 · 2026-10-22 · Supabase RPC';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -3420,7 +3420,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     S.zbusy = true;
     return Promise.all(sbQueryFor(z, S.me, u, careNow()).map(sbRead)).then(function (res) {
       S.zbusy = false;
-      if (S.zone !== z) return;
+      if (S.zone !== z) return loadZone(true);   // v9.1.2: another zone was tapped meanwhile (its own load was dropped while busy): load it now
       var data, at = 0;
       if (z === 'repair') { S.sbRows.repair = res[0].rows.concat(res[1].rows); data = sbRepairView(); }
       else if (z === 'tickets') data = sbTicketList(res[0].rows, res[0].count, u.offset || 0);
@@ -3438,7 +3438,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       if (!S.sheet && !S.csheet && S.view !== 'form' && S.view !== 'detail') render();
     }).catch(function (e) {
       S.zbusy = false;
-      if (S.zone !== z) return;
+      if (S.zone !== z) return loadZone(true);   // as above
       if (e && e.name === 'TypeError') {   // no network: keep what is painted, the muted line
         if (S.cachedAt) S.offline = true; else if (!silent) toast(L.err.network, true);
         render();
