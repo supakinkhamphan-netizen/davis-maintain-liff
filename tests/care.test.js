@@ -1046,8 +1046,9 @@ async function section18() {
   lf.pg.tap('installLine');
   lf.pg.lineLoads({ isInClient: () => true });
   await tick(200);
-  eq('18.9 inside LINE the install line asks bdLinkCode and opens ?link=<code>&install=1 in the phone\'s browser', [lf.pg.log.fns, lf.pg.log.opened],
-    [['bdLinkCode'], [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]]);
+  // v9.1.3 (owner 23 Oct): everyone opens the app, so the code goes to the app's URL (this page's for a list without '*', 19.2).
+  eq('18.9 inside LINE the install line asks bdLinkCode and opens the app ?link=<code>&install=1 in the phone\'s browser', [lf.pg.log.fns, lf.pg.log.opened],
+    [['bdLinkCode'], [{ url: 'https://davis-care.vercel.app/?link=' + CODE + '&install=1', external: true }]]);
   const lf2 = sbDevice('manager', { ua: LIFFUA });
   lf2.fake.linkCode = null;
   await tick(150);
@@ -1079,17 +1080,17 @@ async function section19() {
   };
   const list = (/var APP_PILOT_SHA256 = \[([^\]]*)\];/.exec(SRC) || [])[1];
   const pins = list === undefined ? null : (list.match(/'[^']*'/g) || []).map(q => q.slice(1, -1));
-  ok('19.0 the list is sha256 hex only (one pilot today, 64 hex each), the app\'s URL beside it',
-    Array.isArray(pins) && pins.length === 1 && pins.every(h => /^[0-9a-f]{64}$/.test(h)) && /var APP_URL = 'https:\/\/davis-care\.vercel\.app\/';/.test(SRC));
+  ok('19.0 v9.1.3 (owner 23 Oct): the list is [\'*\'], everyone; the app\'s URL beside it',
+    Array.isArray(pins) && pins.length === 1 && pins[0] === '*' && /var APP_URL = 'https:\/\/davis-care\.vercel\.app\/';/.test(SRC));
   eq('19.1 a pilot person — a manager, as the owner is (their uid\'s sha256 in the list): the app\'s URL with the code and install=1', await open({ src: withList([shaHex(uidOf('manager'))]) }),
     [{ url: 'https://davis-care.vercel.app/?link=' + CODE + '&install=1', external: true }]);
-  eq('19.2 not in the list: today\'s target, byte for byte (18.9)', await open({}),
+  eq('19.2 a list without \'*\' that does not hold this uid\'s hash: this page\'s target, byte for byte', await open({ src: withList([shaHex('Usomeoneelse')]) }),
     [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
   eq('19.3 a hash that is not this uid\'s: today\'s target', await open({ src: withList([shaHex(uidOf('manager') + 'x')]) }),
     [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
   eq('19.4 the list holds the uid itself, not its hash: never matched (a raw id is not a pin)', await open({ src: withList([uidOf('manager')]) }),
     [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
-  eq('19.5 everyone later (the reviewer\'s one-line rollout): \'*\'', await open({ src: withList(['*']) }),
+  eq('19.5 the live list (\'*\', v9.1.3): everyone gets the app\'s URL with the code', await open({}),
     [{ url: 'https://davis-care.vercel.app/?link=' + CODE + '&install=1', external: true }]);
   eq('19.6 a pilot person and no code (the engine refuses): today\'s ?install=1 (the app cannot sign in without a code)', await open({ src: withList([shaHex(uidOf('manager'))]), noCode: true }),
     [{ url: 'https://davis.example/davis-maintain-liff/?install=1', external: true }]);
