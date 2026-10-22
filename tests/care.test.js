@@ -496,7 +496,9 @@ const apiSb = (role, fake) => (fn, opts, payload) => {
   if (fn === 'bdLinkCode') return answer(fake.linkCode === null ? { ok: false, error: 'ระบบยังไม่เปิดใช้' } : { ok: true, code: fake.linkCode || 'c0ffee00c0ffee00c0ffee00c0ffee00' });
   if (fn === 'bdRedeemLink') {
     if (payload.code !== (fake.goodCode || 'c0ffee00c0ffee00c0ffee00c0ffee00')) return answer({ ok: false, error: 'ลิงก์หมดอายุหรือใช้ไปแล้ว' });
-    fake.link(payload.authUid, uidOf(role)); return answer({ ok: true, uid: uidOf(role), url: 'https://xrnaxhgdfqcquxpookpr.supabase.co' });
+    fake.link(payload.authUid, uidOf(role));
+    const ans = answer({ ok: true, uid: uidOf(role), url: 'https://xrnaxhgdfqcquxpookpr.supabase.co' });
+    return fake.redeemDelay ? new Promise(r => setTimeout(() => r(ans), fake.redeemDelay)) : ans;   // the test's own (real) timer
   }
   if (fn === 'bdApprove' || fn === 'bdReject') return answer({ ok: true, decision: fn === 'bdApprove' ? 'approve' : 'reject', ticketId: payload.ticketId });
   return answerOf(role)(fn, opts, payload);
@@ -1014,6 +1016,11 @@ async function section18() {
     [JSON.parse(h.pg.local.get('davisCare.sb') || '{}'), h.pg.log.replaced.indexOf('https://davis.example/davis-maintain-liff/?install=1') >= 0], [{ linked: true, uid: uidOf('manager') }, true]);
   ok('18.3 … then the Supabase boot: me and the zone from rows, no Apps Script read', tablesOf(h.fake).indexOf('people') >= 0 && textOf(h.pg.app.innerHTML).indexOf('ต้องดู') >= 0);
   ok('18.4 … and the install sheet (?install=1) shows on the board', textOf(h.pg.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0);
+  // Apps Script takes 2–3 s to redeem; the page's 5 s Supabase deadline (30 ms in the fake) starts only after it.
+  const slow = sbDevice('manager', { fresh: true, href: 'https://davis.example/davis-maintain-liff/?link=' + CODE });
+  slow.fake.redeemDelay = 120;
+  await tick(400);
+  ok('18.4b a redeem slower than the deadline still ends in the Supabase boot, no LINE script', !slow.pg.sdk && textOf(slow.pg.app.innerHTML).indexOf('ต้องดู') >= 0);
   const sp = sbDevice('manager', { fresh: true, href: 'https://davis.example/davis-maintain-liff/?link=deadbeefdeadbeefdeadbeefdeadbeef' });
   await tick(150);
   ok('18.5 a spent or expired code: one Thai line', sp.pg.toasts.some(t => t.err && /หมดอายุหรือใช้ไปแล้ว/.test(t.text)));
