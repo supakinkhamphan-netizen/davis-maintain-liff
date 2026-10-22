@@ -70,7 +70,9 @@ ok('A1.4 money lines carry no coloured glyph', !/PROMISE_GLYPH/.test(SRC));
 // ok('build v8.2', /var BUILD = 'care-board v8\.2 · 2026-10-2\d · Supabase';/.test(SRC));
 // v8.3 (6955f72) pin retired by v9.0:
 // ok('build v8.3', /var BUILD = 'care-board v8\.3 · 2026-10-2\d · Supabase';/.test(SRC));
-ok('build v9.0', /var BUILD = 'care-board v9\.0 · 2026-10-2\d · Supabase RPC';/.test(SRC));
+// v9.0 (5f47380) pin retired by v9.1:
+// ok('build v9.0', /var BUILD = 'care-board v9\.0 · 2026-10-2\d · Supabase RPC';/.test(SRC));
+ok('build v9.1', /var BUILD = 'care-board v9\.1 · 2026-10-2\d · Supabase RPC';/.test(SRC));
 ok('WO#21 the demo never writes the real cache (davisPurchase.v1)', (SRC.match(/store\(false, cacheZone\(/g) || []).length === (SRC.match(/!DEMO\) store\(false, cacheZone\(/g) || []).length);
 // Work order #18 §2.1: an installable app.
 const HEAD = SRC.slice(0, SRC.indexOf('</head>'));
