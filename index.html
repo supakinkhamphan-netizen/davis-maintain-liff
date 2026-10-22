@@ -3192,7 +3192,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; }
   }
   function pwaHint(inClient) {
-    var forced = DEMO && (/[?&]hint=(line|android|ios|other|none)\b/.exec(QS) || [])[1];
+    var forced = DEMO_MODE && (/[?&]hint=(line|android|ios|other|none)\b/.exec(QS) || [])[1];
     if (forced) return forced;
     var later = 0, q = QS;
     try { later = Number(localStorage.getItem(INSTALL_KEY)) || 0; } catch (e) { later = 0; }
