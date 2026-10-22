@@ -2,6 +2,7 @@
 import subprocess, sys
 M = [
  ('R1 then: the zone on screen dropped again', 'index.html', "      if (S.zone !== z) return loadZone(true);   // v9.1.2: another zone was tapped meanwhile (its own load was dropped while busy): load it now", "      if (S.zone !== z) return;", 'tests/care.test.js'),
+ ('R3 catch: the zone on screen dropped again', 'index.html', "    }).catch(function (e) {\n      S.zbusy = false;\n      if (S.zone !== z) return loadZone(true);   // as above", "    }).catch(function (e) {\n      S.zbusy = false;\n      if (S.zone !== z) return;", 'tests/care.test.js'),
  ('R2 busy kept through the reload', 'index.html', "    return Promise.all(sbQueryFor(z, S.me, u, careNow()).map(sbRead)).then(function (res) {\n      S.zbusy = false;\n      if (S.zone !== z) return loadZone(true);", "    return Promise.all(sbQueryFor(z, S.me, u, careNow()).map(sbRead)).then(function (res) {\n      if (S.zone !== z) return loadZone(true);\n      S.zbusy = false;", 'tests/care.test.js'),
 ]
 bad = 0
