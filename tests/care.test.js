@@ -866,15 +866,16 @@ async function section16() {
   eq('16.9 a refusal: the function\'s Thai message, red, where v8.2 shows the API\'s; nothing else called', [no.pg.toasts.slice(-1)[0], no.pg.log.fns],
     [{ text: 'งานนี้ไม่ได้รออนุมัติแล้ว', err: true }, []]);
 
-  const v = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: args => ({ row: { id: args.p_id, status: 'cancelled' }, events: [] }) } } });
+  // The function call takes 400 ms here, so the mid-flight look (at 100 ms) has room under load (it once failed at 2 ms of 5).
+  const v = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: args => ({ row: { id: args.p_id, status: 'cancelled' }, events: [] }) }, rpcDelay: 400 } });
   await tick(150);
   v.pg.tap('zone', 'purchase');
   await tick(120);
   v.pg.tap('cancel', 'PR_20261020_01');
   v.pg.tap('confirmCancel');
-  await tick(2);
+  await tick(100);
   ok('16.10b mid-flight on a v5 sheet: the pressed button says it is sending', /กำลังส่ง/.test(textOf(v.pg.app.innerHTML)));
-  await tick(150);
+  await tick(500);
   eq('16.10 purchase=supabase: a branch request cancelled through pr_cancel {id}', [v.fake.log.rpc, v.pg.log.fns], [[{ fn: 'pr_cancel', args: { p_id: 'PR_20261020_01' } }], []]);
 
   const vr = sbDevice('venue_manager', { settings: ST(OFF, ON, OFF), fake: { rpc: { pr_cancel: () => { throw { code: 'DC003', message: 'คำขอนี้ตัดสินไปแล้ว ยกเลิกไม่ได้' }; } } } });
@@ -899,7 +900,8 @@ async function section16() {
   // Addendum: the function's row carries the new status but the OLD card; the engine's card comes later by Realtime.
   // From an untouched copy of the fixture: the fake's emit writes into its own tables, and the function's row must stay stale.
   const stale = args => { const x = JSON.parse(JSON.stringify(sbTables().tickets.filter(t => t.id === args.p_id)[0])); x.status = 'กำลังดำเนินการ'; return { row: x, events: [] }; };
-  const st2 = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: stale }, rpcDelay: 150 } });
+  // 600 ms for the function, the two Realtime changes and the look within the first ~100 ms (it once failed under load at 150).
+  const st2 = sbDevice('account', { settings: ST(ON, ON, ON), fake: { rpc: { approve_purchase: stale }, rpcDelay: 600 } });
   await tick(150);
   const m0 = nApprovals(st2.pg.app.innerHTML), sel2 = st2.fake.log.selects.length;
   st2.pg.tap('bdApprove', 'Fairway_20261020_02');
@@ -911,7 +913,7 @@ async function section16() {
   st2.fake.emit('tickets', { type: 'UPDATE', row: approvedRow('Fairway_20261020_02') });   // then card + detail, rebuilt
   await tick(30);
   ok('16.11b two Realtime changes for the same job during the action: the button still says it is sending', /กำลังส่ง/.test(textOf(st2.pg.app.innerHTML)));
-  await tick(150);
+  await tick(650);
   eq('16.11c the function\'s row (old card) patched only the status and purchase: รออนุมัติ one fewer, no read', [m0 - nApprovals(st2.pg.app.innerHTML), st2.fake.log.selects.length - sel2], [1, 0]);
 
   // The engine's card arrives by Realtime BEFORE the function's (stale-card) row: the patch must not put the old card back.
