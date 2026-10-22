@@ -492,6 +492,14 @@ const PAGE_URL = 'https://script.google.com/macros/s/TEST/exec?page=exec&t=new';
 const apiSb = (role, fake) => (fn, opts, payload) => {
   if (fn === 'bdSupabaseLink') { fake.link(payload.authUid, uidOf(role)); return answer({ ok: true, uid: uidOf(role), url: 'https://xrnaxhgdfqcquxpookpr.supabase.co' }); }
   if (fn === 'bdExecLink') return answer({ ok: true, pageUrl: PAGE_URL });
+  // v9.1 (WO#23 §5): the handoff. bdLinkCode for a LINE-verified board; bdRedeemLink with the code alone.
+  if (fn === 'bdLinkCode') return answer(fake.linkCode === null ? { ok: false, error: 'ระบบยังไม่เปิดใช้' } : { ok: true, code: fake.linkCode || 'c0ffee00c0ffee00c0ffee00c0ffee00' });
+  if (fn === 'bdRedeemLink') {
+    if (payload.code !== (fake.goodCode || 'c0ffee00c0ffee00c0ffee00c0ffee00')) return answer({ ok: false, error: 'ลิงก์หมดอายุหรือใช้ไปแล้ว' });
+    fake.link(payload.authUid, uidOf(role));
+    const ans = answer({ ok: true, uid: uidOf(role), url: 'https://xrnaxhgdfqcquxpookpr.supabase.co' });
+    return fake.redeemDelay ? new Promise(r => setTimeout(() => r(ans), fake.redeemDelay)) : ans;   // the test's own (real) timer
+  }
   if (fn === 'bdApprove' || fn === 'bdReject') return answer({ ok: true, decision: fn === 'bdApprove' ? 'approve' : 'reject', ticketId: payload.ticketId });
   return answerOf(role)(fn, opts, payload);
 };
@@ -740,6 +748,12 @@ async function section13() {
   ph.tap('submit');
   await tick(300);
   eq('13.6 a demo request with a photo goes to api() and adds no LINE script', [!!ph.sdk, ph.toasts.some(t => !t.err && /^ส่งคำขอแล้ว · PR_/.test(t.text))], [false, true]);
+  // The demo's ?hint= (review screenshots of each install sheet) was ignored since v8.0: the hint was read before
+  // DEMO existed, so a Chrome screenshot showed Chrome's steps for ?hint=ios.
+  const hi = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=manager&hint=ios&install=1', fetch: files,
+    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/126.0 Safari/537.36' });
+  await tick(300);
+  ok('13.7 ?demo=1&hint=ios on a Chrome: the iPhone sheet (share → เพิ่มไปยังหน้าจอโฮม)', textOf(hi.app.innerHTML).indexOf('เพิ่มไปยังหน้าจอโฮม') >= 0);
   ok('13.5b the demo\'s settings row puts all three domains on Supabase (the demo reviews v9\'s path)',
     /T\.settings = \[\{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' \}\];/.test(SRC));
   ok('13.5c … and the demo reads that row at its start, as the Supabase boot does (else every demo action took api())',
@@ -992,7 +1006,57 @@ async function section17() {
   await tick(20);
   eq('17.1 a newer build behind the cache: "มีรุ่นใหม่ · แตะเพื่อโหลด", and no reload', [/มีรุ่นใหม่ · แตะเพื่อโหลด/.test(textOf(nb.pg.app.innerHTML)), nb.pg.log.reloads], [true, 0]);
 }
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 18. v9.1 (WO#23 §5): the install handoff — no LINE login page on the installed app ----------------
+async function section18() {
+  const HOFF = (/\/\* HANDOFF START \*\/[\s\S]*?\/\* HANDOFF END \*\//.exec(SRC) || [''])[0];
+  eq('18.0 the HANDOFF block is the app\'s word for word (davis-care-app lib/handoff/handoff.js, sha256 pinned)',
+    require('crypto').createHash('sha256').update(HOFF).digest('hex'), fs.readFileSync(path.join(__dirname, 'fixtures', 'handoff-block.sha256'), 'utf8').trim());
+  const CODE = 'c0ffee00c0ffee00c0ffee00c0ffee00';
+  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  // The installed app (or the phone's browser) opened with ?link=…&install=1, no session on this device.
+  const h = sbDevice('manager', { fresh: true, href: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', ua: IOS });
+  await tick(250);
+  eq('18.1 a code and no session: anonymous sign-in, bdRedeemLink {code, authUid} (no LINE token), no LINE script on the page', [!!h.pg.sdk, h.pg.log.fns,
+    h.pg.log.calls.filter(c => c.fn === 'bdRedeemLink').map(c => c.payload)], [false, ['bdRedeemLink'], [{ code: CODE, authUid: 'anon-1' }]]);
+  eq('18.2 … the device stores the link as sbLinkNow does, and the code leaves the address (a reload never spends it twice)',
+    [JSON.parse(h.pg.local.get('davisCare.sb') || '{}'), h.pg.log.replaced.indexOf('https://davis.example/davis-maintain-liff/?install=1') >= 0], [{ linked: true, uid: uidOf('manager') }, true]);
+  ok('18.3 … then the Supabase boot: me and the zone from rows, no Apps Script read', tablesOf(h.fake).indexOf('people') >= 0 && textOf(h.pg.app.innerHTML).indexOf('ต้องดู') >= 0);
+  ok('18.4 … and the install sheet (?install=1) shows on the board', textOf(h.pg.app.innerHTML).indexOf('ติดตั้ง Davis Care เป็นแอป') >= 0);
+  // Apps Script takes 2–3 s to redeem; the page's 5 s Supabase deadline (30 ms in the fake) starts only after it.
+  const slow = sbDevice('manager', { fresh: true, href: 'https://davis.example/davis-maintain-liff/?link=' + CODE });
+  slow.fake.redeemDelay = 120;
+  await tick(400);
+  ok('18.4b a redeem slower than the deadline still ends in the Supabase boot, no LINE script', !slow.pg.sdk && textOf(slow.pg.app.innerHTML).indexOf('ต้องดู') >= 0);
+  const sp = sbDevice('manager', { fresh: true, href: 'https://davis.example/davis-maintain-liff/?link=deadbeefdeadbeefdeadbeefdeadbeef' });
+  await tick(150);
+  ok('18.5 a spent or expired code: one Thai line', sp.pg.toasts.some(t => t.err && /หมดอายุหรือใช้ไปแล้ว/.test(t.text)));
+  ok('18.6 … and the v7.1 boot (LINE\'s SDK loads)', !!sp.pg.sdk);
+  sp.pg.lineLoads();
+  await tick(200);
+  eq('18.7 … which boots through Apps Script and links as before', sp.pg.log.fns.filter(f => f !== 'bdRedeemLink'), ['bdBoot', 'bdSupabaseLink']);
+  const ln = sbDevice('manager', { href: 'https://davis.example/davis-maintain-liff/?link=' + CODE });
+  await tick(150);
+  eq('18.8 a device already linked: the code is not redeemed (nothing spent), the usual boot', [ln.pg.log.fns, tablesOf(ln.fake).slice(0, 2)], [[], ['people', 'lists']]);
+  // Inside LINE: the install line asks for a code and opens the phone's browser with it.
+  const LIFFUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.10.0 LIFF';
+  const lf = sbDevice('manager', { ua: LIFFUA });
+  await tick(150);
+  lf.pg.tap('installLine');
+  lf.pg.lineLoads({ isInClient: () => true });
+  await tick(200);
+  eq('18.9 inside LINE the install line asks bdLinkCode and opens ?link=<code>&install=1 in the phone\'s browser', [lf.pg.log.fns, lf.pg.log.opened],
+    [['bdLinkCode'], [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]]);
+  const lf2 = sbDevice('manager', { ua: LIFFUA });
+  lf2.fake.linkCode = null;
+  await tick(150);
+  lf2.pg.tap('installLine');
+  lf2.pg.lineLoads({ isInClient: () => true });
+  await tick(200);
+  eq('18.10 no code (the engine refuses): the install URL as v9.0 (?install=1), LINE login on the phone as before', lf2.pg.log.opened,
+    [{ url: 'https://davis.example/davis-maintain-liff/?install=1', external: true }]);
+}
+
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });
