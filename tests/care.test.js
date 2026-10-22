@@ -748,6 +748,12 @@ async function section13() {
   ph.tap('submit');
   await tick(300);
   eq('13.6 a demo request with a photo goes to api() and adds no LINE script', [!!ph.sdk, ph.toasts.some(t => !t.err && /^ส่งคำขอแล้ว · PR_/.test(t.text))], [false, true]);
+  // The demo's ?hint= (review screenshots of each install sheet) was ignored since v8.0: the hint was read before
+  // DEMO existed, so a Chrome screenshot showed Chrome's steps for ?hint=ios.
+  const hi = bootPage(SRC, { href: 'https://davis.example/davis-maintain-liff/?demo=1&as=manager&hint=ios&install=1', fetch: files,
+    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/126.0 Safari/537.36' });
+  await tick(300);
+  ok('13.7 ?demo=1&hint=ios on a Chrome: the iPhone sheet (share → เพิ่มไปยังหน้าจอโฮม)', textOf(hi.app.innerHTML).indexOf('เพิ่มไปยังหน้าจอโฮม') >= 0);
   ok('13.5b the demo\'s settings row puts all three domains on Supabase (the demo reviews v9\'s path)',
     /T\.settings = \[\{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' \}\];/.test(SRC));
   ok('13.5c … and the demo reads that row at its start, as the Supabase boot does (else every demo action took api())',
