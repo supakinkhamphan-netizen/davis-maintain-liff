@@ -306,7 +306,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 <script>
 (function () {
   'use strict';
-  var BUILD = 'care-board v9.1 · 2026-10-22 · Supabase RPC';
+  var BUILD = 'care-board v9.1.1 · 2026-10-22 · Supabase RPC';
   // The Davis Maintain web app (prod deployment that LINE uses). One line.
   var API_URL = 'https://script.google.com/macros/s/AKfycbwW4Cx0k-hmBcRxcaFy_2RPJO8jwfr9T7vfOnCp4u4aUZNn2A6mFgTkVWk8u_TGkdO0UA/exec';
   // The LIFF app "Davis ขอซื้อ" (channel "Davis ฟอร์ม"), created 2026-10-18. This board's own; never Order's.
@@ -1210,6 +1210,23 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   }
   /** Inside LINE, the url the phone's browser opens: this page, ?install=1, nothing else. */
   function installUrl(href) { return splitUrl(href).base + '?install=1'; }
+  // v9.1.1 (owner 22 Oct: the pilot, one tech): the install line opens the app (WO#24) for pilot people only, with the
+  // code; everyone else keeps today's target. The repo is public: the list is sha256 of the Maintain uid, never the uid.
+  // Everyone later: ['*'] (the reviewer's one-line rollout).
+  var APP_URL = 'https://davis-care.vercel.app/';
+  var APP_PILOT_SHA256 = ['d6e508663a8e11c5e9356177d8841508bed698d22224c10478024d43b1e4b349'];   // the owner (a manager), 22 Oct
+  function sha256Hex(text) {
+    if (typeof crypto === 'undefined' || !crypto || !crypto.subtle || typeof TextEncoder === 'undefined') return Promise.reject(new Error('no subtle'));
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text))).then(function (buf) {
+      return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    });
+  }
+  /** True when this Maintain uid is a pilot person; false for anyone else, no uid, or a browser that cannot hash. */
+  function isPilot(uid, list) {
+    if ((list || []).indexOf('*') >= 0) return Promise.resolve(true);
+    if (!uid || !(list || []).length) return Promise.resolve(false);
+    return sha256Hex(uid).then(function (h) { return list.indexOf(h) >= 0; }, function () { return false; });
+  }
   /** Where LINE Login comes back to: no install=1 (the sheet opens once, not after every login), src=pwa kept. */
   function pwaRedirectUri(href) {
     var u = splitUrl(href);
@@ -3255,7 +3272,9 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
         if (DEMO) { toast('(ตัวอย่าง) เปิดเบราว์เซอร์ของเครื่อง'); return true; }
         // v9.1: a one-time code goes with it, so the installed app needs no LINE login (else the v9.0 URL).
         loadLine().then(function () {
-          return api('bdLinkCode', {}).then(function (r) { return installLinkUrl(location.href, r.code); }, function () { return installUrl(location.href); });
+          return isPilot(S.me && S.me.uid, APP_PILOT_SHA256).then(function (pilot) {   // v9.1.1: the pilot opens the app, with the code
+            return api('bdLinkCode', {}).then(function (r) { return installLinkUrl(pilot ? APP_URL : location.href, r.code); }, function () { return installUrl(location.href); });
+          });
         }).then(function (url) { liff.openWindow({ url: url, external: true }); }, function (e) { toast(e.message, true); });
         return true;
       case 'installGo': {

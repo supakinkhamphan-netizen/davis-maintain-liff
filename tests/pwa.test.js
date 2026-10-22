@@ -168,8 +168,8 @@ safe('6', () => {
   ok('6.4 the page logs out then in once, guarded by sessionStorage', /liff\.logout\(\);\s*liff\.login\(\{ redirectUri: pwaRedirectUri\(location\.href\) \}\)/.test(SRC) && /sessionStorage/.test(SRC));
   ok('6.5 every liff.login sends the PWA redirect', (SRC.match(/liff\.login\(/g) || []).length === (SRC.match(/liff\.login\(\{ redirectUri: pwaRedirectUri\(location\.href\) \}\)/g) || []).length);
   // v9.1: with a one-time code when the engine gives one (installLinkUrl), else the v9.0 URL (installUrl).
-  ok('6.6 inside LINE the line opens the phone\'s browser', /liff\.openWindow\(\{ url: url, external: true \}\)/.test(SRC) &&
-    /installLinkUrl\(location\.href, r\.code\)/.test(SRC) && /return installUrl\(location\.href\);/.test(SRC));
+  ok('6.6 inside LINE the line opens the phone\'s browser (v9.1.1: the app\'s URL for a pilot person, else this page)', /liff\.openWindow\(\{ url: url, external: true \}\)/.test(SRC) &&
+    /installLinkUrl\(pilot \? APP_URL : location\.href, r\.code\)/.test(SRC) && /return installUrl\(location\.href\);/.test(SRC));
   ok('6.7 Android: beforeinstallprompt is held, and prompt() only on the tap', /addEventListener\('beforeinstallprompt'/.test(SRC) && /preventDefault\(\)/.test(SRC) && /\.prompt\(\)/.test(SRC));
   ok('6.8 "ไว้ก่อน" is remembered in localStorage inside try/catch', /function installLater\(\) \{\s*try \{[^}]*localStorage\.setItem\(/.test(SRC));
   ok('6.9 the standalone test reads display-mode and navigator.standalone', /matchMedia\('\(display-mode: standalone\)'\)/.test(SRC) && /navigator\.standalone/.test(SRC));

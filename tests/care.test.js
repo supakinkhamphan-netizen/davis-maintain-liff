@@ -159,7 +159,7 @@ safe('7', () => {
   // A1.4's lesson: a class that colours its children (.slaRow span) beats .late at equal weight.
   ok('7.5 red wins over every descendant colour rule: #app .late is the last colour word', /#app \.late\{color:var\(--danger\)\}/.test(SRC) &&
     SRC.lastIndexOf('#app .late{color:var(--danger)}') > SRC.lastIndexOf('.slaRow span{'));
-  ok('7.4 build v6 or later', /var BUILD = 'care-board v[6-9](\.\d+)? · 2026-10-2\d/.test(SRC));
+  ok('7.4 build v6 or later', /var BUILD = 'care-board v[6-9](\.\d+){0,2} · 2026-10-2\d/.test(SRC));   // v9.1.1: a patch number
 });
 
 // ---- 8. work order #18 §2.6: the last data first, every role; offline; a new build ----------------
@@ -510,7 +510,7 @@ function sbDevice(role, o) {
   if (o.settings) tbl.settings = [Object.assign({ id: 'main' }, o.settings)];
   const fake = makeFakeSb(tbl, Object.assign(o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: uidOf(role) } }, o.fake || {}));
   const local = Object.assign(o.fresh ? {} : { 'davisCare.sb': JSON.stringify({ linked: !o.notLinked, uid: uidOf(role) }) }, o.local || {});
-  const pg = bootPage(SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, ua: o.ua, fetch: apiSb(role, fake) });
+  const pg = bootPage(o.src || SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, ua: o.ua, fetch: apiSb(role, fake) });
   return { fake, pg };
 }
 const tablesOf = f => f.log.selects.map(q => q.table);
@@ -758,7 +758,7 @@ async function section13() {
     /T\.settings = \[\{ id: 'main', record_of_truth_tickets: 'supabase', record_of_truth_purchase: 'supabase', record_of_truth_bills: 'supabase' \}\];/.test(SRC));
   ok('13.5c … and the demo reads that row at its start, as the Supabase boot does (else every demo action took api())',
     /function demoSbStart\(\) \{[\s\S]*?sbReadSettings\(\);[\s\S]*?\n  \}/.test(SRC));
-  ok('13.4 BUILD v8.x/v9.x · Supabase', /var BUILD = 'care-board v[89]\.\d · 2026-10-2\d · Supabase( RPC)?';/.test(SRC));
+  ok('13.4 BUILD v8.x/v9.x · Supabase', /var BUILD = 'care-board v[89]\.\d(\.\d)? · 2026-10-2\d · Supabase( RPC)?';/.test(SRC));
 }
 
 // ---- 14. v8.1: a Supabase boot that never ends must not hold the board (reviewer, 21 Oct) ----------
@@ -1058,7 +1058,54 @@ async function section18() {
     [{ url: 'https://davis.example/davis-maintain-liff/?install=1', external: true }]);
 }
 
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+// ---- 19. v9.1.1 (owner 22 Oct: the pilot, one tech): the install line opens the app for pilot people only ----------
+// The repo is public: the pilot list is sha256 of the Maintain uid, never the uid. Tests swap the list for a made-up
+// person's hash (the fixture's manager), as bootPage swaps the anon key.
+async function section19() {
+  const shaHex = t => require('crypto').createHash('sha256').update(t, 'utf8').digest('hex');
+  const LIST = /var APP_PILOT_SHA256 = \[[^\]]*\];/;
+  const withList = l => SRC.replace(LIST, 'var APP_PILOT_SHA256 = ' + JSON.stringify(l) + ';');
+  const LIFFUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.10.0 LIFF';
+  const CODE = 'c0ffee00c0ffee00c0ffee00c0ffee00';
+  const open = async (o) => {
+    const d = sbDevice('manager', Object.assign({ ua: LIFFUA }, o));
+    if (o.noCode) d.fake.linkCode = null;
+    if (o.noSubtle) d.pg.ctx.crypto = undefined;
+    await tick(150);
+    d.pg.tap('installLine');
+    d.pg.lineLoads({ isInClient: () => true });
+    await tick(200);
+    return d.pg.log.opened;
+  };
+  const list = (/var APP_PILOT_SHA256 = \[([^\]]*)\];/.exec(SRC) || [])[1];
+  const pins = list === undefined ? null : (list.match(/'[^']*'/g) || []).map(q => q.slice(1, -1));
+  ok('19.0 the list is sha256 hex only (one pilot today, 64 hex each), the app\'s URL beside it',
+    Array.isArray(pins) && pins.length === 1 && pins.every(h => /^[0-9a-f]{64}$/.test(h)) && /var APP_URL = 'https:\/\/davis-care\.vercel\.app\/';/.test(SRC));
+  eq('19.1 a pilot person — a manager, as the owner is (their uid\'s sha256 in the list): the app\'s URL with the code and install=1', await open({ src: withList([shaHex(uidOf('manager'))]) }),
+    [{ url: 'https://davis-care.vercel.app/?link=' + CODE + '&install=1', external: true }]);
+  eq('19.2 not in the list: today\'s target, byte for byte (18.9)', await open({}),
+    [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
+  eq('19.3 a hash that is not this uid\'s: today\'s target', await open({ src: withList([shaHex(uidOf('manager') + 'x')]) }),
+    [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
+  eq('19.4 the list holds the uid itself, not its hash: never matched (a raw id is not a pin)', await open({ src: withList([uidOf('manager')]) }),
+    [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
+  eq('19.5 everyone later (the reviewer\'s one-line rollout): \'*\'', await open({ src: withList(['*']) }),
+    [{ url: 'https://davis-care.vercel.app/?link=' + CODE + '&install=1', external: true }]);
+  eq('19.6 a pilot person and no code (the engine refuses): today\'s ?install=1 (the app cannot sign in without a code)', await open({ src: withList([shaHex(uidOf('manager'))]), noCode: true }),
+    [{ url: 'https://davis.example/davis-maintain-liff/?install=1', external: true }]);
+  eq('19.7 a browser without crypto.subtle: today\'s target', await open({ src: withList([shaHex(uidOf('manager'))]), noSubtle: true }),
+    [{ url: 'https://davis.example/davis-maintain-liff/?link=' + CODE + '&install=1', external: true }]);
+  // No LINE user id anywhere in the public repo (U + 32 hex): the source, the tests, the fixtures, the docs.
+  const files = require('child_process').execFileSync('git', ['ls-files'], { cwd: path.join(__dirname, '..') }).toString().split('\n').filter(f => f && !/\.(png|jpg|ico)$/.test(f));
+  // A real id is 32 random hex (14–16 distinct characters); the fixtures' made-up ids are a word and zeros
+  // ("Uacc000…0001": 4 distinct), so at least 8 distinct characters is a real one.
+  const realIds = t => (t.match(/\bU[0-9a-f]{32}\b/g) || []).filter(id => new Set(id.slice(1)).size >= 8);
+  const hits = files.filter(f => realIds(fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).length);
+  eq('19.8 no LINE user id in any tracked file (the pilot is a hash; made-up fixture ids are runs of zeros)', hits, []);
+  eq('19.8b … and the check sees one: a random id is caught, a fixture id is not', [realIds('x U' + shaHex('probe').slice(0, 32) + ' y').length, realIds('Uacc00000000000000000000000000001').length], [1, 0]);
+}
+
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });

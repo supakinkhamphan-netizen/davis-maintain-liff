@@ -39,6 +39,7 @@ function bootPage(SRC, o) {
   const ctx = {
     console, Date: FakeDate, Math, JSON, Object, Array, String, Number, Promise, Error, TypeError, RegExp, Map, Set,
     isFinite, isNaN, parseFloat, parseInt, encodeURIComponent, decodeURIComponent, URL,
+    crypto: globalThis.crypto, TextEncoder, Uint8Array,   // v9.1.1: the pilot list is compared by sha256
     setTimeout: (f, ms) => { const t = setTimeout(f, Math.min(ms || 0, 30)); if (t.unref) t.unref(); return t; },
     clearTimeout, setInterval: (f, ms) => { intervals.push({ f, ms }); return intervals.length; }, clearInterval: () => {},
     // A script the page adds: LINE's SDK waits for the test (lineLoads); the vendored supabase-js
