@@ -1116,6 +1116,40 @@ async function section21() {
   ok('21.9 the look: the A2 tokens (teal tint ground, teal button, its dark ink)', /\.appBanner\{[^}]*#1F3A36/.test(SRC) && /\.appBannerGo\{[^}]*#34A796[^}]*#0E1716/.test(SRC));
 }
 
+// ---- 22. v9.1.4: liff.line.me/<id>?go=app — the LINE menu's "📱 เปิดแอป Davis Care" (team B). No board first: one line,
+// a fresh code, the app in the phone's browser; openWindow failing -> a button; outside LINE, the banner's path. ----
+async function section22() {
+  const CODE = 'c0ffee00c0ffee00c0ffee00c0ffee00', APP_LINK = 'https://davis-care.vercel.app/?link=' + CODE + '&install=1';
+  const LIFFUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.10.0 LIFF';
+  const GO = 'https://davis.example/davis-maintain-liff/?go=app';
+  const g = sbDevice('manager', { ua: LIFFUA, href: GO });
+  await tick(30);
+  eq('22.1 inside LINE with go=app: no board boot (no Supabase read), one line "กำลังเปิดแอป Davis Care…", LINE\'s SDK asked at once',
+    [tablesOf(g.fake), textOf(g.pg.app.innerHTML).trim(), !!g.pg.sdk], [[], 'กำลังเปิดแอป Davis Care…', true]);
+  g.pg.lineLoads({ isInClient: () => true });
+  await tick(200);
+  eq('22.2 … then bdLinkCode, and the app with the code in the phone\'s browser (openWindow external); still no board', [g.pg.log.fns, g.pg.log.opened, tablesOf(g.fake), /กำลังเปิดแอป/.test(g.pg.app.innerHTML)],
+    [['bdLinkCode'], [{ url: APP_LINK, external: true }], [], true]);
+  const f = sbDevice('manager', { ua: LIFFUA, href: GO });
+  await tick(30);
+  f.pg.lineLoads({ isInClient: () => true, openWindow: () => { throw new Error('openWindow failed'); } });
+  await tick(200);
+  ok('22.3 openWindow fails: the line says so, with a button to try again (the banner\'s tap)', /เปิดแอปไม่สำเร็จ/.test(textOf(f.pg.app.innerHTML)) && /data-act="appOpen"/.test(f.pg.app.innerHTML));
+  const st = sbDevice('manager', { href: 'https://davis.example/davis-maintain-liff/?liff.state=' + encodeURIComponent('?go=app') });
+  await tick(30);
+  st.pg.lineLoads({ isInClient: () => false });
+  await tick(200);
+  eq('22.4 outside LINE (go=app handed over in liff.state): the banner\'s path — the code, this window to the app; no board', [st.pg.log.assigned, st.pg.log.opened, tablesOf(st.fake)], [[APP_LINK], [], []]);
+  const nl = sbDevice('manager', { href: GO });
+  await tick(30);
+  nl.pg.lineLoads({ isInClient: () => false, isLoggedIn: () => false });
+  await tick(200);
+  eq('22.5 … not logged in to LINE yet: today\'s login first (it comes back with go=app), nothing opened', [nl.pg.log.logins.length, nl.pg.log.assigned, (nl.pg.log.logins[0] || {}).redirectUri && /go=app/.test(nl.pg.log.logins[0].redirectUri)], [1, [], true]);
+  const plain = sbDevice('manager');
+  await tick(150);
+  ok('22.6 without go=app: the board as always', tablesOf(plain.fake).length > 0 && !/กำลังเปิดแอป/.test(plain.pg.app.innerHTML));
+}
+
 // ---- 19. v9.1.1 (owner 22 Oct: the pilot, one tech): the install line opens the app for pilot people only ----------
 // The repo is public: the pilot list is sha256 of the Maintain uid, never the uid. Tests swap the list for a made-up
 // person's hash (the fixture's manager), as bootPage swaps the anon key.
@@ -1198,7 +1232,7 @@ async function section20() {
     /zone-overview/.test(f.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(f.pg.app.innerHTML)) && f.fake.log.selects.some(q => q.table === 'stats'));
 }
 
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).then(section20).then(section21).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).then(section20).then(section21).then(section22).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });
