@@ -24,7 +24,7 @@ function bootPage(SRC, o) {
   const storage = m => ({ getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); } });
   const local = new Map(Object.entries(o.local || {})), session = new Map(Object.entries(o.session || {}));
   const appended = [], win = {}, sw = {};
-  const log = { reloads: 0, replaced: [], logins: [], logouts: 0, opened: [], fns: [], calls: [], windows: [] };
+  const log = { reloads: 0, replaced: [], logins: [], logouts: 0, opened: [], fns: [], calls: [], windows: [], assigned: [] };
   const docL = {}, intervals = [];
   // v7.1: a clock the test can move (the poll's "older than 30 s"), and the page's visibility.
   const clock = { skew: 0 };
@@ -55,7 +55,7 @@ function bootPage(SRC, o) {
       } },
       addEventListener: (t, f) => { docL[t] = f; }, get visibilityState() { return doc.visibilityState; } },
     localStorage: storage(local), sessionStorage: storage(session),
-    location: { href, search: href.indexOf('?') >= 0 ? href.slice(href.indexOf('?')).split('#')[0] : '', reload: () => { log.reloads++; } },
+    location: { href, search: href.indexOf('?') >= 0 ? href.slice(href.indexOf('?')).split('#')[0] : '', reload: () => { log.reloads++; }, assign: u => log.assigned.push(u) },   // v9.1.4: the app banner leaves this way outside LINE
     history: { replaceState: (a, b, u) => log.replaced.push(u) },
     navigator: {
       onLine: o.online !== false, userAgent: o.ua || '', standalone: false,

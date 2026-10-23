@@ -298,6 +298,11 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
 }
 /* Last colour word: red beats any rule that colours its children (.slaRow span, .xline, .sub). */
 #app .late{color:var(--danger)}
+/* v9.1.4: the app banner (the A2 tokens: the teal tint ground, the teal button with its dark ink) */
+.appBanner{display:flex;align-items:center;gap:10px;margin:10px 16px 0;padding:12px 12px 12px 14px;background:#1F3A36;border:1px solid #2E5A53;border-radius:16px;color:#ECEEF1}
+.appBannerTxt{flex:1;min-width:0;font-size:15px;font-weight:700;line-height:1.35}
+.appBannerGo{min-height:44px;padding:0 14px;border-radius:12px;border:0;background:#34A796;color:#0E1716;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.appBannerX{width:44px;min-height:44px;border:0;border-radius:12px;background:none;color:#ECEEF1;font-size:20px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -1179,6 +1184,19 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     if (/iPhone|iPad|iPod/.test(ua)) return /Version\/[\d.]+.*Safari|CriOS\//.test(ua) ? 'ios' : 'other';
     if (/Chrome\//.test(ua)) return 'android';
     return 'other';
+  }
+  // v9.1.4 (owner 23 Oct): an icon installed from this board still opens the board, and an installed board has no install
+  // line (hint 'none'). Everyone belongs on the app now: a banner on every page, every role, until they go. × hides it on
+  // this device for 24 hours, never for good. Never inside the app (its copy says APP true).
+  var APP_BANNER_KEY = 'davisCare.appBanner', APP_BANNER_SNOOZE_MS = 24 * 3600 * 1000;
+  function appBannerShown(o) {
+    if (o.app) return false;
+    return !(o.dismissedAt > 0 && o.now - o.dismissedAt < APP_BANNER_SNOOZE_MS);
+  }
+  function appBannerHtml() {
+    return '<div class="appBanner" role="region" aria-label="แอปใหม่"><span class="appBannerTxt">มี Davis Care แอปใหม่</span>' +
+      '<button type="button" class="appBannerGo" data-act="appOpen">เปิดแอปใหม่ →</button>' +
+      '<button type="button" class="appBannerX" data-act="appBannerLater" aria-label="ซ่อนไว้ 24 ชั่วโมง">×</button></div>';
   }
   function installLineHtml(hint) {
     return hint === 'none' ? '' : '<button type="button" class="topLine muted" data-act="installLine">ติดตั้งเป็นแอป ›</button>';
@@ -2429,8 +2447,14 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
     return '<p id="lastUpdated">' + (hhmm ? 'อัปเดต ' + hhmm + ' · ' : '') + esc(BUILD) + (DEMO ? ' · demo' : '') + '</p>';
   }
   /** #18: the lines under the header: a new build, the install line, the age of painted data. */
+  /** v9.1.4: the banner, unless this device hid it within 24 hours (or this is the app's copy). */
+  function appBannerNow() {
+    var at = S.appBannerAt;
+    if (at === undefined) { try { at = Number(localStorage.getItem(APP_BANNER_KEY)) || 0; } catch (e) { at = 0; } S.appBannerAt = at; }
+    return appBannerShown({ app: typeof APP !== 'undefined' && !!APP, dismissedAt: at, now: Date.now() }) ? appBannerHtml() : '';
+  }
   function topLines() {
-    return (S.updateReady ? updateLineHtml() : '') + installLineHtml(S.hint) + staleLineHtml(S.cachedAt || S.statsAt, S.offline);
+    return appBannerNow() + (S.updateReady ? updateLineHtml() : '') + installLineHtml(S.hint) + staleLineHtml(S.cachedAt || S.statsAt, S.offline);
   }
   function render() {
     renderPage();
@@ -2439,7 +2463,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
   function renderPage() {
     var h = demoStrip();
     if (S.notice) {
-      app.innerHTML = h + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text).replace(/\n/g, '<br>') + '</p>' +
+      app.innerHTML = h + (S.me || S.noticeKnown ? appBannerNow() : '') + '<div class="notice"><h2>' + esc(S.notice.title) + '</h2><p>' + esc(S.notice.text).replace(/\n/g, '<br>') + '</p>' +
         (S.notice.link ? '<a class="actionBtn" href="' + esc(S.notice.link.href) + '">' + esc(S.notice.link.label) + '</a>' : '') +
         '</div>' + footer();
       return;
@@ -3135,7 +3159,7 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
       return;
     }
     var notice = noticeFor(me);
-    if (notice) { S.notice = notice; render(); return; }
+    if (notice) { S.notice = notice; S.noticeKnown = !!me.known; render(); return; }   // v9.1.4: a known person the board refuses (a tech, staff) still gets the app banner
     S.notice = null;
     S.me = me;
     openInstallOnce();
@@ -3276,6 +3300,24 @@ button.topLine{display:block;width:100%;min-height:44px;text-align:left;backgrou
             return api('bdLinkCode', {}).then(function (r) { return installLinkUrl(pilot ? APP_URL : location.href, r.code); }, function () { return installUrl(location.href); });
           });
         }).then(function (url) { liff.openWindow({ url: url, external: true }); }, function (e) { toast(e.message, true); });
+        return true;
+      case 'appOpen': {   // v9.1.4: the app, with a one-time code as the install line mints it; none -> the address plain
+        if (DEMO) { toast('(ตัวอย่าง) เปิด Davis Care แอปใหม่'); return true; }
+        if (S.appOpening) return true;
+        S.appOpening = true;
+        loadLine().then(function () {   // no LINE login on this device yet: loadLine runs today's login first (the page comes back)
+          return api('bdLinkCode', {}).then(function (r) { return r && r.code ? installLinkUrl(APP_URL, r.code) : APP_URL; }, function () { return APP_URL; });
+        }, function () { return APP_URL; }).then(function (url) {
+          S.appOpening = false;
+          if (typeof liff !== 'undefined' && liff && liff.isInClient && liff.isInClient()) liff.openWindow({ url: url, external: true });
+          else location.assign(url);   // standalone or a browser: this window (a popup opened after the round trip is blocked by Safari)
+        });
+        return true;
+      }
+      case 'appBannerLater':
+        S.appBannerAt = Date.now();
+        try { localStorage.setItem(APP_BANNER_KEY, String(S.appBannerAt)); } catch (e) { /* this visit only */ }
+        render();
         return true;
       case 'installGo': {
         var ask = installPrompt;

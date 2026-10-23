@@ -147,7 +147,8 @@ safe('6', () => {
 
 // ---- 7. the rules of the whole board -----------------------------------------------------------
 safe('7', () => {
-  const ALLOWED = ['#1E2228', '#23272E', '#262B33', '#2F353E', '#E8EBF0', '#9AA3B2', '#6B7382', '#FFFFFF', '#2FA39A', '#08201E', '#F08C8C'];
+  const ALLOWED = ['#1E2228', '#23272E', '#262B33', '#2F353E', '#E8EBF0', '#9AA3B2', '#6B7382', '#FFFFFF', '#2FA39A', '#08201E', '#F08C8C',
+    '#1F3A36', '#2E5A53', '#ECEEF1', '#34A796', '#0E1716'];   // v9.1.4: the app banner in the app's A2 tokens (the reviewer's call)
   const hexes = Array.from(new Set((SRC.match(/#[0-9A-Fa-f]{6}\b/g) || []).map(h => h.toUpperCase())));
   eq('7.1 three colours (plus the greys of the ground)', hexes.filter(h => ALLOWED.indexOf(h) < 0), []);
   const all = [C.renderOverview(callOf('manager', 'bdOverview', { window: 7, venue: '', tech: '' }), {}),
@@ -510,7 +511,7 @@ function sbDevice(role, o) {
   if (o.settings) tbl.settings = [Object.assign({ id: 'main' }, o.settings)];
   const fake = makeFakeSb(tbl, Object.assign(o.fresh ? {} : { session: { user: { id: 'anon-' + role }, access_token: 'tok:anon-' + role + ':1' }, links: o.unlinked ? {} : { ['anon-' + role]: uidOf(role) } }, o.fake || {}));
   const local = Object.assign(o.fresh ? {} : { 'davisCare.sb': JSON.stringify({ linked: !o.notLinked, uid: uidOf(role) }) }, o.local || {});
-  const pg = bootPage(o.src || SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, ua: o.ua, fetch: apiSb(role, fake) });
+  const pg = bootPage(o.src || SRC, { sbOn: true, sb: fake.SB, local, session: o.session, href: o.href, ua: o.ua, standalone: o.standalone, fetch: apiSb(role, fake) });
   return { fake, pg };
 }
 const tablesOf = f => f.log.selects.map(q => q.table);
@@ -1059,6 +1060,62 @@ async function section18() {
     [{ url: 'https://davis.example/davis-maintain-liff/?install=1', external: true }]);
 }
 
+// ---- 21. v9.1.4 (owner 23 Oct, URGENT): the home-screen icon opened the OLD board, and standalone has no install line
+// (hint 'none'). A banner on every page of the board, every role: มี Davis Care แอปใหม่ · เปิดแอปใหม่ →. The tap mints
+// bdLinkCode as the install line does and opens the app with it (LINE: liff.openWindow external; standalone or a
+// browser: this window); no code → the app's address plain. Dismissed per device for 24 h, never for good; never in the app.
+async function section21() {
+  const CODE = 'c0ffee00c0ffee00c0ffee00c0ffee00', APP_LINK = 'https://davis-care.vercel.app/?link=' + CODE + '&install=1';
+  const LIFFUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.10.0 LIFF';
+  const banner = h => /class="appBanner"/.test(h) && /มี Davis Care แอปใหม่/.test(textOf(h)) && /data-act="appOpen"[^>]*>เปิดแอปใหม่ →</.test(h);
+  const seen = {};
+  for (const role of ['manager', 'account', 'venue_manager', 'purchasing', 'tech', 'staff']) {
+    const d = sbDevice(role);
+    await tick(150);
+    seen[role] = [banner(d.pg.app.innerHTML), d.pg.app.innerHTML.indexOf('appBanner') < Math.max(0, d.pg.app.innerHTML.indexOf('<main')) || !/<main/.test(d.pg.app.innerHTML)];
+  }
+  eq('21.1 every role sees the banner, at the top (before the list); a tech or staff the board refuses sees it over the notice',
+    seen, { manager: [true, true], account: [true, true], venue_manager: [true, true], purchasing: [true, true], tech: [true, true], staff: [true, true] });
+  const l = sbDevice('manager', { ua: LIFFUA });
+  await tick(150);
+  l.pg.tap('appOpen');
+  l.pg.lineLoads({ isInClient: () => true });
+  await tick(200);
+  eq('21.2 inside LINE: the tap asks bdLinkCode and opens the app with the code in the phone\'s browser (openWindow external)', [l.pg.log.fns, l.pg.log.opened, l.pg.log.assigned], [['bdLinkCode'], [{ url: APP_LINK, external: true }], []]);
+  const st = sbDevice('manager', { standalone: true });
+  await tick(150);
+  st.pg.tap('appOpen');
+  st.pg.lineLoads({ isInClient: () => false });
+  await tick(200);
+  eq('21.3 standalone (the old icon) or a browser: the same code, and this window goes to the app (no popup: Safari blocks one after a round trip)', [st.pg.log.fns, st.pg.log.assigned, st.pg.log.opened, st.pg.log.windows.length], [['bdLinkCode'], [APP_LINK], [], 0]);
+  const nc = sbDevice('manager', { standalone: true });
+  nc.fake.linkCode = null;
+  await tick(150);
+  nc.pg.tap('appOpen');
+  nc.pg.lineLoads({ isInClient: () => false });
+  await tick(200);
+  eq('21.4 no code (the engine refuses): the app\'s address plain (the app then says เปิดจากไลน์)', nc.pg.log.assigned, ['https://davis-care.vercel.app/']);
+  const nl = sbDevice('manager', { standalone: true });
+  await tick(150);
+  nl.pg.tap('appOpen');
+  nl.pg.lineLoads({ isInClient: () => false, isLoggedIn: () => false });
+  await tick(200);
+  eq('21.5 standalone before a LINE login: today\'s login first (no code asked, nothing opened yet)', [nl.pg.log.logins.length, nl.pg.log.fns, nl.pg.log.assigned], [1, [], []]);
+  const x = sbDevice('manager');
+  await tick(150);
+  x.pg.tap('appBannerLater');
+  const at = +x.pg.local.get('davisCare.appBanner');
+  eq('21.6 × hides it on this device, the time kept', [banner(x.pg.app.innerHTML), at > 0], [false, true]);
+  const back = sbDevice('manager', { local: { 'davisCare.appBanner': String(Date.now() - 25 * 3600000) } });
+  const still = sbDevice('manager', { local: { 'davisCare.appBanner': String(Date.now() - 23 * 3600000) } });
+  await tick(150);
+  eq('21.7 … for 24 hours at most: hidden at 23 h, back at 25 h (never hidden for good)', [banner(still.pg.app.innerHTML), banner(back.pg.app.innerHTML)], [false, true]);
+  const inApp = sbDevice('manager', { src: SRC.replace('<script>', '<script>var APP = true;') });
+  await tick(150);
+  eq('21.8 never inside the app (APP true)', banner(inApp.pg.app.innerHTML), false);
+  ok('21.9 the look: the A2 tokens (teal tint ground, teal button, its dark ink)', /\.appBanner\{[^}]*#1F3A36/.test(SRC) && /\.appBannerGo\{[^}]*#34A796[^}]*#0E1716/.test(SRC));
+}
+
 // ---- 19. v9.1.1 (owner 22 Oct: the pilot, one tech): the install line opens the app for pilot people only ----------
 // The repo is public: the pilot list is sha256 of the Maintain uid, never the uid. Tests swap the list for a made-up
 // person's hash (the fixture's manager), as bootPage swaps the anon key.
@@ -1141,7 +1198,7 @@ async function section20() {
     /zone-overview/.test(f.pg.app.innerHTML) && !/กำลังโหลด/.test(textOf(f.pg.app.innerHTML)) && f.fake.log.selects.some(q => q.table === 'stats'));
 }
 
-section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).then(section20).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
+section9().then(section10).then(section11).then(section13).then(section14).then(section15).then(section16).then(section17).then(section18).then(section19).then(section20).then(section21).catch(e => { fails++; n++; console.log('FAIL 9 crashed: ' + e.stack); }).then(() => {
   console.log(fails ? '\n' + fails + ' FAILED' : '\nALL ' + n + ' PASS');
   process.exit(fails ? 1 : 0);
 });
